@@ -6,6 +6,26 @@ Goal: find what to change and where, without opening big files.
 Rule of thumb: run `tools/map.sh` (prints line numbers), then `sed -n 'A,Bp' file` for ONLY that range.
 For the published demo page, change it with the Artifact tool, action "edit" (old_str/new_str), never a full rewrite.
 
+
+## 0. Feature map (Oct 2026 batch)
+| Feature | Desktop | Android | Code |
+|---|---|---|---|
+| Cookie-banner blocking | ✓ | ✓ | lists/easylist-cookie.txt (fanboy cookiemonster), lib.rs `load_lists` |
+| Dark mode for websites (+per site) | ✓ | ✓ | src/page.js `dark()`, lib.rs `page_start_js`/`dark_for`, `site_dark` cmd, JNI `darkJs` |
+| Find in page | ✓ (window.find) | ✓ native counts | `page_action{find,find-back,find-clear}`; Kotlin `find` |
+| Reader view | ✓ | ✓ | page.js `reader()` |
+| Privacy stats | ✓ | ✓ | Blocker.total → `get_stats` (store.stats) |
+| Private tabs | ✓ WebView2 incognito | ✓ androidx.webkit Profile (WebView 123+) | `open_tab{private}` |
+| History (opt-in) + suggestions | ✓ | ✓ | `history_add/list/clear`, `suggest` (history.json) |
+| Restore tabs (opt-in) | ✓ | ✓ | `session_save`, get_state.session |
+| Site panel (shield, dark, reader, QR) | ✓ shield click | ✓ shield tap / hold = toggle | UI |
+| Command bar | Ctrl+K | hold address bar | UI |
+| Split view | Shift/right-click tab, Ctrl+\ | — | `set_split`, desktop.rs relayout |
+| Workspaces | rail button / palette | tabs sheet chips | ui.workspaces / ui.ws |
+| QR codes | site panel | site sheet, link hold | ui/qr.js (verified with OpenCV) |
+| Gestures | wheel on tab bar, drag reorder | swipe bar ←→ tabs, swipe toward page = grid, swipe cards to close, pull to refresh, link long-press | UI + TabsPlugin.kt |
+| YouTube / anti-adblock scriptlets | TODO (R-15/R-16) | TODO | needs uBO resources |
+
 ## 1. Repo map
 | Path | What it is | Size/Touch when |
 |---|---|---|
