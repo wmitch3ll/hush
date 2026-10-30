@@ -20,6 +20,6 @@ jobs:
     strategy: { matrix: { language: [javascript-typescript, rust, actions] }, fail-fast: false }
     steps:
       - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@v4
         with: { languages: "${{ matrix.language }}", build-mode: none }
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@v4
