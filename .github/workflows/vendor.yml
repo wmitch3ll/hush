@@ -1,0 +1,21 @@
+# Hand-started: rebuilds ui/vendor/nostr.js (the messenger's crypto, from nostr-tools) and commits it to the branch.
+name: vendor
+on: { workflow_dispatch: {} }
+permissions: { contents: write }
+jobs:
+  nostr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: |
+          mkdir -p /tmp/b && cd /tmp/b && npm init -y >/dev/null && npm i nostr-tools@2 esbuild@0.24 >/dev/null
+          cp "$GITHUB_WORKSPACE/tools/nostr-entry.mjs" entry.mjs
+          npx esbuild entry.mjs --bundle --format=iife --global-name=NostrTools --minify --target=es2020 --legal-comments=inline \
+            --footer:js='window.NostrTools=NostrTools;' --outfile="$GITHUB_WORKSPACE/ui/vendor/nostr.js"
+          echo "nostr-tools $(node -p "require('nostr-tools/package.json').version")"
+      - run: node tools/test-nostr.mjs ui/vendor/nostr.js
+      - run: |
+          git config user.name "hush-bot"; git config user.email "hush-bot@users.noreply.github.com"
+          git add ui/vendor/nostr.js && git commit -m "Vendor nostr-tools bundle for the messenger" && git push || echo "no change"
