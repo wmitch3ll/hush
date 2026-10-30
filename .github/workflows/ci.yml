@@ -1,4 +1,4 @@
-# Unverified starter CI (R-65). Desktop: compile + unit tests. Android: debug APK artifact.
+# CI: desktop compile + tests on 3 OSes; Android APK; Windows installers; on main, one GitHub Release with all of them.
 name: ci
 on: [push, pull_request]
 jobs:
@@ -100,10 +100,58 @@ jobs:
           cp "$f" hush-debug.apk
       - uses: actions/upload-artifact@v4
         with: { name: hush-debug-apk, path: hush-debug.apk }
+
+  windows-installer:
+    # Hush-setup.exe (x64) and Hush-setup-arm64.exe — per-user install, no admin needed. Main branch only.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    strategy: { matrix: { arch: [x64, arm64] }, fail-fast: false }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: "${{ matrix.arch == 'arm64' && 'aarch64-pc-windows-msvc' || 'x86_64-pc-windows-msvc' }}" }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: "src-tauri", key: "win-${{ matrix.arch }}" }
+      - shell: bash
+        run: command -v cargo-tauri || cargo install tauri-cli --version "^2" --locked
+      - shell: bash
+        run: sh tools/fetch-lists.sh
+      - name: Refresh uBlock Origin scriptlets
+        shell: bash
+        run: |
+          git clone -q --depth 1 https://github.com/gorhill/uBlock /tmp/ublock
+          git clone -q --depth 1 --branch gh-pages https://github.com/uBlockOrigin/uAssets /tmp/uassets
+          node tools/build-scriptlets.mjs /tmp/ublock /tmp/uassets
+      - name: Version from build number
+        shell: bash
+        run: |
+          sed -i 's/"version": "[^"]*"/"version": "0.1.${{ github.run_number }}"/' src-tauri/tauri.conf.json
+      - name: Build installer
+        shell: bash
+        env: { HUSH_BUILD: "${{ github.run_number }}" }
+        run: |
+          cd src-tauri
+          T=${{ matrix.arch == 'arm64' && 'aarch64-pc-windows-msvc' || 'x86_64-pc-windows-msvc' }}
+          cargo tauri build --bundles nsis --target $T
+          f=$(find target/$T/release/bundle/nsis -name "*.exe" | head -1); echo "built $f"
+          cp "$f" ../Hush-setup${{ matrix.arch == 'arm64' && '-arm64' || '' }}.exe
+      - uses: actions/upload-artifact@v4
+        with: { name: "installer-${{ matrix.arch }}", path: "Hush-setup*.exe" }
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [android, windows-installer]
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: dist, merge-multiple: true }
       - name: Publish release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env: { GH_TOKEN: "${{ github.token }}", MSG: "${{ github.event.head_commit.message }}" }
         run: |
-          gh release create "build-${{ github.run_number }}" hush-debug.apk --prerelease \
-            --title "Hush test build ${{ github.run_number }}" \
-            --notes "Debug build of $(git rev-parse --short HEAD): $MSG"
+          ls -la dist
+          printf '%s\n\n%s\n' "Debug build of $(git rev-parse --short HEAD): $MSG" \
+            "Phone: hush-debug.apk · Windows: Hush-setup.exe (most PCs) or Hush-setup-arm64.exe (Snapdragon / ARM laptops). If Windows says 'Windows protected your PC', click More info → Run anyway." > notes.txt
+          gh release create "build-${{ github.run_number }}" dist/hush-debug.apk dist/Hush-setup*.exe --prerelease \
+            --title "Hush test build ${{ github.run_number }}" --notes-file notes.txt
