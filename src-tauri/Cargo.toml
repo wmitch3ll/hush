@@ -28,7 +28,13 @@ base64 = "0.22"
 arti-client = { version = "0.47", default-features = false, features = ["tokio", "rustls", "compression", "static-sqlite", "onion-service-client"] }
 tor-rtcompat = { version = "0.47", default-features = false, features = ["tokio", "rustls"] }
 scraper = { version = "0.20", default-features = false }   # change watch: read one element from a page
-tokio = { version = "1", features = ["net", "io-util", "macros", "rt"] }
+# Messenger: WebSockets to Nostr relays over Tor (TLS with ring — no C toolchain needed on Android).
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["handshake"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "0.26"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+tokio = { version = "1", features = ["net", "io-util", "macros", "rt", "sync"] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -10,6 +10,7 @@ mod store;
 #[cfg(target_os = "ios")] mod ios_ffi;
 #[cfg(mobile)] mod tabs_plugin;
 mod tor;
+mod msgnet;
 
 /// Change watch: fetch a page and read the text of one element (CSS selector). None = not found.
 #[tauri::command]
@@ -529,14 +530,14 @@ pub fn run() {
             extensions::extension_list, extensions::extension_install, extensions::extension_remove,
             desktop::open_tab, desktop::switch_tab, desktop::close_tab, desktop::navigate, desktop::nav,
             desktop::clear_data, desktop::start_picker, desktop::set_layout, desktop::show_content,
-            desktop::download_open, desktop::download_reveal, desktop::float_tab, desktop::float_close, tor::tor_start, tor::tor_new_identity, tor::tor_state, watch_check])
+            desktop::download_open, desktop::download_reveal, desktop::float_tab, desktop::float_close, tor::tor_start, tor::tor_new_identity, tor::tor_state, watch_check, msgnet::msg_ws_open, msgnet::msg_ws_send, msgnet::msg_ws_close])
         .setup(desktop::setup);
     #[cfg(mobile)] let b = b
         .invoke_handler(tauri::generate_handler![toggle_shield, get_state, set_setting, bookmark_add, bookmark_remove,
             add_custom_filter, export_data, import_data, update_lists,
             site_dark, get_stats, history_add, history_list, history_clear, suggest, session_save,
             check_update, app_info, import_bookmarks,
-            mobile::page_action, mobile::native_call, boost_set, remove_custom_filter, bookmarks_reorder, tor::tor_start, tor::tor_new_identity, tor::tor_state, watch_check,
+            mobile::page_action, mobile::native_call, boost_set, remove_custom_filter, bookmarks_reorder, tor::tor_start, tor::tor_new_identity, tor::tor_state, watch_check, msgnet::msg_ws_open, msgnet::msg_ws_send, msgnet::msg_ws_close,
             mobile::open_tab, mobile::switch_tab, mobile::close_tab, mobile::navigate, mobile::nav,
             mobile::clear_data, mobile::set_chrome_inset, mobile::set_web_prefs])
         .setup(mobile::setup);

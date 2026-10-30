@@ -66,6 +66,15 @@ pub fn tor_state() -> serde_json::Value {
     let t = TOR.lock();
     serde_json::json!({ "on": t.client.is_some(), "port": t.port, "starting": t.starting })
 }
+/// A direct Tor stream to host:port (used by the messenger; always isolated from browsing circuits).
+pub async fn connect(app: &AppHandle, host: &str, port: u16) -> Result<arti_client::DataStream, String> {
+    if TOR.lock().client.is_none() { tor_start(app.clone()).await?; }
+    let client = TOR.lock().client.clone().ok_or("Tor isn’t connected")?;
+    let mut prefs = StreamPrefs::new();
+    prefs.set_isolation(*MSG_ISO);
+    client.connect_with_prefs((host, port), &prefs).await.map_err(|e| format!("Tor couldn’t reach {host}: {e}"))
+}
+static MSG_ISO: LazyLock<IsolationToken> = LazyLock::new(IsolationToken::new);
 pub fn port() -> Option<u16> { let t = TOR.lock(); (t.client.is_some() && t.port != 0).then_some(t.port) }
 
 
