@@ -41,6 +41,14 @@ body.priv #tabs-btn span{border-style:dashed}
 body.bottom #bar{bottom:auto;top:-1px}
 #bar.on{opacity:1;width:70%;transition:width 6s cubic-bezier(.1,.6,.2,1)}#bar.done{opacity:0;width:100%}
 #view{flex:1;overflow:auto;position:relative}
+/* Bottom toolbar (like Brave): shows on load and when you scroll up, slides away when you scroll down. */
+#tools{display:none;flex:none;height:52px;align-items:center;justify-content:space-around;background:var(--bg);border-top:1px solid var(--line);transition:margin-bottom .18s ease,opacity .18s}
+body.tools #tools{display:flex}body.tools #tabs-btn,body.tools #menu-btn{display:none}
+#tools .tb{position:relative}#tb-menu.msgdot::after{content:attr(data-n);position:absolute;top:4px;right:6px;min-width:16px;height:16px;padding:0 4px;border-radius:99px;background:var(--acc);color:var(--bg);font:700 10px/16px system-ui;text-align:center}#tb-tabs.playing::after{content:"";position:absolute;top:8px;right:10px;width:7px;height:7px;border-radius:50%;background:var(--acc)}body.tools.tools-hide #tools{margin-bottom:-53px;opacity:0;pointer-events:none}
+body.bottom #tools{order:-1}
+#tools .tb{all:unset;width:48px;height:44px;display:grid;place-items:center;color:var(--ink);border-radius:12px;cursor:pointer}#tools .tb:active{background:var(--card)}
+#tools .tb:disabled{opacity:.3}#tools svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+#tb-tabs span{min-width:20px;height:20px;padding:0 3px;border:1.8px solid currentColor;border-radius:6px;font:700 11px/17px system-ui;text-align:center;box-sizing:border-box}
 .home{display:grid;place-items:center;text-align:center;padding:12vh 18px 40px}
 .home .wordmark{font:300 62px/1 ui-serif,"Times New Roman",Times,Georgia,serif;letter-spacing:-2px;margin:0 auto 12px}.home p{color:var(--mute)}
 .home .stats{font-size:12px;margin-top:8px;font-variant-numeric:tabular-nums}.home .stats b{color:var(--ink)}
@@ -116,6 +124,13 @@ body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
     <div id="bar"></div>
   </div>
   <div id="view"></div>
+  <nav id="tools" aria-label="Toolbar">
+    <button class="tb" id="tb-back" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+    <button class="tb" id="tb-fwd" aria-label="Forward"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
+    <button class="tb" id="tb-new" aria-label="New tab"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button class="tb" id="tb-tabs" aria-label="Tabs"><span>1</span></button>
+    <button class="tb" id="tb-menu" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+  </nav>
 </div>
 <div class="sheet" id="switcher"></div>
 <div class="sheet" id="menu"></div>
@@ -168,7 +183,7 @@ let tabs=[], cur=null, nid=1, sheet=null, downloads=[], typing=false, finding=fa
 const T=()=>tabs.find(t=>t.id===cur);
 
 // ---------- preferences (stored in Rust as ui.<name>) ----------
-const DEF={video_quality:"1080",video_leave:"ask",fp:"on",fp_off:"",bg_play:"true",memory_saver:"10",bangs:"",focus_sites:"youtube.com,reddit.com,x.com,instagram.com,tiktok.com,facebook.com",focus_until:"0",color:"graphite",bar_pos:"top",theme:"system",text_zoom:"100",desktop:"false",pull_refresh:"true",force_dark:"false",history:"off",restore:"off",workspaces:"Personal",ws:"Personal"};
+const DEF={toolbar:"on",video_quality:"1080",video_leave:"ask",fp:"on",fp_off:"",bg_play:"true",memory_saver:"10",bangs:"",focus_sites:"youtube.com,reddit.com,x.com,instagram.com,tiktok.com,facebook.com",focus_until:"0",color:"graphite",bar_pos:"top",theme:"system",text_zoom:"100",desktop:"false",pull_refresh:"true",force_dark:"false",history:"off",restore:"off",workspaces:"Personal",ws:"Personal"};
 const pref=k=>state.settings.ui?.[k]??DEF[k];
 async function setPref(k,v){state.settings.ui[k]=String(v);applyPrefs();try{await inv("set_setting",{key:"ui."+k,value:String(v)})}catch(e){}}
 // Browser color: a hue/saturation tints every surface; light and dark variants are derived from it.
@@ -185,11 +200,16 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",applyColo
 function applyPrefs(){
   const t=pref("theme");if(t==="system")document.documentElement.removeAttribute("data-theme");else document.documentElement.dataset.theme=t;
   applyColor();try{HX.applyLook()}catch(e){}
-  document.body.classList.toggle("bottom",pref("bar_pos")==="bottom");
+  document.body.classList.toggle("bottom",pref("bar_pos")==="bottom");document.body.classList.toggle("tools",pref("toolbar")!=="off");if(pref("toolbar")==="off")toolsHidden=false;
   inv("set_web_prefs",{textZoom:+pref("text_zoom"),desktop:pref("desktop")==="true",pullRefresh:pref("pull_refresh")==="true",bgPlay:pref("bg_play")==="true"}).catch(()=>{});
   requestAnimationFrame(insets);
 }
 // Native tab views sit between the bars. Android wants device pixels.
+// Toolbar visibility follows scrolling (events from the native page: {dir:1 down / -1 up, y}).
+let toolsHidden=false,toolsT=0;
+function toolsShow(on){if(pref("toolbar")==="off"||on===!toolsHidden)return;toolsHidden=!on;clearTimeout(toolsT);
+  if(on){document.body.classList.remove("tools-hide");insets()}            // make room first, then slide in
+  else{document.body.classList.add("tools-hide");toolsT=setTimeout(insets,190)}}   // slide out, then give the page the space
 function insets(){
   const a=$("#app").getBoundingClientRect(), b=$("#top").getBoundingClientRect(), k=ANDROID?devicePixelRatio:1, bottom=pref("bar_pos")==="bottom";
   const cs=getComputedStyle($("#app")), top=bottom?a.top+parseFloat(cs.paddingTop):b.bottom;
@@ -208,7 +228,7 @@ async function switchWs(name,dir){await setPref("ws",name);const last=inWs().at(
 // ---------- tabs ----------
 function newTab(priv,quiet){maybeFloat(cur);const t={id:nid++,native:null,url:"",title:"",priv:!!priv,ws:curWs(),canBack:false,canFwd:false,last:Date.now()};tabs.push(t);cur=t.id;
   if(!quiet){show(null);render();setTimeout(()=>$("#url").focus(),80)}return t}
-function select(id,anim){const t=tabs.find(x=>x.id===id);if(!t)return;if(t.ws!==curWs())setPref("ws",t.ws);if(id!==cur)maybeFloat(cur);if(floating===t.native){floating=null;native("floatClose",{stop:false}).catch(()=>{})}if(bgMedia===id){bgMedia=null;native("media",{id:t.native,action:"release"}).catch(()=>{})}cur=id;t.last=Date.now();show(null);
+function select(id,anim){const t=tabs.find(x=>x.id===id);if(!t)return;if(t.ws!==curWs())setPref("ws",t.ws);toolsShow(true);if(id!==cur)maybeFloat(cur);if(floating===t.native){floating=null;native("floatClose",{stop:false}).catch(()=>{})}if(bgMedia===id){bgMedia=null;native("media",{id:t.native,action:"release"}).catch(()=>{})}cur=id;t.last=Date.now();show(null);
   if(anim){const p=$("#pill");p.classList.add(anim);setTimeout(()=>p.classList.remove(anim),180)}
   if(t.url&&!t.native)openNative(t);render()}
 async function openNative(t){try{const r=await inv("open_tab",{input:t.url,private:t.priv});t.native=typeof r==="string"?r:r;render()}catch(e){toast("Couldn’t open that page")}}
@@ -229,9 +249,9 @@ function render(){
   if(document.activeElement!==$("#url"))$("#url").value=live?bare(t.url):"";
   $("#url").placeholder=t?.priv?"Private — nothing is saved":"Search or enter address";
   $("#shield").classList.toggle("off",allow.has(h));$("#shield").classList.toggle("priv",!!t?.priv);
-  $("#tabs-btn span").textContent=inWs().length;
+  $("#tabs-btn span").textContent=inWs().length;$("#tb-tabs span").textContent=inWs().length;$("#tb-back").disabled=!(live&&t.canBack);$("#tb-fwd").disabled=!(live&&t.canFwd);
   const snd=$("#snd");snd.style.display=live&&(t.audio||t.muted)&&!typing?"grid":"none";snd.innerHTML=t?.muted?MUT:SPK;snd.setAttribute("aria-label",t?.muted?"Unmute this tab":"Mute this tab");
-  npDraw();$("#tabs-btn").classList.toggle("playing",tabs.some(x=>x.id!==cur&&x.audio&&!x.muted));
+  npDraw();$("#tb-tabs").classList.toggle("playing",tabs.some(x=>x.id!==cur&&x.audio&&!x.muted));$("#tabs-btn").classList.toggle("playing",tabs.some(x=>x.id!==cur&&x.audio&&!x.muted));
   if(typing){renderSuggest();syncNative();return}
   const hk=live?"":cur+"|"+!!t?.priv+"|"+state.bookmarks.length;
   if(live){$("#view").innerHTML="";$("#view").dataset.h=""}else if($("#view").dataset.h!==hk){$("#view").dataset.h=hk;renderHome(t)}
@@ -263,6 +283,9 @@ const toPage=()=>pref("bar_pos")==="bottom"?"up":"down";
 gesture($("#top"),{left:()=>step(1),right:()=>step(-1),
   up:()=>toPage()==="up"&&openSwitcher(), down:()=>toPage()==="down"&&openSwitcher(),
   long:()=>{if(document.activeElement!==$("#url"))openCmd()}});
+gesture($("#tb-tabs"),{tap:()=>openSwitcher(),long:()=>{if(T()?.native){vibe();inv("page_action",{action:"wheel"}).catch(()=>{})}}});
+$("#tb-back").onclick=()=>inv("nav",{action:"back"});$("#tb-fwd").onclick=()=>inv("nav",{action:"fwd"});$("#tb-new").onclick=()=>newTab();
+$("#tb-menu").onclick=()=>{drawMenu();show("menu")};
 gesture($("#tabs-btn"),{tap:()=>openSwitcher(),long:()=>{if(T()?.native){vibe();inv("page_action",{action:"wheel"}).catch(()=>{})}else actions("Tabs",[["New tab",()=>newTab()],["New private tab",()=>newTab(true)],["Close this tab",()=>closeTab(cur)]])}});
 gesture($("#menu-btn"),{tap:()=>{drawMenu();show("menu")},long:()=>T()?.native&&findMode(true)});
 gesture($("#shield"),{tap:()=>{if(T()?.native){drawSite();show("site")}},long:()=>quickShield()});
@@ -305,7 +328,7 @@ $("#reload").onclick=()=>{const t=T();if(t&&t.native){progress(true);inv("nav",{
 window.__hushEvent=(name,d)=>{
   if(name==="tabUrl"){const t=tabs.find(x=>x.native===d.id);if(!t)return;t.url=d.url;t.title=d.title||t.title;t.canBack=d.canBack;t.canFwd=d.canFwd;
     if(d.state==="finished"){if(!t.priv&&d.url.startsWith("http"))inv("history_add",{url:d.url,title:t.title||bare(d.url)}).catch(()=>{});saveSession()}
-    if(t.id===cur){progress(d.state==="started");render()}}
+    if(t.id===cur){progress(d.state==="started");if(d.state==="started")toolsShow(true);render()}}
   else if(name==="download"){
     if(d.state==="started"){downloads.unshift({name:d.name,state:"started"});toast("Downloading "+d.name+" — see notifications")}
     else{downloads.unshift({name:d.name,state:"failed"});toast("Download failed"+(d.error?": "+d.error:""))}
@@ -318,6 +341,7 @@ window.__hushEvent=(name,d)=>{
   else if(name==="screenshot"){if(typeof d.data!=="string"||!d.data.startsWith("data:image/png;base64,"))return;show("xs");$("#xs").innerHTML="";const t=T();
     HX.markup(d.data,{name:"Hush "+(t?bare(t.url):""),save:async x=>{await native("saveImage",{data:x});setTimeout(()=>show(null),0);return "Photos › Pictures/Hush"}});
     const obs=new MutationObserver(()=>{if(!document.querySelector(".hx-shot")){obs.disconnect();if(sheet==="xs")show(null)}});obs.observe(document.body,{childList:true})}
+  else if(name==="scroll"){const t=T();if(!t||t.native!==d.id||sheet)return;if(d.y<40||d.dir<0)toolsShow(true);else if(d.dir>0)toolsShow(false)}
   else if(name==="gesture"){HX.gesture(d)}
   else if(name==="float"){if(d.a==="open"){floating=null;const t=tabs.find(x=>x.native===d.id);if(t)select(t.id)}else if(d.a==="close")floating=null;
     else if(d.a==="moved")setPref("float_pos",[d.x,d.y,d.w].map(Math.round).join(","))}
@@ -358,7 +382,7 @@ function torInfo(){$("#xs").innerHTML=head("What is Tor?")+'<div style="padding:
 // Hush Messenger (full-screen sheet). Stays connected through Tor in the background once set up.
 const HM=HushMsg({inv,secret:{get:n=>native('secretGet',{name:n}).then(r=>r&&typeof r.value==='string'?r.value:null),set:(n,v)=>native('secretSet',{name:n,value:v}),del:n=>native('secretDel',{name:n})},biometric:()=>native('biometric'),invRaw:(c,d,h)=>window.__TAURI__.core.invoke(c,d,{headers:h}),listen:(e,f)=>window.__TAURI__.event.listen(e,f),toast,mobile:true,open:u=>{show(null);newTab(false,true);go(u)},
   page:()=>{const t=T();return t&&t.native&&!t.priv&&/^https?:/.test(t.url)?{url:t.url}:null},
-  badge:n=>{const b=$("#menu-btn");b.classList.toggle("msgdot",n>0);b.dataset.n=n>99?"99+":n},qr:s=>{try{return hushQR.svg(s)}catch(e){return ""}},close:()=>{HM.close();show(null)},
+  badge:n=>{for(const b of [$("#menu-btn"),$("#tb-menu")]){b.classList.toggle("msgdot",n>0);b.dataset.n=n>99?"99+":n}},qr:s=>{try{return hushQR.svg(s)}catch(e){return ""}},close:()=>{HM.close();show(null)},
   saveImage:d=>native("saveImage",{data:d}).then(()=>toast("Saved to Photos")).catch(e=>toast(String(e)))});
 function openMsgs(chat){show("msgs");HM.open($("#msgs"),typeof chat==="string"?chat:null)}
 setTimeout(()=>HM.boot(),2000);
@@ -570,6 +594,7 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
    ${item("Two-finger gestures & quick wheel","Swipe a page with two fingers · two-finger hold or hold the tabs button for your wheel",'<button class="btn sm" id="s-gest">Customize</button>')}
    ${item("Clean links","Removes tracking tags from links you open and copy",sw("clean_links",pref("clean_links")!=="off"))}
    ${item("Video controls","Speed, ±10 s, loop and pop-out on any video",sw("video_bar",pref("video_bar")!=="off"))}
+   ${item("Bottom toolbar","Back, forward, new tab, tabs and menu — hides while you scroll down",sw("toolbar",pref("toolbar")!=="off"))}
    ${item("YouTube quality","Videos start at this quality",seg("video_quality",[["1080","1080p"],["720","720p"],["auto","Auto"]]))}
    <div class="item" style="display:block"><div style="margin-bottom:8px">When you leave a playing video<small>Ask each time · a mini player you can drag and resize · keep playing in the background · or stop</small></div>${seg("video_leave",HX.LEAVE)}</div>
    ${item("Change watch","Get told when a price or text changes",'<button class="btn sm" id="s-watch">Open</button>')}

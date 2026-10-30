@@ -290,6 +290,14 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         // Private tabs live in a separate, throw-away profile: own cookies, storage and cache, deleted with the last private tab.
         // This must be the first call on the WebView.
         if (t.priv && privateSupported()) try { WebViewCompat.setProfile(w, PRIVATE) } catch (e: Throwable) {}
+        // Scroll direction for the bottom toolbar (only direction changes and "near the top" are sent).
+        var acc = 0; var lastDir = 0
+        w.setOnScrollChangeListener { _, _, y, _, oy ->
+            if (t.id != active) return@setOnScrollChangeListener
+            acc += y - oy; val near = y < dp(30)
+            if (near && lastDir != -1) { lastDir = -1; acc = 0; emit("scroll", JSObject().apply { put("id", t.id); put("dir", -1); put("y", 0) }) }
+            else if (kotlin.math.abs(acc) > dp(24)) { val d = if (acc > 0) 1 else -1; acc = 0
+                if (d != lastDir) { lastDir = d; emit("scroll", JSObject().apply { put("id", t.id); put("dir", d); put("y", y) }) } } }
         w.settings.apply {
             javaScriptEnabled = true; domStorageEnabled = true; mediaPlaybackRequiresUserGesture = false   // videos autoplay
             setSupportMultipleWindows(false); javaScriptCanOpenWindowsAutomatically = false   // popup deny
