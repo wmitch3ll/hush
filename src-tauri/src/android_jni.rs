@@ -45,3 +45,12 @@ pub extern "system" fn Java_app_hush_browser_Native_focusBlock(mut env: JNIEnv, 
     let u: String = env.get_string(&url).map(|s| s.into()).unwrap_or_default();
     std::panic::catch_unwind(|| crate::focus_blocks(&u)).unwrap_or(false) as jboolean
 }
+
+#[no_mangle]
+pub extern "system" fn Java_app_hush_browser_Native_pageJs(env: JNIEnv, _c: JClass) -> jni::sys::jstring {
+    env.new_string(crate::PAGE_JS).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
+}
+#[no_mangle]
+pub extern "system" fn Java_app_hush_browser_Native_pickerJs(env: JNIEnv, _c: JClass) -> jni::sys::jstring {
+    env.new_string(include_str!("picker.js")).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
+}

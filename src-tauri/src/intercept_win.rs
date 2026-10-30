@@ -80,7 +80,7 @@ pub fn install_shortcuts(wv: &tauri::Webview) {
             if !ctrl { return Ok(()); }
             let digit = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
             let name = match vk {
-                0x4E if shift => "shift+n", 0x54 if shift => "shift+t", 0x42 if shift => "shift+b",
+                0x4E if shift => "shift+n", 0x54 if shift => "shift+t", 0x42 if shift => "shift+b", 0x53 if shift => "shift+s", 0x52 if shift => "shift+r", 0x41 if shift => "shift+a",
                 0x31..=0x39 => digit[(vk - 0x31) as usize], 0x30 => "0", 0xBB | 0x6B => "+", 0xBD | 0x6D => "-",
                 0x4D => "m", 0x47 => "g",
                 0x54 => "t", 0x57 => "w", 0x4C => "l", 0x44 => "d", 0x42 => "b", 0x4A => "j", 0xBC => ",",
@@ -191,5 +191,26 @@ pub fn capture(wv: &tauri::Webview) {
             Ok(())
         }));
         let _ = core.CapturePreview(COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_JPEG, &stream, &h);
+    });
+}
+
+/// Screenshot via the DevTools protocol (full page or visible area) -> `screenshot {data}` to the chrome UI.
+pub fn screenshot(wv: &tauri::Webview, full: bool) {
+    let app = wv.app_handle().clone();
+    let _ = wv.with_webview(move |p| unsafe {
+        let Ok(core) = p.controller().CoreWebView2() else { return };
+        let params = if full { r#"{"format":"png","captureBeyondViewport":true}"# } else { r#"{"format":"png"}"# };
+        let a = app.clone();
+        let h = webview2_com::CallDevToolsProtocolMethodCompletedHandler::create(Box::new(move |res, json| {
+            if res.is_ok() {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) {
+                    if let Some(d) = v["data"].as_str() { let _ = a.emit_to("chrome", "screenshot", serde_json::json!({ "data": format!("data:image/png;base64,{d}") })); }
+                }
+            }
+            Ok(())
+        }));
+        let m: Vec<u16> = "Page.captureScreenshot\0".encode_utf16().collect();
+        let pr: Vec<u16> = format!("{params}\0").encode_utf16().collect();
+        let _ = core.CallDevToolsProtocolMethod(windows::core::PCWSTR(m.as_ptr()), windows::core::PCWSTR(pr.as_ptr()), &h);
     });
 }

@@ -62,5 +62,36 @@ window.__hushPage = window.__hushPage || (() => {
     if (!q) { getSelection().removeAllRanges(); return; }
     if (!window.find(q, false, !!back, true, false, false, false)) alertish("No matches for “" + q + "”");
   }
-  return { dark, reader, find };
+  /** The page's main text, as paragraphs (used by Listen and by Android's native voice). */
+  function text() {
+    const body = document.body; if (!body) return "";
+    const own = document.getElementById("hush-reader");
+    const root = own || [...document.querySelectorAll("article,main,[role=main],[itemprop=articleBody],.post,.entry-content,.article-body,.story")]
+      .sort((a, b) => b.innerText.length - a.innerText.length)[0] || body;
+    const parts = [...root.querySelectorAll("h1,h2,h3,p,li,blockquote")].filter(n => !n.closest("nav,aside,footer,header,form,[aria-hidden=true]"))
+      .map(n => (n.innerText || "").replace(/\s+/g, " ").trim()).filter(t => t.length > 1);
+    const title = (document.querySelector("h1") || {}).innerText || document.title;
+    if (title && parts[0] !== title.trim()) parts.unshift(title.trim());
+    return parts.join("\n\n").slice(0, 200000);
+  }
+  /** Read aloud with the computer's voices (desktop). Commands: start(rate) pause resume stop rate(x) next prev. */
+  const L = { q: [], i: 0, rate: 1, on: false, token: 0 };
+  function listen(cmd, arg) {
+    const ss = window.speechSynthesis;
+    if (!ss) { alertish("Read aloud isn’t available here"); return; }
+    const speak = () => {
+      const tok = ++L.token;
+      if (!L.on || L.i >= L.q.length) { L.on = false; return; }
+      const u = new SpeechSynthesisUtterance(L.q[L.i]); u.rate = L.rate;
+      u.onend = () => { if (tok === L.token && L.on) { L.i++; speak(); } };
+      ss.speak(u);
+    };
+    if (cmd === "start") { ss.cancel(); L.q = text().split(/\n{2,}/); L.i = 0; L.on = true; L.rate = +arg || 1; speak(); }
+    else if (cmd === "pause") ss.pause();
+    else if (cmd === "resume") ss.resume();
+    else if (cmd === "stop") { L.on = false; L.token++; ss.cancel(); }
+    else if (cmd === "rate") { L.rate = +arg || 1; if (L.on) { L.token++; ss.cancel(); speak(); } }
+    else if (cmd === "next" || cmd === "prev") { if (!L.on) return; L.token++; ss.cancel(); L.i = Math.max(0, L.i + (cmd === "next" ? 1 : -1)); speak(); }
+  }
+  return { dark, reader, find, text, listen };
 })();

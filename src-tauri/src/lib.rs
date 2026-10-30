@@ -35,6 +35,8 @@ pub struct AppState {
     pub split: Mutex<Option<String>>,
     /// Opt-in history (empty unless the user turned it on).
     pub history: Mutex<Vec<store::Hist>>,
+    /// Desktop Peek: the floating preview webview, if one is open.
+    pub peek: Mutex<Option<String>>,
 }
 
 // ---------- page tools (dark mode, reader, find): one script for every platform ----------
@@ -63,6 +65,7 @@ pub fn scriptlets_init_js() -> String {
 /// What every page gets when it starts loading; readable from JNI threads without the AppHandle.
 #[derive(Default)]
 pub struct PagePrefs { pub dark: bool, pub site_dark: std::collections::BTreeMap<String, bool>,
+    pub boosts: std::collections::BTreeMap<String, store::Boost>,
     /// Fingerprint protection on/off, and sites where it's turned off.
     pub fp_on: bool, pub fp_off: Vec<String> }
 pub static PAGE_PREFS: LazyLock<parking_lot::RwLock<PagePrefs>> = LazyLock::new(Default::default);
@@ -70,6 +73,7 @@ fn refresh_page_prefs(s: &store::Store) {
     let mut p = PAGE_PREFS.write();
     p.dark = s.settings.ui.get("force_dark").map(|v| v == "true").unwrap_or(false);
     p.site_dark = s.site_dark.clone();
+    p.boosts = s.site_boost.clone();
     p.fp_on = s.settings.ui.get("fp").map(|v| v != "off").unwrap_or(true);
     p.fp_off = s.settings.ui.get("fp_off").map(|v| v.split(',').map(|x| x.trim().to_lowercase()).filter(|x| !x.is_empty()).collect()).unwrap_or_default();
     let until = s.settings.ui.get("focus_until").and_then(|v| v.parse().ok()).unwrap_or(0);
@@ -93,7 +97,29 @@ pub fn dark_for(url: &str) -> bool {
 pub fn page_start_js(url: &str) -> String {
     let mut js = BLOCKER.get().map(|b| b.cosmetic_js(url)).unwrap_or_default();
     if dark_for(url) { js.push_str(PAGE_JS); js.push_str(";__hushPage.dark(true);"); }
+    js.push_str(&boost_js(url));
     js
+}
+/// Boosts: per-site look changes the user made (font, size, sepia, hidden images, own CSS), applied as one style element.
+pub fn boost_js(url: &str) -> String {
+    let host = url::Url::parse(url).ok().and_then(|u| u.host_str().map(|h| h.trim_start_matches("www.").to_string())).unwrap_or_default();
+    let p = PAGE_PREFS.read();
+    let Some(b) = p.boosts.get(&host) else { return String::new() };
+    let mut css = String::new();
+    match b.font.as_str() {
+        "serif" => css.push_str("body,body *:not(code):not(pre):not(kbd):not(i[class]):not(span[class*=icon]){font-family:Georgia,\"Times New Roman\",serif!important}"),
+        "sans" => css.push_str("body,body *:not(code):not(pre):not(kbd):not(i[class]):not(span[class*=icon]){font-family:system-ui,\"Segoe UI\",Roboto,Arial,sans-serif!important}"),
+        "mono" => css.push_str("body,body *:not(i[class]):not(span[class*=icon]){font-family:ui-monospace,Consolas,monospace!important}"),
+        "readable" => css.push_str("body,body *:not(code):not(pre):not(i[class]):not(span[class*=icon]){font-family:Verdana,Tahoma,sans-serif!important;letter-spacing:.02em!important;line-height:1.6!important}"),
+        _ => {}
+    }
+    if b.scale != 100 && (50..=200).contains(&b.scale) { css.push_str(&format!("html{{zoom:{}%}}", b.scale)); }
+    match b.tone.as_str() { "sepia" => css.push_str("html{filter:sepia(.4) brightness(.98)!important}"), "gray" => css.push_str("html{filter:grayscale(1)!important}"), "contrast" => css.push_str("html{filter:contrast(1.25)!important}"), _ => {} }
+    if b.hide_images { css.push_str("img,picture,svg image,video:not([controls]){visibility:hidden!important}"); }
+    css.push_str(&b.css);
+    if css.is_empty() { return String::new(); }
+    format!(";(()=>{{const s=document.createElement('style');s.id='hush-boost';s.textContent={};(document.head||document.documentElement).appendChild(s)}})();",
+        serde_json::to_string(&css).unwrap_or("''".into()))
 }
 /// Only these named actions can be run in a page; `arg` is JSON-encoded, so it can't break out of the string.
 pub fn page_action_js(action: &str, arg: &str) -> Result<String, String> {
@@ -106,6 +132,9 @@ pub fn page_action_js(action: &str, arg: &str) -> Result<String, String> {
         "find-back" => format!("__hushPage.find({a},true)"),
         "find-clear" => "__hushPage.find('',false)".to_string(),
         "print" => "print()".to_string(),
+        "listen-start" => format!("__hushPage.listen('start',{a})"),
+        "listen-rate" => format!("__hushPage.listen('rate',{a})"),
+        "listen-pause" | "listen-resume" | "listen-stop" | "listen-next" | "listen-prev" => format!("__hushPage.listen('{}')", &action[7..]),
         _ => return Err("unknown page action".into()),
     };
     Ok(format!("{PAGE_JS};{call};"))
@@ -215,8 +244,8 @@ async fn toggle_shield(app: AppHandle, host: String) {
 #[tauri::command]
 async fn get_state(app: AppHandle) -> Value {
     let s = app.state::<AppState>().store.lock().clone();
-    json!({ "settings": s.settings, "bookmarks": s.bookmarks, "custom_filters": s.custom_filters.len(), "allow_sites": s.allow_sites,
-            "site_dark": s.site_dark, "session": s.session, "platform": if cfg!(mobile) { "mobile" } else { "desktop" } })
+    json!({ "settings": s.settings, "bookmarks": s.bookmarks, "custom_filters": s.custom_filters.len(), "filters": s.custom_filters, "allow_sites": s.allow_sites,
+            "site_dark": s.site_dark, "site_boost": s.site_boost, "session": s.session, "platform": if cfg!(mobile) { "mobile" } else { "desktop" } })
 }
 #[tauri::command]
 async fn set_setting(app: AppHandle, key: String, value: String) -> Result<(), String> {
@@ -353,6 +382,36 @@ async fn suggest(app: AppHandle, q: String) -> Vec<Value> {
     }
     out
 }
+/// Save (or clear, with None) a site's Boost.
+#[tauri::command]
+async fn boost_set(app: AppHandle, host: String, boost: Option<store::Boost>) -> Result<(), String> {
+    let host = host.trim_start_matches("www.").to_lowercase();
+    if host.is_empty() || host.len() > 253 || !host.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-') { return Err("bad host".into()); }
+    let st = app.state::<AppState>();
+    let mut s = st.store.lock();
+    match boost {
+        Some(mut b) => { b.css = b.css.chars().take(8000).collect(); b.font.truncate(20); b.tone.truncate(20); s.site_boost.insert(host, b); }
+        None => { s.site_boost.remove(&host); }
+    }
+    refresh_page_prefs(&s);
+    store::save(&app, &s);
+    Ok(())
+}
+#[tauri::command]
+async fn remove_custom_filter(app: AppHandle, filter: String) {
+    { let st = app.state::<AppState>(); let mut s = st.store.lock(); s.custom_filters.retain(|f| *f != filter); store::save(&app, &s); }
+    rebuild(&app);
+}
+/// New order for the start-page shortcuts (bookmarks not listed keep their place after these).
+#[tauri::command]
+async fn bookmarks_reorder(app: AppHandle, urls: Vec<String>) {
+    let st = app.state::<AppState>();
+    let mut s = st.store.lock();
+    let mut out: Vec<store::Bookmark> = urls.iter().filter_map(|u| s.bookmarks.iter().find(|b| &b.url == u).cloned()).collect();
+    for b in s.bookmarks.iter() { if !urls.contains(&b.url) { out.push(b.clone()); } }
+    s.bookmarks = out;
+    store::save(&app, &s);
+}
 /// Version of this build (CI sets HUSH_BUILD to the build number).
 pub const BUILD: &str = match option_env!("HUSH_BUILD") { Some(b) => b, None => "dev" };
 /// Newest Hush test build on GitHub. Errors if the repository is private (GitHub hides it without a login).
@@ -428,7 +487,7 @@ pub fn run() {
     let b = tauri::Builder::default().manage(AppState {
         blocker, tabs: Default::default(), active: Default::default(), next_id: AtomicUsize::new(1), store: Default::default(),
         layout: Mutex::new([52.0, 0.0, 0.0, 64.0]), panel_open: Default::default(), downloads: Default::default(),
-        split: Default::default(), history: Default::default(),
+        split: Default::default(), history: Default::default(), peek: Default::default(),
     });
     #[cfg(mobile)] let b = b.plugin(tabs_plugin::init());
     #[cfg(desktop)] let b = b
@@ -437,7 +496,8 @@ pub fn run() {
             site_dark, get_stats, history_add, history_list, history_clear, suggest, session_save,
             check_update, app_info, import_bookmarks,
             desktop::page_action, desktop::set_split, desktop::set_rail, desktop::set_zoom, desktop::set_muted,
-            desktop::toggle_fullscreen, desktop::capture_tab,
+            desktop::toggle_fullscreen, desktop::capture_tab, desktop::peek_open, desktop::peek_close, desktop::peek_expand,
+            desktop::screenshot, desktop::save_png, boost_set, remove_custom_filter, bookmarks_reorder,
             extensions::extension_list, extensions::extension_install, extensions::extension_remove,
             desktop::open_tab, desktop::switch_tab, desktop::close_tab, desktop::navigate, desktop::nav,
             desktop::clear_data, desktop::start_picker, desktop::set_layout, desktop::show_content,
@@ -448,7 +508,7 @@ pub fn run() {
             add_custom_filter, export_data, import_data, update_lists,
             site_dark, get_stats, history_add, history_list, history_clear, suggest, session_save,
             check_update, app_info, import_bookmarks,
-            mobile::page_action, mobile::native_call,
+            mobile::page_action, mobile::native_call, boost_set, remove_custom_filter, bookmarks_reorder,
             mobile::open_tab, mobile::switch_tab, mobile::close_tab, mobile::navigate, mobile::nav,
             mobile::clear_data, mobile::set_chrome_inset, mobile::set_web_prefs])
         .setup(mobile::setup);

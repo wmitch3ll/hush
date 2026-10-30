@@ -121,9 +121,11 @@ body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
 <div class="sheet" id="reading"></div>
 <div class="sheet" id="focus"></div>
 <div class="sheet" id="about"></div>
+<div class="sheet" id="xs"></div>
 <div id="scrim"></div><div class="act" id="act"></div>
 <div id="toast" role="status"></div>
 <script src="qr.js"></script>
+<script src="extras.js"></script>
 <script>
 const TA=window.__TAURI__, $=s=>document.querySelector(s);
 const inv=(c,a)=>TA?TA.core.invoke(c,a||{}):Promise.reject("not in app");
@@ -185,9 +187,9 @@ async function switchWs(name,dir){await setPref("ws",name);const last=inWs().at(
   render();if(sheet==="switcher")drawSwitcher(dir);toast(name)}
 
 // ---------- tabs ----------
-function newTab(priv,quiet){const t={id:nid++,native:null,url:"",title:"",priv:!!priv,ws:curWs(),canBack:false,canFwd:false};tabs.push(t);cur=t.id;
+function newTab(priv,quiet){const t={id:nid++,native:null,url:"",title:"",priv:!!priv,ws:curWs(),canBack:false,canFwd:false,last:Date.now()};tabs.push(t);cur=t.id;
   if(!quiet){show(null);render();setTimeout(()=>$("#url").focus(),80)}return t}
-function select(id,anim){const t=tabs.find(x=>x.id===id);if(!t)return;if(t.ws!==curWs())setPref("ws",t.ws);cur=id;show(null);
+function select(id,anim){const t=tabs.find(x=>x.id===id);if(!t)return;if(t.ws!==curWs())setPref("ws",t.ws);cur=id;t.last=Date.now();show(null);
   if(anim){const p=$("#pill");p.classList.add(anim);setTimeout(()=>p.classList.remove(anim),180)}
   if(t.url&&!t.native)openNative(t);render()}
 async function openNative(t){try{const r=await inv("open_tab",{input:t.url,private:t.priv});t.native=typeof r==="string"?r:r;render()}catch(e){toast("Couldn’t open that page")}}
@@ -212,12 +214,8 @@ function render(){
   const snd=$("#snd");snd.style.display=live&&(t.audio||t.muted)&&!typing?"grid":"none";snd.innerHTML=t?.muted?MUT:SPK;snd.setAttribute("aria-label",t?.muted?"Unmute this tab":"Mute this tab");
   $("#tabs-btn").classList.toggle("playing",tabs.some(x=>x.id!==cur&&x.audio&&!x.muted));
   if(typing){renderSuggest();syncNative();return}
-  $("#view").innerHTML=live?"":`<div class="home ${t?.priv?"priv":""}">${WORDMARK}<p>${t?.priv?"private tab — nothing here gets saved.":"nothing here but you."}</p>
-    <p class="stats" id="stats"></p><div class="grid">${state.bookmarks.map((b,i)=>[b,i]).filter(([b])=>b.folder!=="reading").slice(0,12).map(([b,i])=>`<button class="bm" data-bm="${i}"><i ${icon(b.url)?`style="background-image:url('${esc(icon(b.url))}');color:transparent"`:""}>${esc((bare(b.url)||"?")[0])}</i><span>${esc(b.title||bare(b.url))}</span></button>`).join("")}</div>
-    <p class="hint">Swipe the address bar ← → to switch tabs · swipe it ${pref("bar_pos")==="bottom"?"up":"down"} for all tabs · hold it for commands</p></div>`;
-  $("#view").querySelectorAll("[data-bm]").forEach(b=>{const bm=state.bookmarks[b.dataset.bm];
-    gesture(b,{tap:()=>go(bm.url),long:()=>actions(bm.title||bare(bm.url),[["Open",()=>go(bm.url)],["Open in new tab",()=>{newTab(false,true);go(bm.url)}],
-      ["Remove bookmark",async()=>{await inv("bookmark_remove",{url:bm.url});await loadState()}]])})});
+  const hk=live?"":cur+"|"+!!t?.priv+"|"+state.bookmarks.length;
+  if(live){$("#view").innerHTML="";$("#view").dataset.h=""}else if($("#view").dataset.h!==hk){$("#view").dataset.h=hk;renderHome(t)}
   if(!live)loadStats();
   syncNative();
 }
@@ -294,10 +292,18 @@ window.__hushEvent=(name,d)=>{
     else{downloads.unshift({name:d.name,state:"failed"});toast("Download failed"+(d.error?": "+d.error:""))}
     if(sheet==="downloads")drawDownloads()}
   else if(name==="tabAudio"){const t=tabs.find(x=>x.native===d.id);if(t&&t.audio!==!!d.audio){t.audio=!!d.audio;render();if(sheet==="switcher")drawSwitcher()}}
+  else if(name==="listen"){listenSt=d.state;if(d.state==="empty")toast("Nothing to read on this page");else if(d.state==="unavailable")toast("No voice is installed — check Android text-to-speech settings");
+    else if(d.state==="done")listenSt="";if(sheet==="menu")drawMenu()}
+  else if(name==="peek"){if(d.state==="expanded"){const t={id:nid++,native:d.id,url:d.url,title:"",priv:false,ws:curWs(),canBack:false,canFwd:false,last:Date.now()};tabs.push(t);cur=t.id;render();saveSession();toast("Opened as a tab")}}
+  else if(name==="pick"){toast("Removed — it stays hidden on "+bare("https://"+d.host));inv("add_custom_filter",{filter:d.host+"##"+d.sel}).then(loadState).catch(()=>{})}
+  else if(name==="screenshot"){if(typeof d.data!=="string"||!d.data.startsWith("data:image/png;base64,"))return;show("xs");$("#xs").innerHTML="";const t=T();
+    HX.markup(d.data,{name:"Hush "+(t?bare(t.url):""),save:async x=>{await native("saveImage",{data:x});setTimeout(()=>show(null),0);return "Photos › Pictures/Hush"}});
+    const obs=new MutationObserver(()=>{if(!document.querySelector(".hx-shot")){obs.disconnect();if(sheet==="xs")show(null)}});obs.observe(document.body,{childList:true})}
   else if(name==="thumb"){const t=tabs.find(x=>x.native===d.id);if(t&&!t.priv&&typeof d.data==="string"&&d.data.startsWith("data:image/jpeg;base64,")){t.thumb=d.data;if(sheet==="switcher")drawSwitcher()}}
   else if(name==="find"){$("#findn").textContent=d.count?d.index+"/"+d.count:"0"}
   else if(name==="longpress"){if(!d.url)return;const u=d.url;
     actions(d.kind==="image"?"Image":u,[
+      ...(d.kind==="image"?[]:[["Peek — preview without leaving",()=>native("peek",{url:u}).catch(e=>toast(String(e)))]]),
       ["Open in new tab",()=>{const t=newTab(false,true);t.url=u;openNative(t);render();toast("Opened in new tab")}],
       ["Open in background",()=>{const keep=cur,t=newTab(false,true);t.url=u;cur=keep;inv("open_tab",{input:u}).then(id=>{t.native=id;inv("switch_tab",{label:T().native||"none"});render()});toast("Opened in background")}],
       ["Open in private tab",()=>{const t=newTab(true,true);t.url=u;openNative(t);render()}],
@@ -323,7 +329,15 @@ async function copy(t){try{await navigator.clipboard.writeText(t);toast("Copied"
 function qrSheet(u){const el=$("#site");el.innerHTML=head("Scan to open")+`<div class="qr">${hushQR.svg(u)}</div><p style="text-align:center;color:var(--mute);font-size:13px;word-break:break-all">${esc(u)}</p>`;wire(el);show("site")}
 
 // ---------- sheets ----------
-function show(id){sheet=id;["switcher","menu","settings","downloads","site","history","cmd","reading","focus","about"].forEach(s=>$("#"+s).classList.toggle("on",s===id));
+// ---------- start page, Listen, Boosts, Peek, screenshots, auto-archive (shared code in extras.js) ----------
+let listenSt="",lRate=1;
+const HX=HushX({inv,pref,setPref,toast,open:u=>go(u),state:()=>state,reload:()=>loadState(),mobile:true,
+  zap:()=>{show(null);setTimeout(()=>native("pick"),200);toast("Tap the thing to remove")}});
+function renderHome(t){const v=$("#view");HX.home(v,{priv:!!t?.priv,icon,long:true,
+  top:`${WORDMARK}<p class="hx-mute" style="margin-top:-10px">${t?.priv?"private tab — nothing here gets saved.":"nothing here but you."}</p>${pref("sp_stats")!=="off"?'<p class="stats" id="stats"></p>':""}`,
+  bottom:`<p class="hint hx-mute">Swipe the address bar ← → to switch tabs · hold a link to peek · hold a shortcut to edit</p>`,after:loadStats})}
+setInterval(()=>HX.archiveSweep(tabs,cur,id=>closeTab(id)),5*60000);
+function show(id){sheet=id;["switcher","menu","settings","downloads","site","history","cmd","reading","focus","about","xs"].forEach(s=>$("#"+s).classList.toggle("on",s===id));
   if(id!=="cmd"&&document.activeElement?.id==="cmdq")document.activeElement.blur();syncNative()}
 const head=title=>`<div class="grab"></div><h2>${title}<button class="btn sm" data-done>Done</button></h2>`;
 const wire=el=>{el.querySelectorAll("[data-done]").forEach(b=>b.onclick=()=>show(null));const h=el.querySelector("h2");if(h)sheetGestures(h)};
@@ -361,6 +375,9 @@ function drawMenu(){const el=$("#menu"),t=T(),live=!!(t&&t.native);
   el.innerHTML=head("Menu")+`<div class="row"><button class="btn" id="m-back" ${live&&t.canBack?"":"disabled"}>‹ Back</button><button class="btn" id="m-fwd" ${live&&t.canFwd?"":"disabled"}>Forward ›</button></div>
    <div class="row"><button class="btn" id="m-find" ${live?"":"disabled"}>Find</button><button class="btn" id="m-read" ${live?"":"disabled"}>Reader</button><button class="btn" id="m-qr" ${live?"":"disabled"}>QR</button></div>
    <div class="row"><button class="btn" id="m-later" ${live?"":"disabled"}>Read later</button><button class="btn" id="m-pdf" ${live?"":"disabled"}>Save as PDF</button><button class="btn" id="m-pip" ${live?"":"disabled"}>Pop-out video</button></div>
+   ${live?`<div class="row"><button class="btn" id="m-listen">${listenSt?"■ Stop reading":"▶ Listen"}</button><button class="btn" id="m-boost">Boosts</button><button class="btn" id="m-shot">Screenshot</button></div>`:""}
+   ${listenSt?`<div class="row"><button class="btn" id="l-prev">‹ Prev</button><button class="btn" id="l-pp">${listenSt==="paused"?"Resume":"Pause"}</button><button class="btn" id="l-next">Next ›</button><button class="btn" id="l-rate">${lRate}×</button></div>`:""}
+   <button class="item" id="m-arch"><div>Archived tabs<small>${+pref("archive")?"tabs unused for "+(+pref("archive")>=24?pref("archive")/24+" day(s)":pref("archive")+" hours")+" are archived":"off — tap to set up"}</small></div></button>
    <button class="item" id="m-new"><div>New private tab<small>separate cookies & storage, gone when you close it</small></div></button>
    <button class="item" id="m-bm" ${live?"":"disabled"}><div>Bookmark this page<small>shows on the start page</small></div></button>
    <button class="item" id="m-cmd"><div>Commands<small>or hold the address bar</small></div></button>
@@ -378,6 +395,14 @@ function drawMenu(){const el=$("#menu"),t=T(),live=!!(t&&t.native);
   $("#m-dl").onclick=()=>{drawDownloads();show("downloads")};$("#m-set").onclick=()=>{drawSettings();show("settings")};
   $("#m-later").onclick=async()=>{await inv("bookmark_add",{title:t.title||bare(t.url),url:t.url,folder:"reading"});await loadState();show(null);toast("Added to reading list")};
   $("#m-pdf").onclick=()=>{show(null);native("printPage")};$("#m-pip").onclick=()=>{show(null);toast("Start the video in fullscreen first for the best fit");native("pip")};
+  if($("#m-listen"))$("#m-listen").onclick=()=>{if(listenSt){native("listen",{action:"stop"});listenSt=""}else{native("listen",{action:"start",rate:lRate});listenSt="playing";toast("Reading aloud — controls in the menu")}show(null)};
+  if($("#m-boost"))$("#m-boost").onclick=()=>{const h=hostOf(t.url).replace(/^www\./,"");$("#xs").innerHTML=head("Boosts · "+esc(h))+'<div id="bx" style="padding:0 4px 20px"></div>';wire($("#xs"));
+    HX.boost($("#bx"),h,()=>inv("nav",{action:"reload"}).catch(()=>{}));show("xs")};
+  if($("#m-shot"))$("#m-shot").onclick=()=>{show(null);setTimeout(()=>native("screenshot").catch(e=>toast(String(e))),250)};
+  if($("#l-pp"))$("#l-pp").onclick=()=>{native("listen",{action:listenSt==="paused"?"resume":"pause"})};
+  if($("#l-next"))$("#l-next").onclick=()=>native("listen",{action:"next"});if($("#l-prev"))$("#l-prev").onclick=()=>native("listen",{action:"prev"});
+  if($("#l-rate"))$("#l-rate").onclick=()=>{const R=[1,1.25,1.5,1.75,2,0.75];lRate=R[(R.indexOf(lRate)+1)%R.length];native("listen",{action:"rate",rate:lRate});drawMenu()};
+  $("#m-arch").onclick=()=>{$("#xs").innerHTML=head("Archived tabs")+'<div id="arx" style="padding:0 4px 20px"></div>';wire($("#xs"));HX.archivePanel($("#arx"),u=>{newTab(false,true);go(u)});show("xs")};
   $("#m-rl").onclick=()=>{drawReading();show("reading")};$("#m-focus").onclick=()=>{drawFocus();show("focus")};$("#m-about").onclick=()=>{drawAbout();show("about")}}
 
 const siteKey=h=>{const p=h.split(".");return p.length>2?p.slice(-2).join("."):h};

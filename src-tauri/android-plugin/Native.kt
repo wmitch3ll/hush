@@ -9,4 +9,8 @@ object Native {
     external fun scriptletJs(): String
     /** True when Focus mode is on and this page's site is on the focus list. */
     external fun focusBlock(url: String): Boolean
+    /** The shared page-tools script (reader, find, text extraction…). */
+    external fun pageJs(): String
+    /** The element picker script (Boosts → zap elements). */
+    external fun pickerJs(): String
 }

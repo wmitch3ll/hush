@@ -44,6 +44,7 @@ import app.tauri.plugin.*
  * Events to the chrome UI are delivered by calling window.__hushEvent(name, data) in the chrome page:
  *   tabUrl {id, url, title, state: started|finished, canBack, canFwd}   download {name, state, error?}   back {}
  *   find {index, count}   longpress {url, kind: link|image}   thumb {id, data: jpeg data URL}  (tab-grid previews)
+ *   listen {state, index, total}   peek {state: open|closed|expanded, id?, url?}   pick {host, sel}   screenshot {data}
  *   tabAudio {id, audio}   icon {id, host, data}   openUrl {}  (a link/share/widget arrived — call takeIntent)   permission {host, kinds[]}
  */
 @TauriPlugin
@@ -65,6 +66,9 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     private var fsView: View? = null; private var fsCb: WebChromeClient.CustomViewCallback? = null
     private var pendingPerm: PermissionRequest? = null
     private var pendingGeo: Pair<String, GeolocationPermissions.Callback>? = null
+    private var tts: android.speech.tts.TextToSpeech? = null
+    private var ttsQ: List<String> = emptyList(); private var ttsI = 0; private var ttsRate = 1f; private var ttsOn = false
+    private var peekTab: Tab? = null; private var peekBox: FrameLayout? = null
     private val prefs by lazy { act.getSharedPreferences("hush-site-perms", Context.MODE_PRIVATE) }
     private var defaultUa: String? = null
     private var chrome: WebView? = null
@@ -79,6 +83,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             override fun handleOnBackPressed() {
                 val w = active?.let { tabs[it]?.wv }
                 if (fsView != null) { fsCb?.onCustomViewHidden(); return }
+                if (peekBox != null) { val pw = peekTab?.wv; if (pw != null && pw.canGoBack()) pw.goBack() else closePeek(true); return }
                 if (visible && w != null && w.canGoBack()) w.goBack() else emit("back", JSObject())
             }
         })
@@ -235,6 +240,9 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             }
             override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
                 return when (r.url.scheme) {
+                    // Element picker result (Boosts → zap): only accepted for the site this tab is on.
+                    "hush-pick" -> { val host = r.url.getQueryParameter("host") ?: ""; val sel = r.url.getQueryParameter("sel") ?: ""
+                        if (host.isNotEmpty() && sel.isNotEmpty() && host == Uri.parse(t.page).host) emit("pick", JSObject().apply { put("host", host); put("sel", sel) }); true }
                     "http" -> { v.loadUrl(r.url.toString().replaceFirst("http://", "https://")); true }  // HTTPS-first
                     "https", "about", "data", "blob" -> false
                     else -> true   // intent:, file:, javascript:, market:, custom app schemes — refused
@@ -420,10 +428,99 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         act.runOnUiThread { tabs[a.id]?.wv?.evaluateJavascript("(m=>{window.__hushMuted=m;const f=()=>document.querySelectorAll('video,audio').forEach(x=>x.muted=m);f();" +
             "if(!window.__hushMuteHook){window.__hushMuteHook=1;document.addEventListener('play',e=>{if(window.__hushMuted)e.target.muted=true},true)}})(" + a.muted + ")", null) }
         i.resolve() }
+    // ---------- Listen: read the page aloud with the phone's own voices ----------
+    private fun ttsSpeak() {
+        val e = tts ?: return
+        if (!ttsOn || ttsI >= ttsQ.size) { ttsOn = false; emit("listen", JSObject().apply { put("state", "done") }); return }
+        e.setSpeechRate(ttsRate)
+        e.speak(ttsQ[ttsI], android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "hush-$ttsI")
+        emit("listen", JSObject().apply { put("state", "playing"); put("index", ttsI); put("total", ttsQ.size) })
+    }
+    @Command fun listen(i: Invoke) { val a = i.parseArgs(ListenArgs::class.java)
+        act.runOnUiThread {
+            when (a.action) {
+                "start" -> { val w = active?.let { tabs[it]?.wv } ?: return@runOnUiThread
+                    ttsRate = a.rate.toFloat().coerceIn(0.5f, 3f)
+                    w.evaluateJavascript(Native.pageJs() + ";__hushPage.text()") { raw ->
+                        val text = try { org.json.JSONArray("[" + raw + "]").getString(0) } catch (e: Throwable) { "" }
+                        ttsQ = text.split(Regex("\n{2,}")).map { it.trim() }.filter { it.length > 1 }; ttsI = 0; ttsOn = true
+                        if (ttsQ.isEmpty()) { emit("listen", JSObject().apply { put("state", "empty") }); return@evaluateJavascript }
+                        if (tts == null) tts = android.speech.tts.TextToSpeech(act) { ok ->
+                            if (ok == android.speech.tts.TextToSpeech.SUCCESS) {
+                                tts?.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+                                    override fun onStart(id: String?) {}
+                                    override fun onError(id: String?) {}
+                                    override fun onDone(id: String?) { if (ttsOn && id == "hush-$ttsI") { ttsI++; act.runOnUiThread { ttsSpeak() } } } })
+                                ttsSpeak()
+                            } else emit("listen", JSObject().apply { put("state", "unavailable") }) }
+                        else ttsSpeak() } }
+                "pause" -> { ttsOn = false; tts?.stop(); emit("listen", JSObject().apply { put("state", "paused"); put("index", ttsI); put("total", ttsQ.size) }) }
+                "resume" -> { ttsOn = true; ttsSpeak() }
+                "stop" -> { ttsOn = false; tts?.stop(); emit("listen", JSObject().apply { put("state", "done") }) }
+                "rate" -> { ttsRate = a.rate.toFloat().coerceIn(0.5f, 3f); if (ttsOn) ttsSpeak() }
+                "next" -> { if (ttsI < ttsQ.size - 1) { ttsI++; ttsOn = true; ttsSpeak() } }
+                "prev" -> { ttsI = (ttsI - 1).coerceAtLeast(0); ttsOn = true; ttsSpeak() }
+            } }
+        i.resolve() }
+
+    // ---------- Peek: a link in a floating card over the page ----------
+    private fun dp(v: Int) = (v * act.resources.displayMetrics.density).toInt()
+    @Command fun peek(i: Invoke) { val u = i.parseArgs(Args::class.java).url
+        if (!u.startsWith("https://") && !u.startsWith("http://")) { i.reject("not a web link"); return }
+        act.runOnUiThread {
+            closePeek(false)
+            val id = "t" + java.util.UUID.randomUUID().toString().take(8)
+            val t = Tab(id, u, null); val w = make(t).also { it.loadUrl(u) }; t.wv = w; peekTab = t
+            val shade = FrameLayout(act).apply { setBackgroundColor(0x99000000.toInt()); isClickable = true; setOnClickListener { closePeek(true) } }
+            val card = android.widget.LinearLayout(act).apply { orientation = android.widget.LinearLayout.VERTICAL
+                background = android.graphics.drawable.GradientDrawable().apply { setColor(0xFF161616.toInt()); cornerRadius = dp(18).toFloat() }
+                clipToOutline = true; elevation = dp(12).toFloat(); isClickable = true }
+            val bar = android.widget.LinearLayout(act).apply { orientation = android.widget.LinearLayout.HORIZONTAL; setPadding(dp(14), dp(6), dp(6), dp(6)); gravity = android.view.Gravity.CENTER_VERTICAL }
+            val label = android.widget.TextView(act).apply { text = Uri.parse(u).host ?: u; setTextColor(0xFFEEEEEE.toInt()); textSize = 14f; maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END; layoutParams = android.widget.LinearLayout.LayoutParams(0, -2, 1f) }
+            fun btn(txt: String, f: () -> Unit) = android.widget.Button(act).apply { text = txt; isAllCaps = false; setTextColor(0xFFEEEEEE.toInt()); background = null; setOnClickListener { f() } }
+            bar.addView(label); bar.addView(btn("Open as tab") { expandPeek() }); bar.addView(btn("✕") { closePeek(true) })
+            card.addView(bar, android.widget.LinearLayout.LayoutParams(-1, -2)); card.addView(w, android.widget.LinearLayout.LayoutParams(-1, 0, 1f))
+            shade.addView(card, FrameLayout.LayoutParams(-1, -1).apply { setMargins(dp(14), topPx + dp(18), dp(14), bottomPx + dp(18)) })
+            act.findViewById<ViewGroup>(android.R.id.content).addView(shade, FrameLayout.LayoutParams(-1, -1))
+            peekBox = shade
+            emit("peek", JSObject().apply { put("state", "open"); put("url", u) }) }
+        i.resolve() }
+    private fun closePeek(tell: Boolean) {
+        peekBox?.let { (it.parent as? ViewGroup)?.removeView(it) }; peekTab?.wv?.let { (it.parent as? ViewGroup)?.removeView(it); it.destroy() }
+        peekBox = null; peekTab = null; if (tell) emit("peek", JSObject().apply { put("state", "closed") }) }
+    private fun expandPeek() {
+        val t = peekTab ?: return; val w = t.wv ?: return
+        (w.parent as? ViewGroup)?.removeView(w); peekBox?.let { (it.parent as? ViewGroup)?.removeView(it) }; peekBox = null; peekTab = null
+        tabs[t.id] = t; active = t.id; visible = true; render()
+        emit("peek", JSObject().apply { put("state", "expanded"); put("id", t.id); put("url", t.url) }) }
+    @Command fun peekClose(i: Invoke) { act.runOnUiThread { closePeek(true) }; i.resolve() }
+
+    // ---------- Screenshot (visible area) + save to Pictures/Hush ----------
+    @Command fun screenshot(i: Invoke) { act.runOnUiThread { val w = active?.let { tabs[it]?.wv }
+        if (w == null || w.width <= 0) { i.reject("no page"); return@runOnUiThread }
+        try { val bmp = android.graphics.Bitmap.createBitmap(w.width, w.height, android.graphics.Bitmap.Config.ARGB_8888)
+            val c = android.graphics.Canvas(bmp); c.translate(-w.scrollX.toFloat(), -w.scrollY.toFloat()); w.draw(c)
+            val out = java.io.ByteArrayOutputStream(); bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out); bmp.recycle()
+            emit("screenshot", JSObject().apply { put("data", "data:image/png;base64," + android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)) })
+            i.resolve() } catch (e: Throwable) { i.reject("couldn't capture") } } }
+    @Command fun saveImage(i: Invoke) { val a = i.parseArgs(ImgArgs::class.java)
+        try { val b64 = a.data.removePrefix("data:image/png;base64,"); val bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+            val v = android.content.ContentValues().apply { put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "Hush " + System.currentTimeMillis() + ".png")
+                put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
+                if (Build.VERSION.SDK_INT >= 29) put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Hush") }
+            val uri = act.contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v) ?: throw Exception("no storage")
+            act.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+            i.resolve(JSObject().put("saved", true)) } catch (e: Throwable) { i.reject("Couldn’t save: " + (e.message ?: "")) } }
+    /** Boosts → zap: start the element picker in the current page. */
+    @Command fun pick(i: Invoke) { act.runOnUiThread { active?.let { tabs[it]?.wv }?.evaluateJavascript(Native.pickerJs(), null) }; i.resolve() }
+
     /** Run a page tool script (built by Rust from a fixed list of actions) in the active tab. */
     @Command fun evalJs(i: Invoke) { val js = i.parseArgs(JsArgs::class.java).js
         act.runOnUiThread { active?.let { tabs[it]?.wv }?.evaluateJavascript(js, null) }; i.resolve() }
 
+    @InvokeArg class ListenArgs { var action: String = ""; var rate: Double = 1.0 }
+    @InvokeArg class ImgArgs { var data: String = "" }
     @InvokeArg class MuteArgs { var id: String = ""; var muted: Boolean = true }
     @InvokeArg class FindArgs { var query: String = ""; var action: String = "find" }
     @InvokeArg class JsArgs { var js: String = "" }

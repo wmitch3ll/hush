@@ -44,6 +44,28 @@ pub async fn set_rail(app: AppHandle, x: f64, y: f64, w: f64, h: f64, visible: b
     if visible { let _ = r.show(); } else { let _ = r.hide(); }
     raise_rail(&app);
 }
+/// Screenshot of the active tab (whole page or just what's visible) -> `screenshot {data}` event to the chrome UI.
+#[tauri::command]
+pub async fn screenshot(app: AppHandle, full: bool) -> Result<(), String> {
+    let l = app.state::<AppState>().active.lock().clone().ok_or("no tab")?;
+    #[cfg(windows)]
+    { let w = app.get_webview(&l).ok_or("no tab")?; crate::intercept_win::screenshot(&w, full); return Ok(()); }
+    #[cfg(not(windows))]
+    { let _ = (l, full); Err("Screenshots are available on Windows".into()) }
+}
+/// Save a PNG (from the screenshot editor) to Downloads; returns the path (it can then be opened or revealed).
+#[tauri::command]
+pub async fn save_png(app: AppHandle, data: String, name: Option<String>) -> Result<String, String> {
+    use base64::Engine;
+    let b64 = data.strip_prefix("data:image/png;base64,").ok_or("not a PNG")?;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(b64).map_err(|e| e.to_string())?;
+    if bytes.len() > 60 << 20 { return Err("image too large".into()); }
+    let dir = download_dir(&app); let _ = std::fs::create_dir_all(&dir);
+    let p = unique_path(&dir, &safe_name(&name.unwrap_or_else(|| "Hush screenshot.png".into())));
+    std::fs::write(&p, bytes).map_err(|e| e.to_string())?;
+    app.state::<AppState>().downloads.lock().push(p.clone());
+    Ok(p.to_string_lossy().to_string())
+}
 /// Page zoom for the active tab (1.0 = 100%).
 #[tauri::command]
 pub async fn set_zoom(app: AppHandle, factor: f64, tab: Option<String>) {
@@ -89,6 +111,7 @@ fn relayout(win: &Window) {
     for wv in win.webviews() {
         let l = wv.label();
         if l == "rail" { continue; }                      // positioned by set_rail
+        if l.starts_with("peek") { let (px, py, pw, ph) = peek_rect(win); let _ = wv.set_position(LogicalPosition::new(px, py)); let _ = wv.set_size(LogicalSize::new(pw, ph)); continue; }
         let (x, y, w, h) = if l == "chrome" { (0.0, 0.0, s.width, s.height) }
             else if split.as_deref() == Some(l) { (cx + half + 1.0, cy, half, ch) }       // split view: right half
             else if split.is_some() { (cx, cy, half, ch) }                                  // split view: left half
@@ -239,9 +262,44 @@ fn handle_pick(app: &AppHandle, tab: &str, u: &url::Url) {
 
 #[tauri::command]
 pub async fn open_tab(app: AppHandle, input: String, private: Option<bool>) -> Result<String, String> {
+    make_tab(&app, input, private.unwrap_or(false), false)
+}
+
+// ---------- Peek: a link opens in a floating card over the page; expand it into a tab or close it ----------
+fn peek_rect(win: &Window) -> (f64, f64, f64, f64) {
+    let (x, y, w, h) = content_rect(win);
+    let (mx, my) = ((w * 0.07).max(16.0), (h * 0.05).max(12.0));
+    (x + mx, y + my, (w - 2.0 * mx).max(1.0), (h - 2.0 * my).max(1.0))
+}
+#[tauri::command]
+pub async fn peek_open(app: AppHandle, url: String) -> Result<String, String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) { return Err("only web links can be peeked".into()); }
+    peek_close(app.clone()).await;
+    let l = make_tab(&app, url, false, true)?;
+    *app.state::<AppState>().peek.lock() = Some(l.clone());
+    Ok(l)
+}
+#[tauri::command]
+pub async fn peek_close(app: AppHandle) {
+    let l = app.state::<AppState>().peek.lock().take();
+    if let Some(w) = l.and_then(|l| app.get_webview(&l)) { let _ = w.close(); }
+}
+/// Turn the peek into a normal tab (keeps its page and history).
+#[tauri::command]
+pub async fn peek_expand(app: AppHandle) -> Option<String> {
+    let st = app.state::<AppState>();
+    let l = st.peek.lock().take()?;
+    st.tabs.lock().push(l.clone());
+    show_only(&app, &l);
+    Some(l)
+}
+
+/// Builds a tab webview with all of Hush's protections. `peek` = floating preview, not added to the tab list.
+fn make_tab(app: &AppHandle, input: String, private: bool, peek: bool) -> Result<String, String> {
+    let app = app.clone();
     let st = app.state::<AppState>();
     let win = app.get_window("main").ok_or("no window")?;
-    let label = format!("tab-{}", st.next_id.fetch_add(1, Ordering::Relaxed));
+    let label = format!("{}-{}", if peek { "peek" } else { "tab" }, st.next_id.fetch_add(1, Ordering::Relaxed));
     // chrome-extension:// pages (an extension's popup or settings) open only for extensions the user installed.
     let ext_page = input.strip_prefix("chrome-extension://").and_then(|r| r.split('/').next()).map(|id| crate::extensions::installed(&app, id)).unwrap_or(false);
     let url: url::Url = if ext_page { input.parse() } else { resolve_app(&app, &input).parse() }.map_err(|e: url::ParseError| e.to_string())?;
@@ -256,6 +314,15 @@ pub async fn open_tab(app: AppHandle, input: String, private: Option<bool>) -> R
     let builder = WebviewBuilder::new(&label, WebviewUrl::External(url))
         .on_navigation(move |u| match u.scheme() {
             "hush-pick" => { handle_pick(&app_nav, &lbl_nav, u); false }
+            // Shift-click (peek) / Ctrl- or middle-click (background tab) on a link, reported by harden.js.
+            "hush-peek" => {
+                let target = u.query_pairs().find(|(k, _)| k == "u").map(|(_, v)| v.into_owned()).unwrap_or_default();
+                let mode = u.host_str().unwrap_or("peek").to_string();
+                if target.starts_with("https://") || target.starts_with("http://") {
+                    let _ = app_nav.emit_to("chrome", "peek-request", serde_json::json!({ "tab": lbl_nav, "url": target, "mode": mode }));
+                }
+                false
+            }
             // HTTPS-first: cancel and re-navigate to https (off-thread to avoid re-entrancy).
             "http" => {
                 {
@@ -302,7 +369,7 @@ pub async fn open_tab(app: AppHandle, input: String, private: Option<bool>) -> R
         })
         .on_download(move |_wv, ev| on_download(&app_dl, &lbl_dl, ev))
         // Private tabs: in-memory profile, nothing written to disk, gone when the tab closes.
-        .incognito(private.unwrap_or(false))
+        .incognito(private)
         .browser_extensions_enabled(true)
         .extensions_path(crate::extensions::dir(&app))
         .initialization_script(include_str!("harden.js"))
@@ -310,7 +377,7 @@ pub async fn open_tab(app: AppHandle, input: String, private: Option<bool>) -> R
     #[cfg(feature = "new-window-api")]
     let builder = builder.on_new_window(|_url, _features| tauri::webview::NewWindowResponse::Deny);
 
-    let (x, y, w, h) = content_rect(&win);
+    let (x, y, w, h) = if peek { peek_rect(&win) } else { content_rect(&win) };
     win.add_child(builder, LogicalPosition::new(x, y), LogicalSize::new(w, h)).map_err(|e| e.to_string())?;
 
     #[cfg(windows)]
@@ -319,8 +386,12 @@ pub async fn open_tab(app: AppHandle, input: String, private: Option<bool>) -> R
         crate::intercept_win::install_shortcuts(&w);
         crate::intercept_win::install_extras(&w);
     }
+    if peek {
+        #[cfg(windows)]
+        if let Some(w) = app.get_webview(&label) { crate::intercept_win::raise(&w); }
+        return Ok(label);
+    }
     raise_rail(&app);
-
     st.tabs.lock().push(label.clone());
     show_only(&app, &label);
     Ok(label)

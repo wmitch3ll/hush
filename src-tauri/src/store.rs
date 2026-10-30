@@ -34,6 +34,10 @@ pub struct Bookmark { pub title: String, pub url: String, #[serde(default)] pub 
 #[serde(default)]
 pub struct SessionTab { pub url: String, pub ws: String }
 
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(default)]
+pub struct Boost { pub font: String, pub scale: u32, pub tone: String, pub hide_images: bool, pub css: String }
+
 /// Blocked-request totals for the start-page stats. Counts only, never URLs.
 #[derive(Serialize, Deserialize, Clone, Default)]
 #[serde(default)]
@@ -45,6 +49,8 @@ pub struct Store { pub settings: Settings, pub bookmarks: Vec<Bookmark>, pub cus
     /// Per-site "force dark" override: host -> on/off (absent = follow the global setting).
     pub site_dark: std::collections::BTreeMap<String, bool>,
     pub session: Vec<SessionTab>,
+    /// Boosts: per-site look (font, size, tone, hidden images, custom CSS), keyed by host without www.
+    pub site_boost: std::collections::BTreeMap<String, Boost>,
     pub stats: Stats }
 
 /// Opt-in browsing history, kept in its own file (history.json) so the main store stays small.
