@@ -25,7 +25,8 @@ jobs:
         with: { targets: "aarch64-linux-android" }
       - uses: Swatinem/rust-cache@v2
         with: { workspaces: "src-tauri", key: android }
-      - run: npm install -g @tauri-apps/cli@^2
+      # Gradle calls back into the CLI that ran `init`; the cargo-installed one is what it expects. rust-cache keeps the binary.
+      - run: command -v cargo-tauri || cargo install tauri-cli --version "^2" --locked
       - run: sh tools/fetch-lists.sh
       - name: Build APK
         shell: bash
@@ -33,10 +34,10 @@ jobs:
           set -o pipefail
           export NDK_HOME="$ANDROID_NDK_LATEST_HOME"
           cd src-tauri
-          { tauri icon icons/source.png &&
-            tauri android init --ci &&
+          { cargo tauri icon icons/source.png &&
+            cargo tauri android init --ci &&
             (cd .. && sh tools/android-post-init.sh) &&
-            tauri android build --debug --apk --target aarch64 --ci ; } 2>&1 | tee ../build.log
+            cargo tauri android build --debug --apk --target aarch64 --ci ; } 2>&1 | tee ../build.log
       - name: Report build errors as annotations
         if: failure()
         shell: bash
@@ -54,8 +55,8 @@ jobs:
         with: { name: hush-debug-apk, path: hush-debug.apk }
       - name: Publish release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        env: { GH_TOKEN: "${{ github.token }}" }
+        env: { GH_TOKEN: "${{ github.token }}", MSG: "${{ github.event.head_commit.message }}" }
         run: |
           gh release create "build-${{ github.run_number }}" hush-debug.apk --prerelease \
             --title "Hush test build ${{ github.run_number }}" \
-            --notes "Debug build of $(git rev-parse --short HEAD): ${{ github.event.head_commit.message }}"
+            --notes "Debug build of $(git rev-parse --short HEAD): $MSG"
