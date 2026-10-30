@@ -50,7 +50,11 @@ pub fn init_state(app: &AppHandle) {
     let s = store::load(app);
     *st.blocker.allow_sites.write() = s.allow_sites.clone();
     *st.store.lock() = s;
-    rebuild(app); // TODO(R-61): load a serialized engine instead of parsing text at startup
+    // Parsing the full filter lists takes seconds (much longer in debug builds / on phones). On mobile, do it
+    // off the main thread so the app can start; pages load unfiltered for those first seconds.
+    // TODO(R-61): load a serialized engine instead of parsing text at startup.
+    #[cfg(mobile)] { let h = app.clone(); std::thread::spawn(move || rebuild(&h)); }
+    #[cfg(desktop)] rebuild(app);
 }
 
 /// Address-bar input -> URL. HTTPS-first; searches use the chosen engine. (Mirror in ui/mobile.html resolve().)
