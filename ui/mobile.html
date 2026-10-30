@@ -3,51 +3,67 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Hush</title>
 <style>
-/* Grayscale tokens — same names as ui/index.html. Light / dark (system) / forced via [data-theme]. */
+/* Grayscale tokens — same names as ui/index.html. Light / dark (system) / forced via [data-theme]. Private tab: body.priv */
 :root{--bg:#f2f2f2;--ink:#111;--mute:#8c8c8c;--card:#fff;--line:#e0e0e0;--acc:#111;--glow:#00000014;color-scheme:light}
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e0e0e;--ink:#eee;--mute:#808080;--card:#1a1a1a;--line:#2a2a2a;--acc:#eee;--glow:#ffffff14;color-scheme:dark}}
 :root[data-theme="dark"]{--bg:#0e0e0e;--ink:#eee;--mute:#808080;--card:#1a1a1a;--line:#2a2a2a;--acc:#eee;--glow:#ffffff14;color-scheme:dark}
+body.priv{--bg:#050505;--ink:#e6e6e6;--mute:#777;--card:#161616;--line:#2b2b2b;--acc:#ddd;--glow:#ffffff14;color-scheme:dark}
 *{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
-html,body{height:100%;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Roboto,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+html,body{height:100%;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Roboto,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden;overscroll-behavior:none}
 #app{position:fixed;inset:0;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0);display:flex;flex-direction:column}
 body.bottom #app{flex-direction:column-reverse}
 button{font:inherit;color:var(--ink);background:none;border:0;cursor:pointer;padding:0}
-#top{display:flex;gap:6px;align-items:center;padding:8px 10px;position:relative;z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
+button:disabled{opacity:.35}
+#top{display:flex;gap:6px;align-items:center;padding:8px 10px;position:relative;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);touch-action:pan-y}
 body.bottom #top{border-bottom:0;border-top:1px solid var(--line)}
-#pill{flex:1;display:flex;align-items:center;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:0 3px;height:38px;min-width:0}
+#pill{flex:1;display:flex;align-items:center;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:0 3px;height:40px;min-width:0;transition:transform .18s,opacity .18s}
 #pill:focus-within{border-color:var(--mute);box-shadow:0 0 0 3px var(--glow)}
-#url{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--ink);font:inherit;font-size:15px;height:100%;text-overflow:ellipsis}
-#url::placeholder{color:var(--mute)}
-.ib{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;position:relative;flex:none}
+#pill.sl{transform:translateX(-28px);opacity:0}#pill.sr{transform:translateX(28px);opacity:0}
+#url,#findq{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--ink);font:inherit;font-size:15px;height:100%;text-overflow:ellipsis}
+#url::placeholder,#findq::placeholder{color:var(--mute)}
+#find{display:none;flex:1;align-items:center;gap:2px;min-width:0}#findn{color:var(--mute);font-size:12px;padding:0 4px;font-variant-numeric:tabular-nums}
+#pill.finding #find{display:flex}#pill.finding #shield,#pill.finding #url,#pill.finding #reload{display:none}
+.ib{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;position:relative;flex:none}
 .ib svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.ib:active{background:var(--line)}.ib:disabled{opacity:.3}
-#shield.off{opacity:.4}
+.ib:active{background:var(--line)}
+#shield.off{opacity:.4}#shield.priv::after{content:"";position:absolute;inset:9px;border:1.5px dashed var(--mute);border-radius:50%}
 #tabs-btn span{width:22px;height:22px;border:1.6px solid var(--ink);border-radius:7px;font-weight:600;font-size:12px;display:grid;place-items:center}
+body.priv #tabs-btn span{border-style:dashed}
 #bar{height:2px;background:var(--acc);width:0;position:absolute;left:0;bottom:-1px;transition:width .4s,opacity .3s;opacity:0}
 body.bottom #bar{bottom:auto;top:-1px}
-#bar.on{opacity:1;width:70%;transition:width 6s cubic-bezier(.1,.6,.2,1)}
-#bar.done{opacity:0;width:100%}
+#bar.on{opacity:1;width:70%;transition:width 6s cubic-bezier(.1,.6,.2,1)}#bar.done{opacity:0;width:100%}
 #view{flex:1;overflow:auto;position:relative}
 .home{display:grid;place-items:center;text-align:center;padding:12vh 18px 40px}
-.home h1 .wordmark{display:block;height:64px;width:auto;margin:0 auto 14px}.home h1{font-weight:200;font-size:64px;letter-spacing:-3px}.home p{color:var(--mute)}
-.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px 10px;margin-top:32px;width:100%;max-width:420px}
+.home .wordmark{display:block;height:58px;width:auto;margin:0 auto 14px}.home p{color:var(--mute)}
+.home .stats{font-size:12px;margin-top:8px;font-variant-numeric:tabular-nums}.home .stats b{color:var(--ink)}
+.home.priv .wordmark{opacity:.85}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px 10px;margin-top:30px;width:100%;max-width:420px}
 .bm{display:grid;gap:6px;justify-items:center;font-size:12px;color:var(--mute);min-width:0}
 .bm i{width:54px;height:54px;border-radius:50%;background:var(--card);border:1px solid var(--line);display:grid;place-items:center;font-style:normal;font-size:19px;font-weight:600;color:var(--ink);text-transform:uppercase}
 .bm span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sheet{position:fixed;inset:0;background:var(--bg);z-index:10;padding:calc(env(safe-area-inset-top,0px) + 12px) 14px calc(env(safe-area-inset-bottom,0px) + 20px);display:none;flex-direction:column;gap:8px;overflow:auto}
-.sheet.on{display:flex;animation:up .2s ease-out}@keyframes up{from{opacity:0;transform:translateY(12px)}}
-.sheet h2{font-weight:300;font-size:28px;letter-spacing:-.5px;display:flex;justify-content:space-between;align-items:center;margin:4px 0 6px}
+.hint{color:var(--mute);font-size:12px;margin-top:26px;line-height:1.7}
+.sug{padding:6px 10px}.sug button{display:flex;gap:12px;align-items:center;width:100%;padding:11px 8px;border-radius:12px;text-align:left;min-width:0}
+.sug button:active,.sug button.sel{background:var(--card)}
+.sug i{font-style:normal;width:30px;height:30px;border-radius:9px;background:var(--card);border:1px solid var(--line);display:grid;place-items:center;font-size:13px;flex:none}
+.sug span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.sug small{color:var(--mute);font-size:11px;flex:none}
+.sheet{position:fixed;inset:0;background:var(--bg);z-index:10;padding:calc(env(safe-area-inset-top,0px) + 8px) 14px calc(env(safe-area-inset-bottom,0px) + 20px);display:none;flex-direction:column;gap:8px;overflow:auto;transition:transform .2s}
+.sheet.on{display:flex;animation:up .2s ease-out}@keyframes up{from{opacity:0;transform:translateY(16px)}}
+.sheet .grab{width:40px;height:5px;border-radius:3px;background:var(--line);margin:0 auto 2px;flex:none}
+.sheet h2{font-weight:300;font-size:28px;letter-spacing:-.5px;display:flex;justify-content:space-between;align-items:center;margin:2px 0 6px;touch-action:none}
 .sheet h3{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute);margin:16px 2px 2px;font-weight:600}
+.sheet>*{flex:none}
 .cards{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;min-height:110px;position:relative;display:flex;flex-direction:column;justify-content:flex-end;text-align:left;min-width:0}
-.card.cur{border-color:var(--acc);box-shadow:0 0 0 3px var(--glow)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;min-height:110px;position:relative;display:flex;flex-direction:column;justify-content:flex-end;text-align:left;min-width:0;touch-action:pan-y;transition:transform .2s,opacity .2s}
+.card.cur{border-color:var(--acc);box-shadow:0 0 0 3px var(--glow)}.card.priv{border-style:dashed}
 .card b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.card small{color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.card .x{position:absolute;top:4px;right:4px;width:34px;height:34px;color:var(--mute);font-size:16px}
+.card .x{position:absolute;top:4px;right:4px;width:36px;height:36px;color:var(--mute);font-size:16px}
+.card .tag{position:absolute;top:12px;left:12px;font-size:11px;color:var(--mute)}
+.chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px}
+.chips button{flex:none;height:32px;padding:0 14px;border:1px solid var(--line);border-radius:99px;font-size:13px;background:var(--card)}
+.chips button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .row{display:flex;gap:8px}
 .btn{flex:1;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px;font-size:14px;text-align:center}
-.btn.acc{background:var(--acc);color:var(--bg);border-color:var(--acc);font-weight:600}
-.sheet>.btn,.sheet>textarea{flex:none}
-.btn.sm{flex:none;padding:7px 12px;font-size:13px}
+.btn.acc{background:var(--acc);color:var(--bg);border-color:var(--acc);font-weight:600}.btn.sm{flex:none;padding:7px 12px;font-size:13px}
 .item{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;padding:12px 14px;font-size:15px;background:var(--card);border:1px solid var(--line);border-radius:12px;text-align:left;min-height:52px}
 .item>div{min-width:0}.item small{display:block;color:var(--mute);font-size:12px;overflow:hidden;text-overflow:ellipsis}
 .seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:2px;flex:none}
@@ -56,18 +72,29 @@ body.bottom #bar{bottom:auto;top:-1px}
 .sw{width:42px;height:24px;border-radius:12px;background:var(--line);position:relative;flex:none}
 .sw::after{content:"";position:absolute;left:2px;top:2px;width:20px;height:20px;border-radius:50%;background:var(--card);transition:.15s}
 .sw.on{background:var(--ink)}.sw.on::after{left:20px}
-select,textarea,input.txt{font:inherit;font-size:14px;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px}
+select,textarea,input.txt{font:inherit;font-size:14px;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px}
 textarea,input.txt{width:100%}
 .empty{color:var(--mute);text-align:center;padding:40px 10px}
-#toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 80px);transform:translate(-50%,20px);opacity:0;background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:999px;font-size:13px;transition:.25s;z-index:30;pointer-events:none;max-width:90%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qr{width:220px;height:220px;border-radius:14px;overflow:hidden;margin:6px auto;border:1px solid var(--line)}.qr svg{display:block;width:100%;height:100%}
+.act{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--card);border-radius:18px 18px 0 0;padding:10px 12px calc(env(safe-area-inset-bottom,0px) + 14px);box-shadow:0 -8px 30px #0003;display:none;flex-direction:column;gap:4px;touch-action:none}
+.act.on{display:flex;animation:up .18s ease-out}.act .grab{width:40px;height:5px;border-radius:3px;background:var(--line);margin:0 auto 8px}
+.act p{color:var(--mute);font-size:12px;padding:0 6px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.act button{text-align:left;padding:13px 10px;border-radius:10px;font-size:15px}.act button:active{background:var(--line)}
+#scrim{position:fixed;inset:0;background:#0005;z-index:19;display:none}#scrim.on{display:block}
+#toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 84px);transform:translate(-50%,20px);opacity:0;background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:999px;font-size:13px;transition:.25s;z-index:30;pointer-events:none;max-width:90%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
 #toast.on{opacity:1;transform:translate(-50%,0)}
 </style></head><body>
 <div id="app">
   <div id="top">
     <div id="pill">
-      <button class="ib" id="shield" aria-label="Shield for this site"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/></svg></button>
+      <button class="ib" id="shield" aria-label="Site settings"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/></svg></button>
       <input id="url" inputmode="url" enterkeyhint="go" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="Search or enter address">
       <button class="ib" id="reload" aria-label="Reload"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.5-5.8M20 4v4h-4"/></svg></button>
+      <span id="find"><input id="findq" enterkeyhint="search" placeholder="Find in page" autocapitalize="off" spellcheck="false"><span id="findn"></span>
+        <button class="ib" id="findup" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M18 15l-6-6-6 6"/></svg></button>
+        <button class="ib" id="finddn" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+        <button class="ib" id="findx" aria-label="Close find"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>
     </div>
     <button id="tabs-btn" class="ib" aria-label="Tabs"><span>1</span></button>
     <button id="menu-btn" class="ib" aria-label="Menu"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg></button>
@@ -79,122 +106,310 @@ textarea,input.txt{width:100%}
 <div class="sheet" id="menu"></div>
 <div class="sheet" id="settings"></div>
 <div class="sheet" id="downloads"></div>
+<div class="sheet" id="site"></div>
+<div class="sheet" id="history"></div>
+<div class="sheet" id="cmd"></div>
+<div id="scrim"></div><div class="act" id="act"></div>
 <div id="toast" role="status"></div>
+<script src="qr.js"></script>
 <script>
 const TA=window.__TAURI__, $=s=>document.querySelector(s);
 const inv=(c,a)=>TA?TA.core.invoke(c,a||{}):Promise.reject("not in app");
 const ANDROID=/Android/i.test(navigator.userAgent);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const hostOf=u=>{try{return new URL(u).hostname}catch{return""}};
-let state={settings:{search:"duckduckgo",ui:{}},bookmarks:[],allow_sites:[]}, allow=new Set();
-// tabs: {id, native (label of the native WebView, null = start page), url, canBack, canFwd}
-let tabs=[], cur=null, nid=1, sheet=null, downloads=[];
+const bare=u=>hostOf(u).replace(/^www\./,"");
+const vibe=()=>{try{navigator.vibrate&&navigator.vibrate(8)}catch(e){}};
+const WORDMARK=`<svg class="wordmark" viewBox="-30 -30 1180 460" role="img" aria-label="hush."><g fill="none" stroke="currentColor" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V400M0 400V260c0-70 42-110 100-110s100 40 100 110v140"/><path transform="translate(290 0)" d="M0 150v140c0 70 42 110 100 110s100-40 100-110V150M200 150v250"/><path transform="translate(580 0)" d="M152 190c-18-26-44-40-76-40-44 0-72 24-72 58 0 74 152 42 152 124 0 42-34 68-82 68-36 0-66-14-84-40"/><path transform="translate(820 0)" d="M0 0V400M0 400V260c0-70 42-110 100-110s100 40 100 110v140"/></g><circle cx="1112" cy="393" r="30" fill="currentColor"/></svg>`;
+let state={settings:{search:"duckduckgo",ui:{}},bookmarks:[],allow_sites:[],site_dark:{},session:[]}, allow=new Set();
+// tabs: {id, native (label of the native WebView; null = not opened yet), url, title, priv, ws, canBack, canFwd}
+let tabs=[], cur=null, nid=1, sheet=null, downloads=[], typing=false, finding=false;
 const T=()=>tabs.find(t=>t.id===cur);
 
 // ---------- preferences (stored in Rust as ui.<name>) ----------
-const DEF={bar_pos:"top",theme:"system",text_zoom:"100",desktop:"false"};
+const DEF={bar_pos:"top",theme:"system",text_zoom:"100",desktop:"false",pull_refresh:"true",force_dark:"false",history:"off",restore:"off",workspaces:"Personal",ws:"Personal"};
 const pref=k=>state.settings.ui?.[k]??DEF[k];
 async function setPref(k,v){state.settings.ui[k]=String(v);applyPrefs();try{await inv("set_setting",{key:"ui."+k,value:String(v)})}catch(e){}}
 function applyPrefs(){
   const t=pref("theme");if(t==="system")document.documentElement.removeAttribute("data-theme");else document.documentElement.dataset.theme=t;
   document.body.classList.toggle("bottom",pref("bar_pos")==="bottom");
-  inv("set_web_prefs",{textZoom:+pref("text_zoom"),desktop:pref("desktop")==="true"}).catch(()=>{});
+  inv("set_web_prefs",{textZoom:+pref("text_zoom"),desktop:pref("desktop")==="true",pullRefresh:pref("pull_refresh")==="true"}).catch(()=>{});
   requestAnimationFrame(insets);
 }
 // Native tab views sit between the bars. Android wants device pixels.
 function insets(){
   const a=$("#app").getBoundingClientRect(), b=$("#top").getBoundingClientRect(), k=ANDROID?devicePixelRatio:1, bottom=pref("bar_pos")==="bottom";
-  const top=bottom?a.top+parseFloat(getComputedStyle($("#app")).paddingTop):b.bottom;
-  const bot=bottom?innerHeight-b.top:innerHeight-a.bottom+parseFloat(getComputedStyle($("#app")).paddingBottom);
+  const cs=getComputedStyle($("#app")), top=bottom?a.top+parseFloat(cs.paddingTop):b.bottom;
+  const bot=bottom?innerHeight-b.top:innerHeight-a.bottom+parseFloat(cs.paddingBottom);
   inv("set_chrome_inset",{px:Math.round(top*k),bottom:Math.round(Math.max(0,bot)*k)}).catch(()=>{});
 }
 addEventListener("resize",()=>insets());
 
+// ---------- workspaces ----------
+const wsList=()=>pref("workspaces").split("|").filter(Boolean);
+const curWs=()=>wsList().includes(pref("ws"))?pref("ws"):wsList()[0];
+const inWs=()=>tabs.filter(t=>t.ws===curWs());
+async function switchWs(name,dir){await setPref("ws",name);const last=inWs().at(-1);if(last)cur=last.id;else newTab(false,true);
+  render();if(sheet==="switcher")drawSwitcher(dir);toast(name)}
+
 // ---------- tabs ----------
-function newTab(){const t={id:nid++,native:null,url:"",canBack:false,canFwd:false};tabs.push(t);select(t.id);setTimeout(()=>$("#url").focus(),60);return t}
-function select(id){cur=id;show(null);render()}
-function syncNative(){const t=T();inv("switch_tab",{label:!sheet&&t&&t.native?t.native:"none"}).catch(()=>{})}
+function newTab(priv,quiet){const t={id:nid++,native:null,url:"",title:"",priv:!!priv,ws:curWs(),canBack:false,canFwd:false};tabs.push(t);cur=t.id;
+  if(!quiet){show(null);render();setTimeout(()=>$("#url").focus(),80)}return t}
+function select(id,anim){const t=tabs.find(x=>x.id===id);if(!t)return;if(t.ws!==curWs())setPref("ws",t.ws);cur=id;show(null);
+  if(anim){const p=$("#pill");p.classList.add(anim);setTimeout(()=>p.classList.remove(anim),180)}
+  if(t.url&&!t.native)openNative(t);render()}
+async function openNative(t){try{const r=await inv("open_tab",{input:t.url,private:t.priv});t.native=typeof r==="string"?r:r;render()}catch(e){toast("Couldn’t open that page")}}
+function syncNative(){const t=T();inv("switch_tab",{label:!sheet&&!typing&&t&&t.native?t.native:"none"}).catch(()=>{})}
 async function closeTab(id){const t=tabs.find(x=>x.id===id);if(t&&t.native)inv("close_tab",{label:t.native}).catch(()=>{});
-  tabs=tabs.filter(x=>x.id!==id);if(!tabs.length){newTab();return}if(cur===id)cur=tabs.at(-1).id;render();if(sheet==="switcher")drawSwitcher()}
+  tabs=tabs.filter(x=>x.id!==id);if(!inWs().length)newTab(false,true);else if(cur===id)cur=inWs().at(-1).id;render();saveSession();if(sheet==="switcher")drawSwitcher()}
+function step(d){const w=inWs();if(w.length<2){toast(d>0?"No tab to the right":"No tab to the left");return}const i=w.findIndex(t=>t.id===cur),j=i+d;
+  if(j<0||j>=w.length){toast(d>0?"Last tab":"First tab");return}vibe();select(w[j].id,d>0?"sl":"sr");toast(bare(w[j].url)||"New tab")}
 async function go(v){
-  v=v.trim();if(!v)return;const t=T();$("#url").blur();progress(true);
-  try{ if(t.native) await inv("navigate",{input:v}); else { t.native=await inv("open_tab",{input:v}); } }
+  v=v.trim();if(!v)return;const t=T();typing=false;$("#url").blur();progress(true);
+  try{ if(t.native) await inv("navigate",{input:v}); else { t.url=v; t.native=await inv("open_tab",{input:v,private:t.priv}); } }
   catch(e){progress(false);return toast("Couldn’t open that page")}
-  t.url=v.includes(".")&&!v.includes(" ")?(/^https?:/.test(v)?v:"https://"+v):v; render();
+  render();
 }
 function render(){
-  const t=T(), h=t?hostOf(t.url):"";
-  if(document.activeElement!==$("#url"))$("#url").value=t&&t.native?h.replace(/^www\./,""):"";
-  $("#shield").classList.toggle("off",allow.has(h));$("#shield").disabled=!h;
-  $("#tabs-btn span").textContent=tabs.length;
-  $("#view").innerHTML=t&&t.native?"":`<div class="home"><h1><svg class="wordmark" viewBox="-30 -30 1180 460" role="img" aria-label="hush."><g fill="none" stroke="currentColor" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V400M0 400V260c0-70 42-110 100-110s100 40 100 110v140"/><path transform="translate(290 0)" d="M0 150v140c0 70 42 110 100 110s100-40 100-110V150M200 150v250"/><path transform="translate(580 0)" d="M152 190c-18-26-44-40-76-40-44 0-72 24-72 58 0 74 152 42 152 124 0 42-34 68-82 68-36 0-66-14-84-40"/><path transform="translate(820 0)" d="M0 0V400M0 400V260c0-70 42-110 100-110s100 40 100 110v140"/></g><circle cx="1112" cy="393" r="30" fill="currentColor"/></svg></h1><p>nothing here but you.</p><div class="grid">${
-    state.bookmarks.slice(0,12).map((b,i)=>`<button class="bm" data-bm="${i}"><i>${esc((hostOf(b.url).replace(/^www\./,"")||"?")[0])}</i><span>${esc(b.title||hostOf(b.url))}</span></button>`).join("")}</div></div>`;
-  $("#view").querySelectorAll("[data-bm]").forEach(b=>{const bm=state.bookmarks[b.dataset.bm];b.onclick=()=>go(bm.url);
-    let lp;b.ontouchstart=()=>{lp=setTimeout(async()=>{if(confirm("Remove bookmark "+(bm.title||bm.url)+"?")){await inv("bookmark_remove",{url:bm.url});await loadState()}},600)};b.ontouchend=b.ontouchmove=()=>clearTimeout(lp)});
+  const t=T(), h=t?hostOf(t.url):"", live=!!(t&&t.native);
+  document.body.classList.toggle("priv",!!t?.priv);
+  if(document.activeElement!==$("#url"))$("#url").value=live?bare(t.url):"";
+  $("#url").placeholder=t?.priv?"Private — nothing is saved":"Search or enter address";
+  $("#shield").classList.toggle("off",allow.has(h));$("#shield").classList.toggle("priv",!!t?.priv);
+  $("#tabs-btn span").textContent=inWs().length;
+  if(typing){renderSuggest();syncNative();return}
+  $("#view").innerHTML=live?"":`<div class="home ${t?.priv?"priv":""}">${WORDMARK}<p>${t?.priv?"private tab — nothing here gets saved.":"nothing here but you."}</p>
+    <p class="stats" id="stats"></p><div class="grid">${state.bookmarks.slice(0,12).map((b,i)=>`<button class="bm" data-bm="${i}"><i>${esc((bare(b.url)||"?")[0])}</i><span>${esc(b.title||bare(b.url))}</span></button>`).join("")}</div>
+    <p class="hint">Swipe the address bar ← → to switch tabs · swipe it ${pref("bar_pos")==="bottom"?"up":"down"} for all tabs · hold it for commands</p></div>`;
+  $("#view").querySelectorAll("[data-bm]").forEach(b=>{const bm=state.bookmarks[b.dataset.bm];
+    gesture(b,{tap:()=>go(bm.url),long:()=>actions(bm.title||bare(bm.url),[["Open",()=>go(bm.url)],["Open in new tab",()=>{newTab(false,true);go(bm.url)}],
+      ["Remove bookmark",async()=>{await inv("bookmark_remove",{url:bm.url});await loadState()}]])})});
+  if(!live)loadStats();
   syncNative();
 }
 function progress(on){const b=$("#bar");b.classList.remove("done");if(on){b.classList.remove("on");void b.offsetWidth;b.classList.add("on")}else{b.classList.remove("on");b.classList.add("done")}}
+let saveT;function saveSession(){if(pref("restore")!=="on")return;clearTimeout(saveT);saveT=setTimeout(()=>
+  inv("session_save",{tabs:tabs.filter(t=>!t.priv&&t.url.startsWith("https://")).map(t=>({url:t.url,ws:t.ws}))}).catch(()=>{}),800)}
+const fmt=n=>n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e4?Math.round(n/1e3)+"k":n.toLocaleString();
+async function loadStats(){try{const s=await inv("get_stats"),el=$("#stats");if(el)el.innerHTML=s.total?`<b>${fmt(s.week)}</b> ads & trackers blocked this week · <b>${fmt(s.total)}</b> all time`:"Ads, trackers and cookie banners are blocked automatically."}catch(e){}}
+
+// ---------- gestures: one helper for tap / long-press / swipes ----------
+function gesture(el,h){let x0,y0,t0,lp,moved,fired;
+  el.addEventListener("touchstart",e=>{const p=e.touches[0];x0=p.clientX;y0=p.clientY;t0=Date.now();moved=false;fired=false;
+    if(h.long)lp=setTimeout(()=>{fired=true;vibe();h.long()},480)},{passive:true});
+  el.addEventListener("touchmove",e=>{const p=e.touches[0],dx=p.clientX-x0,dy=p.clientY-y0;
+    if(Math.abs(dx)>10||Math.abs(dy)>10){moved=true;clearTimeout(lp)}if(h.drag)h.drag(dx,dy,e)},{passive:true});
+  el.addEventListener("touchend",e=>{clearTimeout(lp);const p=e.changedTouches[0],dx=p.clientX-x0,dy=p.clientY-y0,fast=Date.now()-t0<600;
+    if(fired){e.preventDefault();return}
+    if(moved&&fast&&Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)*1.4){e.preventDefault();(dx<0?h.left:h.right)?.()}
+    else if(moved&&fast&&Math.abs(dy)>45&&Math.abs(dy)>Math.abs(dx)*1.4){e.preventDefault();(dy<0?h.up:h.down)?.()}
+    else if(moved&&h.dragEnd)h.dragEnd(dx,dy);
+    else if(!moved&&h.tap){e.preventDefault();h.tap()}},{passive:false});
+  if(h.tap)el.addEventListener("click",e=>{if(!("ontouchstart" in window))h.tap()});
+}
+// Address bar: ← → switch tabs · swipe toward the page = tab grid · hold = command sheet.
+const toPage=()=>pref("bar_pos")==="bottom"?"up":"down";
+gesture($("#top"),{left:()=>step(1),right:()=>step(-1),
+  up:()=>toPage()==="up"&&openSwitcher(), down:()=>toPage()==="down"&&openSwitcher(),
+  long:()=>{if(document.activeElement!==$("#url"))openCmd()}});
+gesture($("#tabs-btn"),{tap:()=>openSwitcher(),long:()=>actions("Tabs",[["New tab",()=>newTab()],["New private tab",()=>newTab(true)],["Close this tab",()=>closeTab(cur)]])});
+gesture($("#menu-btn"),{tap:()=>{drawMenu();show("menu")},long:()=>T()?.native&&findMode(true)});
+gesture($("#shield"),{tap:()=>{if(T()?.native){drawSite();show("site")}},long:()=>quickShield()});
+async function quickShield(){const t=T(),h=hostOf(t?.url);if(!h)return;await inv("toggle_shield",{host:h});allow.has(h)?allow.delete(h):allow.add(h);
+  toast(allow.has(h)?"Shield off for "+bare(t.url):"Shield on");render();inv("nav",{action:"reload"})}
+// Swipe a sheet's title down to close it.
+function sheetGestures(el){gesture(el,{down:()=>show(null)})}
+
+// ---------- typing: suggestions replace the page while the address bar is focused ----------
+let sugItems=[];
+$("#url").addEventListener("focus",e=>{const t=T(),v=t&&t.native?t.url:"";e.target.value=v;typing=true;syncNative();renderSuggest();if(v)setTimeout(()=>{if(e.target.value===v)e.target.select()},0)});
+$("#url").addEventListener("blur",()=>setTimeout(()=>{if(document.activeElement!==$("#url")){typing=false;render()}},120));
+$("#url").addEventListener("input",()=>renderSuggest());
+$("#url").addEventListener("keydown",e=>{if(e.key==="Enter")go(e.target.value)});
+async function renderSuggest(){const q=$("#url").value.trim(),v=$("#view");
+  if(!q){v.innerHTML=`<div class="sug">${inWs().filter(t=>t.id!==cur&&t.url).slice(-5).reverse().map(t=>`<button data-tab="${t.id}"><i>⇥</i><span>${esc(t.title||bare(t.url))}</span><small>Tab</small></button>`).join("")}</div>`;wireSug();return}
+  const url=/^\S+\.\S+$/.test(q)||/^https?:/i.test(q);
+  sugItems=[{go:q,icon:url?"→":"⌕",title:url?q:"Search for “"+q+"”"}];
+  tabs.filter(t=>t.id!==cur&&t.url.toLowerCase().includes(q.toLowerCase())).slice(0,2).forEach(t=>sugItems.push({tab:t.id,icon:"⇥",title:t.title||bare(t.url),note:"Tab"}));
+  try{(await inv("suggest",{q})).forEach(x=>sugItems.push({go:x.url,icon:x.kind==="bookmark"?"★":"↺",title:x.title||bare(x.url),note:x.kind==="bookmark"?"Bookmark":"History"}))}catch(e){}
+  if($("#url").value.trim()!==q||!typing)return;
+  v.innerHTML=`<div class="sug">${sugItems.map((s,i)=>`<button data-i="${i}" class="${i?"":"sel"}"><i>${esc(s.icon)}</i><span>${esc(s.title)}</span><small>${esc(s.note||"")}</small></button>`).join("")}</div>`;wireSug()}
+function wireSug(){$("#view").querySelectorAll("[data-i]").forEach(b=>b.onpointerdown=e=>{e.preventDefault();const s=sugItems[b.dataset.i];s.tab?select(s.tab):go(s.go)});
+  $("#view").querySelectorAll("[data-tab]").forEach(b=>b.onpointerdown=e=>{e.preventDefault();typing=false;$("#url").blur();select(+b.dataset.tab)})}
+
+// ---------- find in page (native: counts come back as a `find` event) ----------
+function findMode(on){finding=on;$("#pill").classList.toggle("finding",on);if(on){$("#findq").value="";$("#findn").textContent="";$("#findq").focus()}
+  else{inv("page_action",{action:"find-clear"}).catch(()=>{});$("#findq").blur()}}
+const findGo=back=>{const q=$("#findq").value;if(q)inv("page_action",{action:back?"find-back":"find",arg:q})};
+let findT;$("#findq").addEventListener("input",()=>{clearTimeout(findT);findT=setTimeout(()=>findGo(false),250)});
+$("#findq").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();findGo(false)}});
+$("#findup").onclick=()=>findGo(true);$("#finddn").onclick=()=>findGo(false);$("#findx").onclick=()=>findMode(false);
+$("#reload").onclick=()=>{const t=T();if(t&&t.native){progress(true);inv("nav",{action:"reload"})}};
 
 // ---------- events from the Android plugin (window.__hushEvent) ----------
 window.__hushEvent=(name,d)=>{
-  if(name==="tabUrl"){const t=tabs.find(x=>x.native===d.id);if(!t)return;t.url=d.url;t.canBack=d.canBack;t.canFwd=d.canFwd;
+  if(name==="tabUrl"){const t=tabs.find(x=>x.native===d.id);if(!t)return;t.url=d.url;t.title=d.title||t.title;t.canBack=d.canBack;t.canFwd=d.canFwd;
+    if(d.state==="finished"){if(!t.priv&&d.url.startsWith("http"))inv("history_add",{url:d.url,title:t.title||bare(d.url)}).catch(()=>{});saveSession()}
     if(t.id===cur){progress(d.state==="started");render()}}
   else if(name==="download"){
     if(d.state==="started"){downloads.unshift({name:d.name,state:"started"});toast("Downloading "+d.name+" — see notifications")}
     else{downloads.unshift({name:d.name,state:"failed"});toast("Download failed"+(d.error?": "+d.error:""))}
     if(sheet==="downloads")drawDownloads()}
-  else if(name==="back"){if(sheet)show(null);else if(T()?.native&&tabs.length>1)closeTab(cur)}
+  else if(name==="find"){$("#findn").textContent=d.count?d.index+"/"+d.count:"0"}
+  else if(name==="longpress"){if(!d.url)return;const u=d.url;
+    actions(d.kind==="image"?"Image":u,[
+      ["Open in new tab",()=>{const t=newTab(false,true);t.url=u;openNative(t);render();toast("Opened in new tab")}],
+      ["Open in background",()=>{const keep=cur,t=newTab(false,true);t.url=u;cur=keep;inv("open_tab",{input:u}).then(id=>{t.native=id;inv("switch_tab",{label:T().native||"none"});render()});toast("Opened in background")}],
+      ["Open in private tab",()=>{const t=newTab(true,true);t.url=u;openNative(t);render()}],
+      ["Copy link",()=>copy(u)],["Show QR code",()=>qrSheet(u)]])}
+  else if(name==="back"){if(document.querySelector(".act.on"))closeActions();else if(finding)findMode(false);else if(sheet)show(null);else if(typing)$("#url").blur();
+    else if(inWs().length>1)closeTab(cur)}
 };
 
+// ---------- action sheet (long-press menus) ----------
+function actions(title,list){const a=$("#act");
+  a.innerHTML=`<div class="grab"></div><p>${esc(title)}</p>`+list.map((x,i)=>`<button data-a="${i}">${esc(x[0])}</button>`).join("");
+  a.querySelectorAll("[data-a]").forEach(b=>b.onclick=()=>{closeActions();list[b.dataset.a][1]()});
+  a.classList.add("on");$("#scrim").classList.add("on");inv("switch_tab",{label:"none"}).catch(()=>{})}
+function closeActions(){$("#act").classList.remove("on");$("#scrim").classList.remove("on");syncNative()}
+$("#scrim").onclick=closeActions;gesture($("#act"),{down:closeActions});
+async function copy(t){try{await navigator.clipboard.writeText(t);toast("Copied")}catch(e){toast("Couldn’t copy")}}
+function qrSheet(u){const el=$("#site");el.innerHTML=head("Scan to open")+`<div class="qr">${hushQR.svg(u)}</div><p style="text-align:center;color:var(--mute);font-size:13px;word-break:break-all">${esc(u)}</p>`;wire(el);show("site")}
+
 // ---------- sheets ----------
-function show(id){sheet=id;["switcher","menu","settings","downloads"].forEach(s=>$("#"+s).classList.toggle("on",s===id));syncNative()}
-const head=(title)=>`<h2>${title}<button class="btn sm" data-done>Done</button></h2>`;
-const wire=el=>el.querySelectorAll("[data-done]").forEach(b=>b.onclick=()=>show(null));
+function show(id){sheet=id;["switcher","menu","settings","downloads","site","history","cmd"].forEach(s=>$("#"+s).classList.toggle("on",s===id));
+  if(id!=="cmd"&&document.activeElement?.id==="cmdq")document.activeElement.blur();syncNative()}
+const head=title=>`<div class="grab"></div><h2>${title}<button class="btn sm" data-done>Done</button></h2>`;
+const wire=el=>{el.querySelectorAll("[data-done]").forEach(b=>b.onclick=()=>show(null));const h=el.querySelector("h2");if(h)sheetGestures(h)};
 const item=(label,sub,right="")=>`<div class="item"><div>${label}${sub?`<small>${sub}</small>`:""}</div>${right}</div>`;
 const seg=(k,opts)=>`<div class="seg">${opts.map(([v,l])=>`<button data-k="${k}" data-v="${v}" class="${pref(k)===v?"on":""}">${l}</button>`).join("")}</div>`;
 
-function drawSwitcher(){const el=$("#switcher");
-  el.innerHTML=head("Tabs")+`<button class="btn acc" id="sw-new">＋ New tab</button><div class="cards">${tabs.map(t=>{const h=hostOf(t.url).replace(/^www\./,"");
-    return`<div class="card ${t.id===cur?"cur":""}" data-id="${t.id}"><button class="x" data-x="${t.id}" aria-label="Close tab">✕</button><b>${esc(h||"New tab")}</b><small>${t.native?esc(t.url.replace(/^https:\/\//,"")):"Start page"}</small></div>`}).join("")}</div>`;
-  wire(el);$("#sw-new").onclick=newTab;
-  el.querySelectorAll(".card").forEach(c=>c.onclick=e=>{if(e.target.dataset.x)return;select(+c.dataset.id)});
-  el.querySelectorAll("[data-x]").forEach(b=>b.onclick=()=>closeTab(+b.dataset.x))}
+function openSwitcher(){drawSwitcher();show("switcher")}
+function drawSwitcher(dir){const el=$("#switcher"),list=inWs();
+  el.innerHTML=head("Tabs")+`<div class="chips">${wsList().map(w=>`<button data-ws="${esc(w)}" class="${w===curWs()?"on":""}">${esc(w)} · ${tabs.filter(t=>t.ws===w).length}</button>`).join("")}<button data-ws-new>＋ Workspace</button></div>
+    <div class="row"><button class="btn acc" id="sw-new">＋ New tab</button><button class="btn" id="sw-priv">◌ Private tab</button></div>
+    <div class="cards" id="cards">${list.map(t=>`<div class="card ${t.id===cur?"cur":""} ${t.priv?"priv":""}" data-id="${t.id}">${t.priv?`<span class="tag">private</span>`:""}<button class="x" data-x="${t.id}" aria-label="Close tab">✕</button>
+      <b>${esc(t.title||bare(t.url)||"New tab")}</b><small>${t.url?esc(bare(t.url)):"Start page"}</small></div>`).join("")}</div>
+    <p class="hint" style="text-align:center">Swipe a card sideways to close it · hold a card for more · swipe here ← → for other workspaces</p>`;
+  wire(el);$("#sw-new").onclick=()=>newTab();$("#sw-priv").onclick=()=>newTab(true);
+  el.querySelectorAll("[data-ws]").forEach(b=>b.onclick=()=>switchWs(b.dataset.ws));
+  el.querySelector("[data-ws-new]").onclick=()=>{const n=prompt("New workspace name");if(n&&n.trim()){const name=n.trim().replace(/\|/g,"").slice(0,24);
+    if(!wsList().includes(name))setPref("workspaces",[...wsList(),name].join("|")).then(()=>switchWs(name))}};
+  el.querySelectorAll(".card").forEach(c=>{const id=+c.dataset.id;
+    gesture(c,{tap:()=>select(id),
+      drag:(dx,dy)=>{if(Math.abs(dx)>Math.abs(dy)){c.style.transform=`translateX(${dx}px)`;c.style.opacity=String(1-Math.min(.8,Math.abs(dx)/220))}},
+      dragEnd:dx=>{if(Math.abs(dx)>90){c.style.transform=`translateX(${dx>0?400:-400}px)`;c.style.opacity="0";vibe();setTimeout(()=>closeTab(id),160)}else{c.style.transform="";c.style.opacity=""}},
+      left:()=>{c.style.transform="translateX(-400px)";c.style.opacity="0";vibe();setTimeout(()=>closeTab(id),160)},
+      right:()=>{c.style.transform="translateX(400px)";c.style.opacity="0";vibe();setTimeout(()=>closeTab(id),160)},
+      long:()=>{const t=tabs.find(x=>x.id===id);actions(t.title||bare(t.url)||"New tab",[
+        ...wsList().filter(w=>w!==t.ws).map(w=>["Move to "+w,()=>{t.ws=w;saveSession();drawSwitcher()}]),
+        ["Copy link",()=>copy(t.url)],["Close tab",()=>closeTab(id)],["Close other tabs",()=>inWs().filter(x=>x.id!==id).forEach(x=>closeTab(x.id))]])}})});
+  el.querySelectorAll("[data-x]").forEach(b=>b.onclick=e=>{e.stopPropagation();closeTab(+b.dataset.x)});
+  // Swipe the empty area / header sideways to change workspace.
+  const ws=wsList(),i=ws.indexOf(curWs());
+  gesture(el.querySelector(".chips"),{left:()=>i<ws.length-1&&switchWs(ws[i+1]),right:()=>i>0&&switchWs(ws[i-1])});
+}
 function drawMenu(){const el=$("#menu"),t=T(),live=!!(t&&t.native);
   el.innerHTML=head("Menu")+`<div class="row"><button class="btn" id="m-back" ${live&&t.canBack?"":"disabled"}>‹ Back</button><button class="btn" id="m-fwd" ${live&&t.canFwd?"":"disabled"}>Forward ›</button></div>
+   <div class="row"><button class="btn" id="m-find" ${live?"":"disabled"}>Find</button><button class="btn" id="m-read" ${live?"":"disabled"}>Reader</button><button class="btn" id="m-qr" ${live?"":"disabled"}>QR</button></div>
+   <button class="item" id="m-new"><div>New private tab<small>separate cookies & storage, gone when you close it</small></div></button>
    <button class="item" id="m-bm" ${live?"":"disabled"}><div>Bookmark this page<small>shows on the start page</small></div></button>
+   <button class="item" id="m-cmd"><div>Commands<small>or hold the address bar</small></div></button>
+   <button class="item" id="m-hist"><div>History<small>${pref("history")==="on"?"on — kept only on this phone":"off"}</small></div></button>
    <button class="item" id="m-dl"><div>Downloads<small>saved to your Downloads folder</small></div></button>
-   <button class="item" id="m-set"><div>Settings<small>layout · theme · text size · search · privacy</small></div></button>
-   <button class="item" id="m-clear"><div>Clear browsing data<small>cookies · cache · site storage</small></div></button>`;
+   <button class="item" id="m-set"><div>Settings<small>layout · dark mode · text size · search · privacy</small></div></button>`;
   wire(el);
   $("#m-back").onclick=()=>{show(null);inv("nav",{action:"back"})};$("#m-fwd").onclick=()=>{show(null);inv("nav",{action:"fwd"})};
-  $("#m-bm").onclick=async()=>{try{await inv("bookmark_add",{title:hostOf(t.url).replace(/^www\./,""),url:t.url});await loadState();show(null);toast("Bookmarked")}catch(e){toast("Couldn’t save")}};
-  $("#m-dl").onclick=()=>{drawDownloads();show("downloads")};$("#m-set").onclick=()=>{drawSettings();show("settings")};
-  $("#m-clear").onclick=clearData}
+  $("#m-find").onclick=()=>{show(null);findMode(true)};$("#m-read").onclick=()=>{show(null);inv("page_action",{action:"reader"})};$("#m-qr").onclick=()=>qrSheet(t.url);
+  $("#m-new").onclick=()=>newTab(true);$("#m-cmd").onclick=openCmd;$("#m-hist").onclick=()=>{drawHistory();show("history")};
+  $("#m-bm").onclick=async()=>{try{await inv("bookmark_add",{title:t.title||bare(t.url),url:t.url});await loadState();show(null);toast("Bookmarked")}catch(e){toast("Couldn’t save")}};
+  $("#m-dl").onclick=()=>{drawDownloads();show("downloads")};$("#m-set").onclick=()=>{drawSettings();show("settings")}}
+
+function siteDark(h){const v=state.site_dark?.[h];return v===true?"on":v===false?"off":"auto"}
+function applyDarkNow(){const t=T();if(!t?.native)return;const sd=siteDark(hostOf(t.url)),on=sd==="auto"?pref("force_dark")==="true":sd==="on";
+  inv("page_action",{action:on?"dark-on":"dark-off"}).catch(()=>{})}
+function drawSite(){const el=$("#site"),t=T(),h=hostOf(t.url),off=allow.has(h),sd=siteDark(h);
+  el.innerHTML=head(esc(bare(t.url)))+`
+   ${item("Shield",off?"Off — ads and trackers allowed here":"On — ads, trackers & cookie banners blocked",`<button class="sw ${off?"":"on"}" id="st-shield"></button>`)}
+   ${item("Dark mode here","Auto follows Settings",`<div class="seg">${[["auto","Auto"],["on","On"],["off","Off"]].map(([v,l])=>`<button data-d="${v}" class="${sd===v?"on":""}">${l}</button>`).join("")}</div>`)}
+   ${t.priv?item("Private tab","Separate cookies & storage · nothing saved"):""}
+   <div class="row"><button class="btn" id="st-read">Reader view</button><button class="btn" id="st-find">Find</button><button class="btn" id="st-copy">Copy link</button></div>
+   <h3>Open on another device</h3><div class="qr">${(()=>{try{return hushQR.svg(t.url)}catch(e){return""}})()}</div>
+   <p class="hint" style="text-align:center;margin-top:4px">Tip: hold the shield to switch it on/off instantly</p>`;
+  wire(el);
+  $("#st-shield").onclick=async()=>{await quickShield();drawSite()};
+  el.querySelectorAll("[data-d]").forEach(b=>b.onclick=async()=>{const v=b.dataset.d;await inv("site_dark",{host:h,value:v==="auto"?null:v==="on"});
+    if(v==="auto")delete state.site_dark[h];else state.site_dark[h]=v==="on";applyDarkNow();drawSite()});
+  $("#st-read").onclick=()=>{show(null);inv("page_action",{action:"reader"})};$("#st-find").onclick=()=>{show(null);findMode(true)};$("#st-copy").onclick=()=>copy(t.url)}
+
+function openCmd(){vibe();const el=$("#cmd");
+  const ACT=[["New tab",()=>newTab()],["New private tab",()=>newTab(true)],["Find in page",()=>{show(null);findMode(true)}],["Reader view",()=>{show(null);inv("page_action",{action:"reader"})}],
+    ["Dark mode for websites: "+(pref("force_dark")==="true"?"on → off":"off → on"),async()=>{await setPref("force_dark",pref("force_dark")==="true"?"false":"true");applyDarkNow();show(null)}],
+    ["Address bar to "+(pref("bar_pos")==="top"?"bottom":"top"),()=>{setPref("bar_pos",pref("bar_pos")==="top"?"bottom":"top");show(null)}],
+    ["Site settings & QR",()=>{if(T()?.native){drawSite();show("site")}}],["All tabs",openSwitcher],["History",()=>{drawHistory();show("history")}],
+    ["Downloads",()=>{drawDownloads();show("downloads")}],["Settings",()=>{drawSettings();show("settings")}],["Close tab",()=>{show(null);closeTab(cur)}],
+    ...wsList().filter(w=>w!==curWs()).map(w=>["Workspace: "+w,()=>{show(null);switchWs(w)}])];
+  el.innerHTML=head("Commands")+`<input class="txt" id="cmdq" placeholder="Type a command, tab or site" autocapitalize="off" spellcheck="false"><div class="sug" id="cmdr" style="padding:0"></div>`;
+  wire(el);show("cmd");const q=$("#cmdq");setTimeout(()=>q.focus(),60);
+  let items=[];const paint=async()=>{const s=q.value.trim().toLowerCase(),m=x=>!s||x.toLowerCase().includes(s);
+    items=ACT.filter(a=>m(a[0])).map(a=>({title:a[0],icon:"›",run:a[1]}));
+    tabs.filter(t=>t.url&&m(t.url+" "+t.title)).forEach(t=>items.push({title:t.title||bare(t.url),note:t.ws!==curWs()?t.ws:"Tab",icon:"⇥",run:()=>select(t.id)}));
+    if(s){try{(await inv("suggest",{q:s})).forEach(x=>items.push({title:x.title||bare(x.url),note:x.kind==="bookmark"?"Bookmark":"History",icon:x.kind==="bookmark"?"★":"↺",run:()=>{show(null);go(x.url)}}))}catch(e){}
+      items.push({title:"Search for “"+q.value.trim()+"”",icon:"⌕",run:()=>{show(null);go(q.value)}})}
+    if(q.value.trim().toLowerCase()!==s)return;
+    $("#cmdr").innerHTML=items.slice(0,14).map((x,i)=>`<button data-i="${i}"><i>${esc(x.icon)}</i><span>${esc(x.title)}</span><small>${esc(x.note||"")}</small></button>`).join("");
+    $("#cmdr").querySelectorAll("[data-i]").forEach(b=>b.onclick=()=>items[b.dataset.i].run())};
+  q.oninput=paint;q.onkeydown=e=>{if(e.key==="Enter"&&items[0])items[0].run()};paint()}
+
+async function drawHistory(){const el=$("#history"),on=pref("history")==="on",list=on?await inv("history_list",{limit:300}).catch(()=>[]):[];
+  el.innerHTML=head("History")+item("Remember history","Off by default · only on this phone · private tabs never",`<button class="sw ${on?"on":""}" id="h-on"></button>`)+
+   (on?`<input class="txt" id="h-q" placeholder="Search history"><div id="h-list"></div><button class="btn" id="h-clear">Clear all history</button>`:"");
+  wire(el);$("#h-on").onclick=async()=>{await setPref("history",on?"off":"on");drawHistory()};
+  if(!on)return;const paint=s=>{let day="";$("#h-list").innerHTML=list.filter(h=>!s||(h.url+h.title).toLowerCase().includes(s)).slice(0,200).map(h=>{
+      const d=new Date(h.t*1000).toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"});return(d!==day?`<h3>${esc(day=d)}</h3>`:"")+
+      `<button class="item" data-u="${esc(h.url)}" style="margin-bottom:6px"><div>${esc(h.title||bare(h.url))}<small>${esc(bare(h.url))}</small></div></button>`}).join("")||`<div class="empty">Nothing yet.</div>`;
+    $("#h-list").querySelectorAll("[data-u]").forEach(b=>b.onclick=()=>{show(null);go(b.dataset.u)})};
+  paint("");$("#h-q").oninput=e=>paint(e.target.value.toLowerCase());
+  $("#h-clear").onclick=async()=>{if(confirm("Clear all history?")){await inv("history_clear");drawHistory()}}}
 function drawDownloads(){const el=$("#downloads");
   el.innerHTML=head("Downloads")+(downloads.length?downloads.map(d=>item(esc(d.name),d.state==="started"?"Downloading — open it from the notification or your Downloads folder":"Failed")).join("")
     :`<div class="empty">Nothing downloaded yet.<br>Files go to your phone’s Downloads folder.</div>`);wire(el)}
-function drawSettings(){const el=$("#settings"),s=state.settings;
+function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<button class="sw ${on?"on":""}" data-sw="${k}"></button>`;
   el.innerHTML=head("Settings")+`<h3>Layout</h3>
-   ${item("Address bar","",seg("bar_pos",[["top","Top"],["bottom","Bottom"]]))}
+   ${item("Address bar","Swipe it ← → to switch tabs",seg("bar_pos",[["top","Top"],["bottom","Bottom"]]))}
    ${item("Theme","",seg("theme",[["system","Auto"],["light","Light"],["dark","Dark"]]))}
    <h3>Pages</h3>
+   ${item("Dark mode for websites","Darkens light sites · change per site from the shield",sw("force_dark",pref("force_dark")==="true"))}
    ${item("Text size","",seg("text_zoom",[["85","S"],["100","M"],["115","L"],["130","XL"]]))}
-   ${item("Desktop site","Ask sites for their full desktop layout",`<button class="sw ${pref("desktop")==="true"?"on":""}" id="s-desk" aria-label="Desktop site"></button>`)}
+   ${item("Pull down to refresh","",sw("pull_refresh",pref("pull_refresh")==="true"))}
+   ${item("Desktop site","Ask sites for their full desktop layout",sw("desktop",pref("desktop")==="true"))}
+   <h3>Tabs & history</h3>
+   ${item("Reopen tabs on start","Private tabs never",sw("restore",pref("restore")==="on"))}
+   ${item("Remember history","Off by default · only on this phone",sw("history",pref("history")==="on"))}
+   ${item("Workspaces",esc(wsList().join(" · ")),`<button class="btn sm" id="s-ws">Edit</button>`)}
    <h3>Search</h3>
    ${item("Search engine","",`<select id="s-engine">${[["duckduckgo","DuckDuckGo"],["brave","Brave"],["startpage","Startpage"],["ecosia","Ecosia"],["custom","Custom…"]].map(([v,l])=>`<option value="${v}" ${s.search===v?"selected":""}>${l}</option>`).join("")}</select>`)}
    ${s.search==="custom"?`<input class="txt" id="s-custom" placeholder="https://example.com/search?q=%s" value="${esc(s.custom_search)}">`:""}
    <h3>Privacy</h3>
-   <button class="item" id="s-lists"><div>Update filter lists<small>download the latest EasyList + EasyPrivacy</small></div></button>
+   <button class="item" id="s-lists"><div>Update filter lists<small>ads, trackers and cookie banners</small></div></button>
    <button class="item" id="s-clear"><div>Clear browsing data<small>cookies · cache · site storage</small></div></button>
    ${allow.size?[...allow].map(h=>item(esc(h),"Shield off on this site",`<button class="btn sm" data-allow="${esc(h)}">Turn on</button>`)).join(""):item("Shield exceptions","None — the shield is on everywhere")}
    <h3>Your data</h3>
    <button class="item" id="s-export"><div>Export<small>copy settings, bookmarks and filters as text</small></div></button>
    <textarea id="s-json" rows="3" placeholder="Paste an export here to import it"></textarea>
    <button class="btn" id="s-import">Import</button>
+   <h3>Gestures</h3>
+   <div class="item" style="display:block;line-height:1.9;font-size:13px">Address bar: swipe ← → switch tabs · swipe ${toPage()} all tabs · hold for commands<br>
+    Tab cards: swipe sideways to close · hold to move or copy · Workspaces: swipe the chips<br>Shield: tap for site settings · hold to toggle · Links: hold for options<br>
+    Tabs button: hold for new / private tab · Menu: hold to find in page · Pull down a page to refresh · Swipe a sheet’s title down to close it</div>
    <p style="color:var(--mute);font-size:12px;text-align:center;margin-top:14px">Hush keeps everything on this device. No accounts, no tracking.</p>`;
   wire(el);
-  el.querySelectorAll(".seg button").forEach(b=>b.onclick=async()=>{await setPref(b.dataset.k,b.dataset.v);drawSettings()});
-  $("#s-desk").onclick=async()=>{await setPref("desktop",pref("desktop")==="true"?"false":"true");drawSettings()};
+  el.querySelectorAll(".seg button").forEach(b=>b.onclick=async()=>{await setPref(b.dataset.k,b.dataset.v);drawSettings();render()});
+  el.querySelectorAll("[data-sw]").forEach(b=>b.onclick=async()=>{const k=b.dataset.sw,on=b.classList.contains("on"),bin=["force_dark","pull_refresh","desktop"].includes(k);
+    await setPref(k,bin?String(!on):(on?"off":"on"));if(k==="force_dark")applyDarkNow();if(k==="restore")saveSession();drawSettings()});
+  $("#s-ws").onclick=()=>{const n=prompt("Workspaces, separated by commas",wsList().join(", "));if(n===null)return;
+    const list=[...new Set(n.split(",").map(x=>x.trim().replace(/\|/g,"").slice(0,24)).filter(Boolean))];if(!list.length)return;
+    tabs.forEach(t=>{if(!list.includes(t.ws))t.ws=list[0]});setPref("workspaces",list.join("|")).then(()=>{drawSettings();render()})};
   $("#s-engine").onchange=async e=>{s.search=e.target.value;await inv("set_setting",{key:"search",value:s.search});drawSettings()};
   const cs=$("#s-custom");if(cs)cs.onchange=async()=>{const v=cs.value.trim();if(!v.startsWith("https://")||!v.includes("%s"))return toast("Must start with https:// and contain %s");
     s.custom_search=v;await inv("set_setting",{key:"custom_search",value:v});toast("Saved")};
@@ -206,18 +421,12 @@ function drawSettings(){const el=$("#settings"),s=state.settings;
 }
 function clearData(){if(confirm("Clear cookies, cache and site data for every site?")){inv("clear_data");show(null);toast("Browsing data cleared")}}
 
-// ---------- bar ----------
-$("#url").addEventListener("focus",e=>{const t=T();e.target.value=t&&t.native?t.url:"";setTimeout(()=>e.target.select(),0)});
-$("#url").addEventListener("blur",()=>setTimeout(render,0));
-$("#url").addEventListener("keydown",e=>{if(e.key==="Enter")go(e.target.value)});
-$("#reload").onclick=()=>{const t=T();if(t&&t.native){progress(true);inv("nav",{action:"reload"})}};
-$("#shield").onclick=async()=>{const t=T(),h=hostOf(t?.url);if(!h)return;await inv("toggle_shield",{host:h});
-  allow.has(h)?allow.delete(h):allow.add(h);toast(allow.has(h)?"Shield off for "+h:"Shield on for "+h);render();inv("nav",{action:"reload"})};
-$("#tabs-btn").onclick=()=>{drawSwitcher();show("switcher")};
-$("#menu-btn").onclick=()=>{drawMenu();show("menu")};
-
-function toast(m){const e=$("#toast");e.textContent=m;e.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove("on"),2200)}
-async function loadState(){try{state=await inv("get_state");state.settings.ui=state.settings.ui||{};allow=new Set(state.allow_sites||[])}catch(e){}applyPrefs();render()}
-newTab();loadState();
+function toast(m){const e=$("#toast");e.textContent=m;e.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove("on"),1800)}
+async function loadState(first){try{state=await inv("get_state");state.settings.ui=state.settings.ui||{};state.site_dark=state.site_dark||{};allow=new Set(state.allow_sites||[])}catch(e){}
+  applyPrefs();
+  if(first&&pref("restore")==="on"&&state.session?.length){tabs=[];state.session.forEach(s=>tabs.push({id:nid++,native:null,url:s.url,title:"",priv:false,ws:wsList().includes(s.ws)?s.ws:curWs(),canBack:false,canFwd:false}));
+    const last=inWs().at(-1);if(last){cur=last.id;openNative(last)}else newTab(false,true);toast("Restored "+state.session.length+" tabs")}
+  render()}
+newTab(false,true);render();loadState(true);
 </script>
 </body></html>
