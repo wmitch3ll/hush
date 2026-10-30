@@ -307,6 +307,26 @@ window.HushX = function (A) {
     return { link, tabs: nt, totalTabs: t.length, bookmarks: nb, totalBookmarks: bms.length, settings: Object.keys(s).length };
   }
 
-  return { home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
+  // ---------------------------------------------------------------- leaving a tab that's playing
+  // A slim bar over the address bar: "Video from youtube.com — Mini player · Keep playing · Stop", with "Always".
+  function mediaPrompt(parent, site, done) {
+    document.getElementById('hx-mp')?.remove();
+    const el = document.createElement('div'); el.id = 'hx-mp';
+    el.innerHTML = `<style>#hx-mp{position:absolute;inset:4px 6px;z-index:20;display:flex;align-items:center;gap:6px;padding:0 6px 0 12px;border-radius:12px;background:var(--ink);color:var(--bg);font:12.5px system-ui;box-shadow:0 6px 24px #0004;animation:hxmp .18s ease-out}
+      @keyframes hxmp{from{transform:translateY(-6px);opacity:0}}#hx-mp b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
+      #hx-mp button{all:unset;cursor:pointer;padding:6px 10px;border-radius:9px;background:color-mix(in srgb,var(--bg) 16%,transparent);white-space:nowrap;font-weight:600}#hx-mp button:hover{background:color-mix(in srgb,var(--bg) 28%,transparent)}
+      #hx-mp label{display:flex;align-items:center;gap:4px;opacity:.8;white-space:nowrap;cursor:pointer}#hx-mp .x{background:none;padding:6px}
+      @media (max-width:520px){#hx-mp{font-size:11.5px;gap:4px;padding-left:10px}#hx-mp button{padding:6px 7px}#hx-mp b .p{display:none}}</style>
+      <b>▶ ${esc(site || 'Video')}<span class=p> is playing</span></b><button data-c=mini>Mini player</button><button data-c=background>Keep playing</button><button data-c=pause>Stop</button>
+      <label title="Always do what I pick"><input type=checkbox><span>Always</span></label><button class=x data-c=dismiss aria-label="Keep playing">✕</button>`;
+    parent.append(el);
+    let t = setTimeout(() => finish('background', false, true), 9000);
+    el.addEventListener('pointerenter', () => clearTimeout(t));
+    function finish(c, remember, quiet) { clearTimeout(t); el.remove(); done(c === 'dismiss' ? 'background' : c, remember, quiet); }
+    el.querySelectorAll('[data-c]').forEach(b => b.onclick = () => finish(b.dataset.c, el.querySelector('input').checked));
+  }
+  const LEAVE = [['ask', 'Ask me'], ['mini', 'Mini player'], ['background', 'Keep playing'], ['pause', 'Stop']];
+
+  return { mediaPrompt, LEAVE, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
     destructSweep, destructLabel, DESTRUCT, watchAdd, watchSweep, watchPanel, watchCount, syncLink, LS };
 };

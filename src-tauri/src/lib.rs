@@ -149,6 +149,8 @@ pub fn page_action_js(action: &str, arg: &str) -> Result<String, String> {
     let a = serde_json::to_string(arg).map_err(|e| e.to_string())?;
     let call = match action {
         "dark-on" => "__hushPage.dark(true)".to_string(),
+        "media-pause" => "document.querySelectorAll('video,audio').forEach(v=>v.pause())".to_string(),
+        "media-play" => "(document.querySelector('video')||document.querySelector('audio')||{play(){}}).play()".to_string(),
         "wheel" => "window.__hushWheel&&__hushWheel()".to_string(),
         "scroll-top" => "scrollTo({top:0,behavior:'smooth'})".to_string(),
         "scroll-bottom" => "scrollTo({top:document.documentElement.scrollHeight,behavior:'smooth'})".to_string(),

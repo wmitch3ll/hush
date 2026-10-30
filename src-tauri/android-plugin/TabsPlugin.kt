@@ -51,6 +51,7 @@ import app.tauri.plugin.*
 class TabsPlugin(private val act: Activity) : Plugin(act) {
     private class Tab(val id: String, var url: String, var wv: WebView?, var saved: Bundle? = null, val priv: Boolean = false) {
         var lastUsed = System.currentTimeMillis()
+        @Volatile var audio = false
         var box: SwipeRefreshLayout? = null   // pull-to-refresh container around the WebView
         /** Current page URL, readable from WebView's network thread (WebView methods like getUrl() are UI-thread only). */
         @Volatile var page: String = url
@@ -66,6 +67,17 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     private var fsView: View? = null; private var fsCb: WebChromeClient.CustomViewCallback? = null
     private var pendingPerm: PermissionRequest? = null
     private var pendingGeo: Pair<String, GeolocationPermissions.Callback>? = null
+    private val keepIds = mutableSetOf<String>()
+    /** Background media: keep | release | pause | play for one tab. */
+    @Command fun media(i: Invoke) { val a = i.parseArgs(MediaArgs::class.java)
+        act.runOnUiThread { val t = tabs[a.id]
+            when (a.action) {
+                "keep" -> keepIds += a.id
+                "release" -> keepIds -= a.id
+                "pause" -> { keepIds -= a.id; t?.wv?.evaluateJavascript("document.querySelectorAll('video,audio').forEach(v=>v.pause())", null) }
+                "play" -> t?.wv?.evaluateJavascript("(document.querySelector('video,audio')||{play(){}}).play()", null)
+            }
+            render(); i.resolve() } }
     private var floatId: String? = null; private var floatX = -1; private var floatY = -1; private var floatW = 0
     private var dragStart = IntArray(3); private var dragId = -1
     @Command fun floatTab(i: Invoke) { val a = i.parseArgs(FloatArgs::class.java)
@@ -265,7 +277,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         val audioMsgs = try { WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) } catch (e: Throwable) { false }
         if (audioMsgs) try {
             WebViewCompat.addWebMessageListener(w, "hushAudio", setOf("*")) { _, msg, _, _, _ ->
-                emit("tabAudio", JSObject().apply { put("id", t.id); put("audio", msg.data == "1") }) }
+                t.audio = msg.data == "1"; emit("tabAudio", JSObject().apply { put("id", t.id); put("audio", t.audio) }) }
             if (earlyScripts) WebViewCompat.addDocumentStartJavaScript(w, AUDIO_JS, setOf("*"))
         } catch (e: Throwable) {}
         w.webViewClient = object : WebViewClient() {
@@ -420,7 +432,13 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     /** Show the active tab's view (or none while a chrome sheet is open). */
     private fun render() = act.runOnUiThread {
         val root = act.findViewById<ViewGroup>(android.R.id.content)
-        tabs.values.forEach { t -> t.box?.let { b -> if (b.parent != null && (t.id != active || !visible) && !(t.id == floatId && visible)) {
+        // Media keeps playing: a tab you chose to keep playing (or the tab you're watching while the tab list is open)
+        // stays attached but moved off-screen, so the page isn't paused. Everything else is taken off screen.
+        tabs.values.forEach { t -> t.box?.let { b -> val off = (t.id != active || !visible) && !(t.id == floatId && visible)
+            if (off && (t.id in keepIds || (t.id == active && !visible && t.audio))) { if (b.parent == null) root.addView(b, FrameLayout.LayoutParams(-1, -1)) else if (b.translationX == 0f) snap(t); b.translationX = -100000f; return@let }
+            if (!off) b.translationX = 0f
+        } }
+        tabs.values.forEach { t -> t.box?.let { b -> if (b.parent != null && b.translationX == 0f && (t.id != active || !visible) && !(t.id == floatId && visible)) {
             // Grab the preview first (it needs the tab on screen), then take it off one frame later (the new tab covers it).
             if (b.tag != "leaving") { b.tag = "leaving"; snap(t) { b.tag = null; if ((t.id != active || !visible) && !(t.id == floatId && visible)) (b.parent as? ViewGroup)?.removeView(b) } } } } }
         // Floating video: that tab's view stays on top in a small, movable, resizable frame.
@@ -597,6 +615,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         act.runOnUiThread { active?.let { tabs[it]?.wv }?.evaluateJavascript(js, null) }; i.resolve() }
 
     @InvokeArg class PickArgs { var mode: String = "" }
+    @InvokeArg class MediaArgs { var id: String = ""; var action: String = "" }
     @InvokeArg class FloatArgs { var id: String = ""; var x: Int = -1; var y: Int = -1; var w: Int = 0; var stop: Boolean = true }
     @InvokeArg class TorArgs { var on: Boolean = false; var port: Int = 0 }
     @InvokeArg class ListenArgs { var action: String = ""; var rate: Double = 1.0 }

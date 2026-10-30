@@ -14,6 +14,7 @@ button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7
 
 #tabsbar{display:none!important}
 /* Positions/sizes of #addr, #tabsbar, #page are set by layout() in JS — one source of truth, also sent to Rust. */
+#np{display:none;align-items:center;gap:2px;height:30px;padding:0 4px 0 10px;border-radius:99px;background:var(--card);border:1px solid var(--line);color:var(--ink);font:600 11.5px system-ui;max-width:220px;flex:none}#np.on{display:flex}#np span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}#np button{width:26px;height:26px}
 #addr{position:absolute;display:flex;gap:4px;align-items:center;padding:0 10px;background:var(--bg);z-index:3}
 #addr.top{border-bottom:1px solid var(--line)}#addr.bottom{border-top:1px solid var(--line)}
 #tabsbar{position:absolute;display:flex;align-items:center;gap:8px;background:var(--bg);z-index:2;transition:transform .18s ease}
@@ -119,6 +120,7 @@ kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:
   </label>
   <span id=peekbar><button class=pb id=pk-open title="Keep it as a tab">Open as tab</button><button class=pb id=pk-close title="Close preview (Esc)">Close</button></span>
   <span id=lctl aria-label="Read aloud controls"><button id=l-prev title="Previous paragraph" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M6 5v14M18 6l-9 6 9 6z"/></svg></button><button id=l-pp title="Pause" aria-label="Pause"><svg viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></svg></button><button id=l-next title="Next paragraph" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M18 5v14M6 6l9 6-9 6z"/></svg></button><b id=l-rate title="Speed">1×</b><button id=l-stop title="Stop reading" aria-label="Stop"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>
+  <span id=np><span id=np-t title="Go to this tab"></span><button id=np-pp title="Pause / play" aria-label="Pause or play"></button><button id=np-mini title="Mini player" aria-label="Mini player"><svg viewBox="0 0 24 24"><rect x=3 y=5 width=18 height=14 rx=2 /><rect x=12 y=11 width=7 height=6 rx=1 /></svg></button><button id=np-x title="Stop" aria-label="Stop"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>
   <button id=newid title="New identity: fresh Tor circuits, then reload" aria-label="New Tor identity"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/><circle cx=12 cy=12 r=2 /></svg></button>
   <button id=onion title="Open this page in a Tor tab (Ctrl+Shift+O)" aria-label="Tor"><svg viewBox="0 0 24 24"><circle cx=12 cy=13 r=8 /><path d="M12 5c-3 2-4 5-4 8s1 6 4 8M12 5c3 2 4 5 4 8s-1 6-4 8M12 5v-2"/></svg></button>
   <button id=listen title="Listen to this page (Ctrl+Shift+R)" aria-label="Listen to page" disabled><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM16 8a5 5 0 0 1 0 8M19 5a9 9 0 0 1 0 14"/></svg></button>
@@ -148,7 +150,7 @@ let panel=null, revealed=false, overBar=false, hideT=null, downloads=[];
 const tab=id=>tabs.find(t=>t.id==id), hostOf=u=>{try{return new URL(u).hostname}catch{return''}};
 
 // ---------- preferences (stored in Rust as ui.<name>) ----------
-const DEF={video_quality:'1080',tabs_pos:'left',tabs_mode:'auto',hide_delay:'3',bar_pos:'top',density:'normal',theme:'system',tab_style:'auto',
+const DEF={video_quality:'1080',video_leave:'ask',tabs_pos:'left',tabs_mode:'auto',hide_delay:'3',bar_pos:'top',density:'normal',theme:'system',tab_style:'auto',
   zoom:'100',previews:'large',fp:'on',fp_off:'',bangs:'',memory_saver:'30',focus_sites:'youtube.com,reddit.com,x.com,instagram.com,tiktok.com,facebook.com',focus_until:'0',color:'graphite',force_dark:'false',history:'off',restore:'off',workspaces:'Personal',ws:'Personal'};
 const pref=k=>state.settings.ui?.[k]??DEF[k];
 async function setPref(k,v){state.settings.ui[k]=String(v);layout(true);try{await inv('set_setting',{key:'ui.'+k,value:String(v)})}catch(e){toast(String(e))}}
@@ -296,9 +298,9 @@ async function openTab(v,o={}){closePanel(true);newPending=false;if(!o.backgroun
   if(!o.background){cur=id}draw();layout();sync();if(!o.quiet)peek();return id}
 async function wake(t){const id=await inv('open_tab',{input:t.url,private:t.priv,tor:!!t.tor});const old=t.id;t.id=id;t.sleeping=false;if(cur==old)cur=id;return id}
 function select(id){closePanel(true);const t=tab(id);if(!t)return;maybeFloat(cur,id);t.last=Date.now();if(t.sleeping){wake(t).then(nid=>{cur=nid;draw();sync()});return}if(t.ws!=curWs()){state.settings.ui.ws=t.ws;inv('set_setting',{key:'ui.ws',value:t.ws})}
-  cur=id;if(split==id){split=null;inv('set_split',{label:null})}inv('switch_tab',{label:id});draw();sync()}
+  cur=id;if(bgMedia==id){bgMedia=null}npDraw();if(split==id){split=null;inv('set_split',{label:null})}inv('switch_tab',{label:id});draw();sync()}
 const closedStack=[];
-async function closeTab(id,quiet){if(floating==id){floating=null;await inv('float_close',{stop:true}).catch(()=>{})}{const c=tab(id);if(c&&c.url&&!c.priv){closedStack.push({url:c.url,ws:c.ws});if(closedStack.length>25)closedStack.shift()}}const next=await inv('close_tab',{label:id});tabs=tabs.filter(t=>t.id!=id);delete counts[id];if(split==id)split=null;
+async function closeTab(id,quiet){if(bgMedia==id){bgMedia=null;npDraw()}if(floating==id){floating=null;await inv('float_close',{stop:true}).catch(()=>{})}{const c=tab(id);if(c&&c.url&&!c.priv){closedStack.push({url:c.url,ws:c.ws});if(closedStack.length>25)closedStack.shift()}}const next=await inv('close_tab',{label:id});tabs=tabs.filter(t=>t.id!=id);delete counts[id];if(split==id)split=null;
   const t=tab(next);cur=t&&t.ws==curWs()?next:(inWs().at(-1)?.id??null);if(cur&&cur!=next)inv('switch_tab',{label:cur});
   draw();layout();sync();saveSession();if(!quiet&&tabs.length)peek()}
 function cycle(d){const w=inWs();if(w.length<2)return;const i=w.findIndex(t=>t.id==cur);select(w[(i+d+w.length)%w.length].id);peek()}
@@ -461,9 +463,21 @@ let floating=null;
 // Diagnostics (Ctrl+K → Diagnostics): recent internal events, to help track down problems.
 const DIAG=[];T.event.listen('diag',({payload:p})=>{DIAG.unshift(new Date().toLocaleTimeString()+' '+p.what+' '+(p.tab||'')+': '+p.msg);DIAG.length=Math.min(DIAG.length,40)});
 T.event.listen('tab-audio',({payload:p})=>{const t=tab(p.tab);if(t)t.audio=p.audio});
-function maybeFloat(from,to){if(!from||from==to||pref('float_video')=='off')return;const t=tab(from);if(!t||!t.audio||t.muted||t.sleeping)return;
-  const [x,y,w]=(pref('float_pos')||'').split(',').map(Number);floating=from;
-  inv('float_tab',{tab:from,...(isFinite(x)&&isFinite(y)&&w>0?{x,y,w}:{})}).catch(()=>{floating=null})}
+// Leaving a tab that's playing: do what Settings says (Ask / Mini player / Keep playing / Stop).
+var bgMedia=null,bgPaused=false;
+function miniPlayer(id){const [x,y,w]=(pref('float_pos')||'').split(',').map(Number);floating=id;bgMedia=null;npDraw();
+  inv('float_tab',{tab:id,...(isFinite(x)&&isFinite(y)&&w>0?{x,y,w}:{})}).catch(()=>{floating=null})}
+function mediaChoice(id,c){if(c=='mini')miniPlayer(id);else if(c=='pause'){inv('page_action',{action:'media-pause',tab:id}).catch(()=>{});if(bgMedia==id)bgMedia=null}else{bgMedia=id;bgPaused=false}npDraw()}
+function maybeFloat(from,to){if(!from||from==to)return;const t=tab(from);if(!t||!t.audio||t.muted||t.sleeping||floating==from)return;
+  const mode=pref('float_video')=='off'?'background':pref('video_leave');
+  if(mode!='ask')return mediaChoice(from,mode);
+  bgMedia=from;bgPaused=false;npDraw();
+  HX.mediaPrompt($('#addr'),hostOf(t.url).replace(/^www\./,''),(c,remember,quiet)=>{if(remember){setPref('video_leave',c);toast('Saved — change it in Settings › Video')}if(!quiet)mediaChoice(from,c)})}
+function npDraw(){const t=bgMedia&&tab(bgMedia);$('#np').classList.toggle('on',!!t&&bgMedia!=cur);if(!t)return;
+  $('#np-t').textContent='♪ '+hostOf(t.url).replace(/^www\./,'');$('#np-pp').innerHTML=bgPaused?'<svg viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></svg>':'<svg viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></svg>'}
+$('#np-t').onclick=()=>{const id=bgMedia;bgMedia=null;npDraw();if(id)select(id)};
+$('#np-pp').onclick=()=>{if(!bgMedia)return;bgPaused=!bgPaused;inv('page_action',{action:bgPaused?'media-pause':'media-play',tab:bgMedia});npDraw()};
+$('#np-mini').onclick=()=>bgMedia&&miniPlayer(bgMedia);$('#np-x').onclick=()=>{if(bgMedia)inv('page_action',{action:'media-pause',tab:bgMedia});bgMedia=null;npDraw()};
 T.event.listen('float-action',({payload:p})=>{if(p.a=='open'){floating=null;select(p.tab)}else if(p.a=='close')floating=null;
   else if(p.a=='moved')setPref('float_pos',[p.x,p.y,p.w].map(Math.round).join(','))});
 let peeking=false;
@@ -654,7 +668,7 @@ function renderSettings(){
   ${row('Clean links','Removes tracking tags (utm, fbclid, gclid…) from links you open and copy',sw('clean_links',pref('clean_links')!='off'))}
   ${row('Video controls','Speed, ±10 s, loop and pop-out on any video',sw('video_bar',pref('video_bar')!='off'))}
   ${row('YouTube quality','Videos start at this quality instead of YouTube’s low automatic pick',seg('video_quality',[['1080','1080p'],['720','720p'],['1440','1440p'],['2160','4K'],['auto','Auto']]))}
-  ${row('Floating video','Switch tabs while a video plays and it keeps going in a small player — drag it anywhere, drag its corner to resize',sw('float_video',pref('float_video')!='off'))}
+  ${row('When you leave a playing video','Ask each time, open the mini player (drag it anywhere, drag its corner to resize), keep it playing in the background, or stop it',seg('video_leave',HX.LEAVE))}
   ${row('Change watch','Get told when a price or text on a page changes','<button class=btn id=s-watch>Open</button>')}
   <h3>Tabs & history</h3>
   ${row('Reopen tabs on start','Restores your tabs and workspaces next time (private tabs never)',sw('restore',pref('restore')=='on'))}

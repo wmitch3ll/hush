@@ -31,6 +31,7 @@ body.bottom #top{border-bottom:0;border-top:1px solid var(--line)}
 .ib svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .ib:active{background:var(--line)}
 #shield.off{opacity:.4}#shield.priv::after{content:"";position:absolute;inset:9px;border:1.5px dashed var(--mute);border-radius:50%}
+#np{color:var(--acc)}#np.on svg{animation:npb 1.2s ease-in-out infinite alternate}@keyframes npb{to{transform:scale(1.12)}}
 #tabs-btn.playing::after{content:"";position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:50%;background:var(--acc);border:2px solid var(--bg)}
 .card .snd{position:absolute;top:6px;left:6px;width:30px;height:30px;border-radius:50%;background:var(--card);box-shadow:0 1px 3px #0003;display:grid;place-items:center}.card .snd svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round}
 #tabs-btn span{width:22px;height:22px;border:1.6px solid var(--ink);border-radius:7px;font-weight:600;font-size:12px;display:grid;place-items:center}
@@ -108,6 +109,7 @@ body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
         <button class="ib" id="finddn" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
         <button class="ib" id="findx" aria-label="Close find"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>
     </div>
+    <button id="np" class="ib" aria-label="Now playing" style="display:none"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg></button>
     <button id="tabs-btn" class="ib" aria-label="Tabs"><span>1</span></button>
     <button id="menu-btn" class="ib" aria-label="Menu"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg></button>
     <div id="bar"></div>
@@ -162,7 +164,7 @@ let tabs=[], cur=null, nid=1, sheet=null, downloads=[], typing=false, finding=fa
 const T=()=>tabs.find(t=>t.id===cur);
 
 // ---------- preferences (stored in Rust as ui.<name>) ----------
-const DEF={video_quality:"1080",fp:"on",fp_off:"",bg_play:"true",memory_saver:"10",bangs:"",focus_sites:"youtube.com,reddit.com,x.com,instagram.com,tiktok.com,facebook.com",focus_until:"0",color:"graphite",bar_pos:"top",theme:"system",text_zoom:"100",desktop:"false",pull_refresh:"true",force_dark:"false",history:"off",restore:"off",workspaces:"Personal",ws:"Personal"};
+const DEF={video_quality:"1080",video_leave:"ask",fp:"on",fp_off:"",bg_play:"true",memory_saver:"10",bangs:"",focus_sites:"youtube.com,reddit.com,x.com,instagram.com,tiktok.com,facebook.com",focus_until:"0",color:"graphite",bar_pos:"top",theme:"system",text_zoom:"100",desktop:"false",pull_refresh:"true",force_dark:"false",history:"off",restore:"off",workspaces:"Personal",ws:"Personal"};
 const pref=k=>state.settings.ui?.[k]??DEF[k];
 async function setPref(k,v){state.settings.ui[k]=String(v);applyPrefs();try{await inv("set_setting",{key:"ui."+k,value:String(v)})}catch(e){}}
 // Browser color: a hue/saturation tints every surface; light and dark variants are derived from it.
@@ -202,7 +204,7 @@ async function switchWs(name,dir){await setPref("ws",name);const last=inWs().at(
 // ---------- tabs ----------
 function newTab(priv,quiet){maybeFloat(cur);const t={id:nid++,native:null,url:"",title:"",priv:!!priv,ws:curWs(),canBack:false,canFwd:false,last:Date.now()};tabs.push(t);cur=t.id;
   if(!quiet){show(null);render();setTimeout(()=>$("#url").focus(),80)}return t}
-function select(id,anim){const t=tabs.find(x=>x.id===id);if(!t)return;if(t.ws!==curWs())setPref("ws",t.ws);if(id!==cur)maybeFloat(cur);if(floating===t.native){floating=null;native("floatClose",{stop:false}).catch(()=>{})}cur=id;t.last=Date.now();show(null);
+function select(id,anim){const t=tabs.find(x=>x.id===id);if(!t)return;if(t.ws!==curWs())setPref("ws",t.ws);if(id!==cur)maybeFloat(cur);if(floating===t.native){floating=null;native("floatClose",{stop:false}).catch(()=>{})}if(bgMedia===id){bgMedia=null;native("media",{id:t.native,action:"release"}).catch(()=>{})}cur=id;t.last=Date.now();show(null);
   if(anim){const p=$("#pill");p.classList.add(anim);setTimeout(()=>p.classList.remove(anim),180)}
   if(t.url&&!t.native)openNative(t);render()}
 async function openNative(t){try{const r=await inv("open_tab",{input:t.url,private:t.priv});t.native=typeof r==="string"?r:r;render()}catch(e){toast("Couldn’t open that page")}}
@@ -225,7 +227,7 @@ function render(){
   $("#shield").classList.toggle("off",allow.has(h));$("#shield").classList.toggle("priv",!!t?.priv);
   $("#tabs-btn span").textContent=inWs().length;
   const snd=$("#snd");snd.style.display=live&&(t.audio||t.muted)&&!typing?"grid":"none";snd.innerHTML=t?.muted?MUT:SPK;snd.setAttribute("aria-label",t?.muted?"Unmute this tab":"Mute this tab");
-  $("#tabs-btn").classList.toggle("playing",tabs.some(x=>x.id!==cur&&x.audio&&!x.muted));
+  npDraw();$("#tabs-btn").classList.toggle("playing",tabs.some(x=>x.id!==cur&&x.audio&&!x.muted));
   if(typing){renderSuggest();syncNative();return}
   const hk=live?"":cur+"|"+!!t?.priv+"|"+state.bookmarks.length;
   if(live){$("#view").innerHTML="";$("#view").dataset.h=""}else if($("#view").dataset.h!==hk){$("#view").dataset.h=hk;renderHome(t)}
@@ -349,9 +351,23 @@ function qrSheet(u){const el=$("#site");el.innerHTML=head("Scan to open")+`<div 
 // ---------- start page, Listen, Boosts, Peek, screenshots, auto-archive (shared code in extras.js) ----------
 let listenSt="",lRate=1,torOn=false,floating=null;
 // Floating video: leave a tab that's playing and it keeps going in a small player you can drag and resize.
-function maybeFloat(fromId){if(pref("float_video")==="off")return;const t=tabs.find(x=>x.id===fromId);if(!t||!t.native||!t.audio||t.muted)return;
-  const [x,y,w]=(pref("float_pos")||"").split(",").map(Number);floating=t.native;
+// Leaving a tab that's playing: Ask / Mini player / Keep playing / Stop (Settings › When you leave a playing video).
+var bgMedia=null,bgPaused=false;
+function miniPlayer(t){const [x,y,w]=(pref("float_pos")||"").split(",").map(Number);floating=t.native;
+  native("media",{id:t.native,action:"release"}).catch(()=>{});if(bgMedia===t.id)bgMedia=null;npDraw();
   native("floatTab",{id:t.native,...(w>0?{x,y,w}:{})}).catch(()=>{floating=null})}
+function mediaChoice(t,c){if(!t||!t.native)return;if(c==="mini")miniPlayer(t);
+  else if(c==="pause"){native("media",{id:t.native,action:"pause"}).catch(()=>{});if(bgMedia===t.id)bgMedia=null}
+  else{bgMedia=t.id;bgPaused=false;native("media",{id:t.native,action:"keep"}).catch(()=>{})}npDraw()}
+function maybeFloat(fromId){const t=tabs.find(x=>x.id===fromId);if(!t||!t.native||!t.audio||t.muted||floating===t.native)return;
+  const mode=pref("float_video")==="off"?"background":pref("video_leave");
+  if(mode!=="ask")return mediaChoice(t,mode);
+  bgMedia=t.id;native("media",{id:t.native,action:"keep"}).catch(()=>{});npDraw();   // nothing stops while you decide
+  HX.mediaPrompt($("#top"),bare(t.url),(c,remember,quiet)=>{if(remember){setPref("video_leave",c);toast("Saved — change it in Settings")}if(!quiet)mediaChoice(t,c)})}
+function npDraw(){const t=tabs.find(x=>x.id===bgMedia);$("#np").style.display=t&&t.id!==cur?"grid":"none";$("#np").classList.toggle("on",!!t&&!bgPaused)}
+gesture($("#np"),{tap:()=>{const t=tabs.find(x=>x.id===bgMedia);if(!t)return;actions("♪ "+bare(t.url),[
+  [bgPaused?"Play":"Pause",()=>{bgPaused=!bgPaused;native("media",{id:t.native,action:bgPaused?"pause":"play"}).then(()=>{if(bgPaused)native("media",{id:t.native,action:"keep"})});npDraw()}],
+  ["Mini player",()=>miniPlayer(t)],["Go to this tab",()=>select(t.id)],["Stop",()=>{native("media",{id:t.native,action:"pause"});bgMedia=null;npDraw()}]])}});
 async function setTor(on){show(null);try{
   if(on){toast("Connecting to Tor… the first time can take ~20 s");const port=await inv("tor_start");await native("torMode",{on:true,port});toast("Tor mode on — sites can’t see your IP")}
   else{await native("torMode",{on:false});toast("Tor mode off")}
@@ -542,7 +558,7 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
    ${item("Clean links","Removes tracking tags from links you open and copy",sw("clean_links",pref("clean_links")!=="off"))}
    ${item("Video controls","Speed, ±10 s, loop and pop-out on any video",sw("video_bar",pref("video_bar")!=="off"))}
    ${item("YouTube quality","Videos start at this quality",seg("video_quality",[["1080","1080p"],["720","720p"],["auto","Auto"]]))}
-   ${item("Floating video","Switch tabs while a video plays and it keeps going in a small player — drag it anywhere, drag its corner to resize",sw("float_video",pref("float_video")!=="off"))}
+   <div class="item" style="display:block"><div style="margin-bottom:8px">When you leave a playing video<small>Ask each time · a mini player you can drag and resize · keep playing in the background · or stop</small></div>${seg("video_leave",HX.LEAVE)}</div>
    ${item("Change watch","Get told when a price or text changes",'<button class="btn sm" id="s-watch">Open</button>')}
    <h3>Gestures</h3>
    <div class="item" style="display:block;line-height:1.9;font-size:13px">Address bar: swipe ← → switch tabs · swipe ${toPage()} all tabs · hold for commands<br>
