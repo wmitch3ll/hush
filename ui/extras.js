@@ -327,6 +327,13 @@ window.HushX = function (A) {
   }
   const LEAVE = [['ask', 'Ask me'], ['mini', 'Mini player'], ['background', 'Keep playing'], ['pause', 'Stop']];
 
-  return { mediaPrompt, LEAVE, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
+  // Plain-language explainer for the ⓘ next to Tor.
+  const TOR_INFO = `<div style="line-height:1.55;font-size:14px">
+    <p style="margin:0 0 10px"><b>Tor</b> is a free, volunteer-run network that hides where you are on the internet. Normally every site you visit sees your IP address — which reveals your rough location and internet provider.</p>
+    <p style="margin:0 0 10px">With Tor, your connection bounces through <b>three random relays</b> around the world, wrapped in three layers of encryption. The site only sees the last relay, and no single relay knows both who you are and what you’re visiting.</p>
+    <p style="margin:0 0 6px"><b>Good for</b></p><ul style="margin:0 0 10px;padding-left:20px"><li>Hiding your location and IP from sites and trackers</li><li>Keeping your internet provider from seeing which sites you visit</li><li>Getting past some network blocks</li></ul>
+    <p style="margin:0 0 6px"><b>Keep in mind</b></p><ul style="margin:0 0 10px;padding-left:20px"><li>Pages load slower — your traffic travels further</li><li>If you sign in to a site, that site still knows it’s you</li><li>Some sites show extra captchas or block Tor</li></ul>
+    <p style="margin:0;color:var(--mute);font-size:12.5px">Hush has Tor built in (the Tor Project’s Arti engine), so there’s nothing to install. Hush Messenger always uses it.</p></div>`;
+  return { TOR_INFO, mediaPrompt, LEAVE, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
     destructSweep, destructLabel, DESTRUCT, watchAdd, watchSweep, watchPanel, watchCount, syncLink, LS };
 };

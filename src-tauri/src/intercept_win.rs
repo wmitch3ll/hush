@@ -80,7 +80,7 @@ pub fn install_shortcuts(wv: &tauri::Webview) {
             if !ctrl { return Ok(()); }
             let digit = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
             let name = match vk {
-                0x4E if shift => "shift+n", 0x54 if shift => "shift+t", 0x42 if shift => "shift+b", 0x53 if shift => "shift+s", 0x52 if shift => "shift+r", 0x41 if shift => "shift+a",
+                0x4E if shift => "shift+n", 0x54 if shift => "shift+t", 0x42 if shift => "shift+b", 0x53 if shift => "shift+s", 0x52 if shift => "shift+r", 0x41 if shift => "shift+a", 0x4D if shift => "shift+m", 0x4F if shift => "shift+o",
                 0x31..=0x39 => digit[(vk - 0x31) as usize], 0x30 => "0", 0xBB | 0x6B => "+", 0xBD | 0x6D => "-",
                 0x4D => "m", 0x47 => "g",
                 0x54 => "t", 0x57 => "w", 0x4C => "l", 0x44 => "d", 0x42 => "b", 0x4A => "j", 0xBC => ",",

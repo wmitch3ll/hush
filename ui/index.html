@@ -62,6 +62,7 @@ body.tor #pill{border-color:#8b5cf6;box-shadow:0 0 0 3px #8b5cf622}#torb{display
 
 /* Panels (Settings, Downloads) take the page area while open. */
 .panel{max-width:640px;margin:0 auto;padding:28px 24px 60px;user-select:text}
+.panel.msgp{max-width:760px;padding:0;height:100%}.panel.msgp #hmx{height:calc(100vh - 64px);border-left:1px solid var(--line);border-right:1px solid var(--line)}
 .panel h2{font-weight:300;font-size:30px;letter-spacing:-.5px;display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
 .panel h3{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute);margin:26px 0 8px;font-weight:600}
 .row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 14px;background:var(--card);border:1px solid var(--line);border-radius:12px;margin-bottom:6px;min-height:50px}
@@ -121,6 +122,7 @@ kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:
   <span id=peekbar><button class=pb id=pk-open title="Keep it as a tab">Open as tab</button><button class=pb id=pk-close title="Close preview (Esc)">Close</button></span>
   <span id=lctl aria-label="Read aloud controls"><button id=l-prev title="Previous paragraph" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M6 5v14M18 6l-9 6 9 6z"/></svg></button><button id=l-pp title="Pause" aria-label="Pause"><svg viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></svg></button><button id=l-next title="Next paragraph" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M18 5v14M6 6l9 6-9 6z"/></svg></button><b id=l-rate title="Speed">1×</b><button id=l-stop title="Stop reading" aria-label="Stop"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>
   <span id=np><span id=np-t title="Go to this tab"></span><button id=np-pp title="Pause / play" aria-label="Pause or play"></button><button id=np-mini title="Mini player" aria-label="Mini player"><svg viewBox="0 0 24 24"><rect x=3 y=5 width=18 height=14 rx=2 /><rect x=12 y=11 width=7 height=6 rx=1 /></svg></button><button id=np-x title="Stop" aria-label="Stop"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>
+  <button id=msgb title="Messages — private, through Tor (Ctrl+Shift+M)" aria-label="Messages"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg><b id=msgcnt class=badge></b></button>
   <button id=newid title="New identity: fresh Tor circuits, then reload" aria-label="New Tor identity"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/><circle cx=12 cy=12 r=2 /></svg></button>
   <button id=onion title="Open this page in a Tor tab (Ctrl+Shift+O)" aria-label="Tor"><svg viewBox="0 0 24 24"><circle cx=12 cy=13 r=8 /><path d="M12 5c-3 2-4 5-4 8s1 6 4 8M12 5c3 2 4 5 4 8s-1 6-4 8M12 5v-2"/></svg></button>
   <button id=listen title="Listen to this page (Ctrl+Shift+R)" aria-label="Listen to page" disabled><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM16 8a5 5 0 0 1 0 8M19 5a9 9 0 0 1 0 14"/></svg></button>
@@ -140,6 +142,8 @@ kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:
 <div id=toast role=status></div>
 <script src="qr.js"></script>
 <script src="extras.js"></script>
+<script src="vendor/nostr.js"></script>
+<script src="messenger.js"></script>
 
 <script>
 const T=window.__TAURI__, inv=(c,a)=>T.core.invoke(c,a), $=s=>document.querySelector(s);
@@ -366,6 +370,7 @@ function shortcut(k){
   else if(k=='g'){if(!tab(cur))return;if(findOn&&$('#findq').value)inv('page_action',{action:'find',arg:$('#findq').value});else findMode(true)}
   else if(k=='f11')inv('toggle_fullscreen');
   else if(k=='shift+o')torTab();
+  else if(k=='shift+m')panel=='msg'?closePanel():openPanel('msg');
   else if(k=='shift+s'){if(tab(cur))snapshot(true)} else if(k=='shift+r'){if(tab(cur))listenToggle()} else if(k=='shift+a'){if(tab(cur))panel=='boost'?closePanel():openPanel('boost')}
   else if(k=='shift+b')panel=='bookmarks'?closePanel():openPanel('bookmarks');
   else if(k=='\\'){const o=inWs().filter(t=>t.id!=cur).at(-1);if(split)toggleSplit(split);else if(o)toggleSplit(o.id)}
@@ -376,7 +381,7 @@ addEventListener('keydown',e=>{const m=e.ctrlKey||e.metaKey,k=e.key.toLowerCase(
   if(m&&e.key=='Tab'){e.preventDefault();shortcut(e.shiftKey?'shift+tab':'tab')}
   else if(m&&e.shiftKey&&k=='n'){e.preventDefault();shortcut('shift+n')}
   else if(m&&e.shiftKey&&k=='t'){e.preventDefault();shortcut('shift+t')}
-  else if(m&&e.shiftKey&&['b','s','r','a','o'].includes(k)){e.preventDefault();shortcut('shift+'+k)}
+  else if(m&&e.shiftKey&&['b','s','r','a','o','m'].includes(k)){e.preventDefault();shortcut('shift+'+k)}
   else if(m&&/^[0-9]$/.test(e.key)){e.preventDefault();shortcut(e.key)}
   else if(m&&(e.key=='='||e.key=='+')){e.preventDefault();shortcut('+')}else if(m&&e.key=='-'){e.preventDefault();shortcut('-')}
   else if(m&&(k=='m'||k=='g')){e.preventDefault();shortcut(k)}
@@ -412,6 +417,8 @@ const RENDER={bookmarks:()=>renderBookmarks(),ext:()=>renderExt(),reading:()=>re
     HX.boost($('#bx'),h,()=>inv('nav',{action:'reload'}).catch(()=>{}));wire(p)},
   archive:()=>{const p=$('#panel');p.innerHTML=`<h2>Archived tabs ${closeBtn}</h2><div id=arx></div>`;HX.archivePanel($('#arx'),u=>openTab(u));wire(p)},
   diag:()=>{const p=$('#panel');p.innerHTML=`<h2>Diagnostics ${closeBtn}</h2><p style="color:var(--mute);margin:-8px 0 12px">Recent internal events. A screenshot of this helps fix problems.</p><pre style="white-space:pre-wrap;font:12px ui-monospace,monospace;user-select:text">${esc(DIAG.join('\n')||'Nothing yet — open the tab bar or load a page, then come back.')}</pre>`;wire(p)},
+  msg:()=>{const p=$('#panel');p.classList.add('msgp');p.innerHTML='<div id=hmx></div>';HM.open($('#hmx'))},
+  torinfo:()=>{const p=$('#panel');p.innerHTML=`<h2>What is Tor? ${closeBtn}</h2>`+HX.TOR_INFO+`<p style="margin-top:14px"><button class=btn id=ti-go>Open a Tor tab</button></p>`;wire(p);$('#ti-go').onclick=()=>{closePanel();torTab(true)}},
   gest:()=>{const p=$('#panel');p.innerHTML=`<h2>Gestures & quick wheel ${closeBtn}</h2><div id=gx></div>`;HX.gesturePanel($('#gx'));wire(p)},
   watch:()=>{const p=$('#panel');p.innerHTML=`<h2>Change watch ${closeBtn}</h2><div id=wx></div>`;HX.watchPanel($('#wx'),u=>openTab(u));wire(p)},
   shot:()=>{$('#panel').innerHTML='<p style="color:var(--mute);padding:40px;text-align:center">Screenshot editor</p>'}};
@@ -443,7 +450,7 @@ async function torTab(blank){const t=tab(cur);if(!await torReady())return;
   const u=!blank&&t&&!t.tor&&/^https?:/.test(t.url)?t.url:'https://duckduckgo.com/';await openTab(u,{tor:true})}
 async function newIdentity(){try{await inv('tor_new_identity');
   if(tab(cur)?.tor)inv('nav',{action:'reload'});toast('New identity — fresh Tor circuits')}catch(e){toast(String(e))}}
-$('#onion').onclick=()=>torTab();$('#newid').onclick=newIdentity;
+$('#onion').onclick=()=>torTab();$('#torb').style.cursor='help';$('#torb').onclick=e=>{e.preventDefault();openPanel('torinfo')};$('#newid').onclick=newIdentity;
 T.event.listen('tor-status',({payload:p})=>{if(p.state=='error')toast(p.msg)});
 // ---------- actions (gestures, quick wheel, palette) ----------
 function destructMenu(id){const t=tab(id);if(!t)return;openPanel('pal');const p=$('#panel');
@@ -480,6 +487,10 @@ $('#np-pp').onclick=()=>{if(!bgMedia)return;bgPaused=!bgPaused;inv('page_action'
 $('#np-mini').onclick=()=>bgMedia&&miniPlayer(bgMedia);$('#np-x').onclick=()=>{if(bgMedia)inv('page_action',{action:'media-pause',tab:bgMedia});bgMedia=null;npDraw()};
 T.event.listen('float-action',({payload:p})=>{if(p.a=='open'){floating=null;select(p.tab)}else if(p.a=='close')floating=null;
   else if(p.a=='moved')setPref('float_pos',[p.x,p.y,p.w].map(Math.round).join(','))});
+// ---------- Hush Messenger ----------
+const HM=HushMsg({inv,listen:(e,f)=>T.event.listen(e,f),toast,mobile:false,open:u=>{closePanel();openTab(u)},page:()=>{const t=tab(cur);return t&&/^https?:/.test(t.url)&&!t.priv?{url:t.url}:null},
+  badge:n=>{$('#msgcnt').textContent=n>99?'99+':n;$('#msgcnt').style.display=n?'grid':'none'},qr:s=>{try{return hushQR.svg(s)}catch(e){return ''}},close:()=>closePanel()});
+$('#msgb').onclick=()=>panel=='msg'?closePanel():openPanel('msg');setTimeout(()=>HM.boot(),1500);
 let peeking=false;
 function peekUI(u){$('#peekbar').classList.toggle('on',peeking);if(peeking){$('#bar').value=u||'';toast('Peeking — Esc to close')}else draw()}
 async function peekClose(){peeking=false;await inv('peek_close').catch(()=>{});peekUI()}
@@ -493,7 +504,7 @@ setInterval(()=>HX.archiveSweep(tabs,cur,id=>{if(id!=split)closeTab(id,true)}),5
 function openPanel(name){const was=panel;panel=name;sync();
   if(name!='suggest')$('#panel').classList.toggle('pal',name=='pal'||name=='ws');else $('#panel').classList.add('pal');
   $('#panel').hidden=false;$('#home').style.display='none';RENDER[name]();draw();if(was!=name)$('#page').scrollTop=0}
-function closePanel(silent){if(!panel)return;panel=null;$('#panel').textContent='';$('#panel').classList.remove('pal');sync();if(!silent)draw()}
+function closePanel(silent){if(!panel)return;if(panel=='msg'){HM.close();$('#panel').classList.remove('msgp')}panel=null;$('#panel').textContent='';$('#panel').classList.remove('pal');sync();if(!silent)draw()}
 const closeBtn='<button class=btn data-close>Done</button>';
 function wire(root){root.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>closePanel())}
 
@@ -515,7 +526,7 @@ const ACTIONS=()=>[
   ['Split view with last tab','Ctrl+\\',()=>{closePanel();shortcut('\\')}],['Site settings & QR code','',()=>tab(cur)&&openPanel('site')],
   ['Toggle dark mode for websites','',async()=>{await setPref('force_dark',pref('force_dark')=='true'?'false':'true');applyDarkNow();closePanel()}],
   ['Read later','',async()=>{const t=tab(cur);if(!t)return;await inv('bookmark_add',{title:hostOf(t.url),url:t.url,folder:'reading'});await loadState();closePanel();toast('Added to reading list')}],
-  ['Reading list','',()=>openPanel('reading')],['Self-destruct this tab','',()=>cur&&destructMenu(cur)],['Change watch','',()=>openPanel('watch')],['Gestures & quick wheel','',()=>openPanel('gest')],['Diagnostics','',()=>openPanel('diag')],['New Tor tab','Ctrl+Shift+O',()=>{closePanel();torTab(true)}],['New Tor identity','',()=>{closePanel();newIdentity()}],['Listen to this page','Ctrl+Shift+R',()=>{closePanel();tab(cur)&&listenToggle()}],['Boosts for this site','Ctrl+Shift+A',()=>tab(cur)&&openPanel('boost')],['Screenshot — whole page','Ctrl+Shift+S',()=>{closePanel();tab(cur)&&snapshot(true)}],['Screenshot — visible area','',()=>{closePanel();tab(cur)&&snapshot(false)}],['Archived tabs','',()=>openPanel('archive')],['Customize start page','',()=>{closePanel();renderHome()}],['Save page as PDF / print','Ctrl+P',()=>{closePanel();tab(cur)&&inv('page_action',{action:'print'})}],
+  ['Reading list','',()=>openPanel('reading')],['Self-destruct this tab','',()=>cur&&destructMenu(cur)],['Change watch','',()=>openPanel('watch')],['Gestures & quick wheel','',()=>openPanel('gest')],['Diagnostics','',()=>openPanel('diag')],['New Tor tab','Ctrl+Shift+O',()=>{closePanel();torTab(true)}],['Messages','Ctrl+Shift+M',()=>openPanel('msg')],['What is Tor?','',()=>openPanel('torinfo')],['New Tor identity','',()=>{closePanel();newIdentity()}],['Listen to this page','Ctrl+Shift+R',()=>{closePanel();tab(cur)&&listenToggle()}],['Boosts for this site','Ctrl+Shift+A',()=>tab(cur)&&openPanel('boost')],['Screenshot — whole page','Ctrl+Shift+S',()=>{closePanel();tab(cur)&&snapshot(true)}],['Screenshot — visible area','',()=>{closePanel();tab(cur)&&snapshot(false)}],['Archived tabs','',()=>openPanel('archive')],['Customize start page','',()=>{closePanel();renderHome()}],['Save page as PDF / print','Ctrl+P',()=>{closePanel();tab(cur)&&inv('page_action',{action:'print'})}],
   ['Bookmarks','Ctrl+Shift+B',()=>openPanel('bookmarks')],['Reopen closed tab','Ctrl+Shift+T',()=>{closePanel();shortcut('shift+t')}],
   ['Mute / unmute tab','Ctrl+M',()=>{closePanel();shortcut('m')}],['Full screen','F11',()=>{closePanel();shortcut('f11')}],
   ['Zoom in','Ctrl+=',()=>shortcut('+')],['Zoom out','Ctrl+−',()=>shortcut('-')],['Reset zoom','Ctrl+0',()=>shortcut('0')],
@@ -683,6 +694,7 @@ function renderSettings(){
   ${s.search=='custom'?`<input class=txt id=s-custom placeholder="https://example.com/search?q=%s" value="${esc(s.custom_search)}">`:''}
   ${row('Search shortcuts','<kbd>!w</kbd> Wikipedia · <kbd>!yt</kbd> YouTube · <kbd>!a</kbd> Amazon · <kbd>!gh</kbd> GitHub · <kbd>!r</kbd> Reddit · <kbd>!m</kbd> maps · <kbd>!i</kbd> images'+(pref('bangs')?' · yours: '+esc(pref('bangs').split('|').map(x=>'!'+x.split('=')[0]).join(' ')):''),'<button class=btn id=s-bangs>Edit mine</button>')}
   <h3>Privacy</h3>
+  ${row('Tor','Hide your IP address and location — the onion button (or Ctrl+Shift+O) opens the page in a Tor tab','<button class=btn id=s-tori title="What is Tor?">ⓘ What is Tor?</button>')}
   ${row('Fingerprint protection','Each site sees slightly different device details, so trackers can’t recognize you across sites. Turn it off per site from the shield if a page misbehaves.',sw('fp',pref('fp')!='off'))}
   ${row('Extensions','Chrome Web Store extensions such as Bitwarden or Dark Reader','<button class=btn id=s-ext>Manage</button>')}
   ${row('Blocked counter','Badge on the shield showing what was blocked on this page',`<button class="sw ${s.counter!==false?'on':''}" id=s-counter aria-label="Blocked counter"></button>`)}
@@ -709,6 +721,7 @@ function renderSettings(){
   p.querySelectorAll('[data-sw]').forEach(b=>b.onclick=async()=>{const k=b.dataset.sw,on=b.classList.contains('on');
     await setPref(k,k=='force_dark'?String(!on):(on?'off':'on'));if(k=='fp')toast('Applies to tabs you open from now on');if(k=='force_dark')applyDarkNow();if(k=='restore')saveSession();renderSettings()});
   $('#s-hist').onclick=e=>{e.preventDefault();openPanel('history')};
+  $('#s-tori').onclick=()=>openPanel('torinfo');
   HX.lookPicker($('#s-look'),()=>{applyColor();renderSettings()});$('#s-gest').onclick=()=>openPanel('gest');$('#s-watch').onclick=()=>openPanel('watch');
   $('#s-ext').onclick=()=>openPanel('ext');$('#s-rl').onclick=()=>openPanel('reading');$('#s-focus').onclick=()=>openPanel('focus');$('#s-send').onclick=()=>openPanel('send');$('#s-about').onclick=()=>openPanel('about');
   $('#s-bangs').onclick=async()=>{const v=prompt('Your shortcuts, separated by | as  key=https://site.com/search?q=%s',pref('bangs'));if(v===null)return;
