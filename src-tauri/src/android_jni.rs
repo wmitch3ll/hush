@@ -32,3 +32,10 @@ pub extern "system" fn Java_app_hush_browser_Native_darkJs(
         .unwrap_or_default();
     env.new_string(js).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
 }
+
+/// Document-start scriptlets (YouTube / anti-adblock fixes) for a new WebView.
+#[no_mangle]
+pub extern "system" fn Java_app_hush_browser_Native_scriptletJs(env: JNIEnv, _c: JClass) -> jni::sys::jstring {
+    let js = std::panic::catch_unwind(crate::scriptlets_init_js).unwrap_or_default();
+    env.new_string(js).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
+}

@@ -40,6 +40,11 @@ jobs:
       # Gradle calls back into the CLI that ran `init`; the cargo-installed one is what it expects. rust-cache keeps the binary.
       - run: command -v cargo-tauri || cargo install tauri-cli --version "^2" --locked
       - run: sh tools/fetch-lists.sh
+      - name: Refresh uBlock Origin scriptlets (YouTube / anti-adblock)
+        run: |
+          git clone -q --depth 1 https://github.com/gorhill/uBlock /tmp/ublock
+          git clone -q --depth 1 --branch gh-pages https://github.com/uBlockOrigin/uAssets /tmp/uassets
+          node tools/build-scriptlets.mjs /tmp/ublock /tmp/uassets
       - name: Build APK
         shell: bash
         run: |

@@ -31,7 +31,7 @@ button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7
 #tabsbar.v .tab{width:38px;text-transform:uppercase}
 #tabsbar.h .tab{height:28px;max-width:180px;padding:0 10px;font-weight:500}
 #tabsbar.h .tab span{overflow:hidden;text-overflow:ellipsis}
-.tab:hover{color:var(--ink)}.tab.on{border-color:var(--ink);color:var(--ink);box-shadow:0 0 0 3px var(--glow)}
+.tab:hover{color:var(--ink)}.tab.on{border-color:var(--acc);color:var(--ink);box-shadow:0 0 0 3px var(--glow)}
 .compact .tab{height:32px}.compact #tabsbar.v .tab{width:32px}.compact #tabsbar.h .tab{height:24px}
 
 #pill{flex:1;display:flex;align-items:center;gap:6px;height:34px;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:0 4px 0 12px;margin:0 6px;transition:border-color .15s,box-shadow .15s;min-width:0}
@@ -42,12 +42,12 @@ button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7
 #bar::placeholder{color:var(--mute)}
 .badge{position:absolute;top:2px;right:0;min-width:14px;height:14px;padding:0 3px;border-radius:7px;background:var(--ink);color:var(--bg);font-size:9px;font-weight:600;display:none;place-items:center}
 #shield.off{opacity:.4}#shield.off .badge{display:none!important}
-#load{position:absolute;left:0;right:0;height:1px;background:var(--ink);transform-origin:left;transform:scaleX(0);opacity:0;transition:transform .4s,opacity .3s;z-index:4}
+#load{position:absolute;left:0;right:0;height:2px;background:var(--acc);transform-origin:left;transform:scaleX(0);opacity:0;transition:transform .4s,opacity .3s;z-index:4}
 #load.on{opacity:1;transform:scaleX(.7);transition:transform 6s cubic-bezier(.1,.6,.2,1)}
 
 #page{position:absolute;overflow:auto}
 #home{height:100%;display:grid;place-content:center;justify-items:center;text-align:center;gap:26px}
-#home h1 .wordmark{display:block;height:68px;width:auto;margin:0 auto 22px}#home h1{font-weight:200;font-size:64px;letter-spacing:-2px}#home p{color:var(--mute);margin-top:-18px}
+#home h1{font:300 66px/1 ui-serif,"Times New Roman",Times,Georgia,serif;letter-spacing:-2px;margin-bottom:6px}#home p{color:var(--mute);margin-top:-18px}
 #bms{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;max-width:560px}
 .bm{all:unset;cursor:pointer;display:grid;justify-items:center;gap:6px;width:68px;color:var(--mute);font-size:11px}
 .bm i{font-style:normal;width:50px;height:50px;border-radius:50%;background:var(--card);border:1px solid var(--line);display:grid;place-items:center;font-size:18px;color:var(--ink);text-transform:uppercase}
@@ -65,7 +65,7 @@ button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7
 .btn{width:auto;height:30px;padding:0 12px;border:1px solid var(--line);border-radius:9px;color:var(--ink);font-size:12px}
 .sw{width:36px;height:20px;border-radius:10px;background:var(--line);position:relative;padding:0}
 .sw::after{content:"";position:absolute;left:2px;top:2px;width:16px;height:16px;border-radius:50%;background:var(--card);transition:.15s}
-.sw.on{background:var(--ink)}.sw.on::after{left:18px}
+.sw.on{background:var(--acc)}.sw.on::after{left:18px}
 select,input.txt{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:6px 8px}
 input.txt{width:100%;margin-top:6px}
 .empty{color:var(--mute);text-align:center;padding:40px 0}
@@ -87,6 +87,7 @@ input.txt{width:100%;margin-top:6px}
 .qr{width:200px;height:200px;border-radius:12px;overflow:hidden;margin:0 auto;border:1px solid var(--line)}.qr svg{width:100%;height:100%;display:block}
 .chips{display:flex;gap:6px;flex-wrap:wrap}.chips button{width:auto;height:28px;padding:0 12px;border:1px solid var(--line);border-radius:99px;font-size:12px;color:var(--ink)}
 .row a{color:inherit}
+.swatches{display:flex;gap:8px;align-items:center}.swatches button{width:24px;height:24px;border-radius:50%;border:2px solid var(--line)}.swatches button.on{outline:2px solid var(--ink);outline-offset:2px}
 kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:4px;padding:1px 5px;color:var(--mute)}
 #toast{position:absolute;background:var(--ink);color:var(--bg);padding:7px 12px;border-radius:99px;font-size:12px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:5}
 #toast.on{opacity:1}
@@ -117,7 +118,7 @@ kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:
 </div>
 <div id=load></div>
 <div id=page>
-  <div id=home><h1><svg class="wordmark" viewBox="-30 -30 1180 460" role="img" aria-label="hush."><g fill="none" stroke="currentColor" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V400M0 400V260c0-70 42-110 100-110s100 40 100 110v140"/><path transform="translate(290 0)" d="M0 150v140c0 70 42 110 100 110s100-40 100-110V150M200 150v250"/><path transform="translate(580 0)" d="M152 190c-18-26-44-40-76-40-44 0-72 24-72 58 0 74 152 42 152 124 0 42-34 68-82 68-36 0-66-14-84-40"/><path transform="translate(820 0)" d="M0 0V400M0 400V260c0-70 42-110 100-110s100 40 100 110v140"/></g><circle cx="1112" cy="393" r="30" fill="currentColor"/></svg></h1><p>nothing here but you.</p><div class=stats id=stats></div><div id=bms></div></div>
+  <div id=home><h1 class="wordmark">hush.</h1><p>nothing here but you.</p><div class=stats id=stats></div><div id=bms></div></div>
   <div id=panel class=panel hidden></div>
 </div>
 <div id=toast role=status></div>
@@ -133,13 +134,25 @@ const tab=id=>tabs.find(t=>t.id==id), hostOf=u=>{try{return new URL(u).hostname}
 
 // ---------- preferences (stored in Rust as ui.<name>) ----------
 const DEF={tabs_pos:'left',tabs_mode:'auto',hide_delay:'3',bar_pos:'top',density:'normal',theme:'system',tab_style:'auto',
-  force_dark:'false',history:'off',restore:'off',workspaces:'Personal',ws:'Personal'};
+  color:'graphite',force_dark:'false',history:'off',restore:'off',workspaces:'Personal',ws:'Personal'};
 const pref=k=>state.settings.ui?.[k]??DEF[k];
 async function setPref(k,v){state.settings.ui[k]=String(v);layout(true);try{await inv('set_setting',{key:'ui.'+k,value:String(v)})}catch(e){toast(String(e))}}
 
 // ---------- layout: places bars, tells Rust where the page goes ----------
 const EDGE=6;
+// Browser color: a hue/saturation tints every surface; light and dark variants are derived from it.
+const COLORS={graphite:null,sand:[35,32],sage:[145,20],ocean:[205,48],rose:[345,42],plum:[275,30],ember:[18,62]};
+function hexHS(hex){const n=parseInt(hex.slice(1),16),r=(n>>16&255)/255,g=(n>>8&255)/255,b=(n&255)/255,mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn,l=(mx+mn)/2;
+  let h=0;if(d){h=mx===r?((g-b)/d)%6:mx===g?(b-r)/d+2:(r-g)/d+4;h=Math.round(h*60+360)%360}return[h,d?Math.round(d/(1-Math.abs(2*l-1))*100):0]}
+function applyColor(){const c=pref('color'),v=/^#[0-9a-f]{6}$/i.test(c)?hexHS(c):COLORS[c],r=document.documentElement.style;
+  const P=['--bg','--card','--line','--ink','--mute','--acc','--glow'];if(!v){P.forEach(p=>r.removeProperty(p));return}
+  const [h,s]=v,dark=pref('theme')=='dark'||(pref('theme')=='system'&&matchMedia('(prefers-color-scheme: dark)').matches),H=(l,k)=>`hsl(${h} ${Math.round(s*k)}% ${l}%)`;
+  const t=dark?{'--bg':H(8,.35),'--card':H(12,.35),'--line':H(21,.3),'--ink':H(93,.25),'--mute':H(60,.15),'--acc':H(68,1),'--glow':`hsl(${h} ${s}% 68% / .22)`}
+             :{'--bg':H(95,.5),'--card':H(99,.6),'--line':H(87,.35),'--ink':H(12,.45),'--mute':H(48,.15),'--acc':H(40,1),'--glow':`hsl(${h} ${s}% 40% / .18)`};
+  for(const k in t)r.setProperty(k,t[k])}
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',applyColor);
 function layout(now){
+  applyColor();
   const c=pref('density')=='compact', B=c?44:52, V=c?54:64, Hs=c?36:42;
   const tp=pref('tabs_pos'), bp=pref('bar_pos'), vert=tp=='left'||tp=='right', auto=pref('tabs_mode')=='auto';
   const shown=!auto||revealed||!tabs.some(t=>t.ws==(typeof curWs=='function'?curWs():t.ws)), full=vert?V:Hs, used=shown?full:EDGE, slide=full-used;
@@ -417,6 +430,8 @@ function renderSettings(){
   ${row('Density','',seg('density',[['normal','Comfortable'],['compact','Compact']]))}
   <h3>Appearance</h3>
   ${row('Theme','',seg('theme',[['system','System'],['light','Light'],['dark','Dark']]))}
+  ${row('Browser color','Tints the whole browser',`<div class=swatches>${Object.entries(COLORS).map(([k,v])=>`<button data-color=${k} title=${k} class="${pref('color')==k?'on':''}" style="background:${v?`hsl(${v[0]} ${v[1]}% 55%)`:'#555'}"></button>`).join('')}
+    <label class=btn style="position:relative;overflow:hidden;height:26px;padding:0 10px">Custom<input type=color id=s-color value="${/^#/.test(pref('color'))?pref('color'):'#3b82f6'}" style="position:absolute;inset:0;opacity:0;cursor:pointer"></label></div>`)}
   ${row('Dark mode for websites','Darkens light sites. Change it per site from the shield.',sw('force_dark',pref('force_dark')=='true'))}
   <h3>Tabs & history</h3>
   ${row('Reopen tabs on start','Restores your tabs and workspaces next time (private tabs never)',sw('restore',pref('restore')=='on'))}
@@ -442,6 +457,8 @@ function renderSettings(){
    <kbd>Ctrl</kbd>+<kbd>\\</kbd> split view · <kbd>Ctrl</kbd>+<kbd>B</kbd> show/hide tabs · <kbd>Ctrl</kbd>+<kbd>D</kbd> bookmark · <kbd>Ctrl</kbd>+<kbd>H</kbd> history · <kbd>Ctrl</kbd>+<kbd>J</kbd> downloads · <kbd>Ctrl</kbd>+<kbd>,</kbd> settings<br>
    Scroll or two-finger swipe over the tab bar to flip tabs · drag tabs to reorder · shift-click or right-click a tab to split · middle-click to close · right-click ＋ for a private tab</div>`;
   p.querySelectorAll('.seg button').forEach(b=>b.onclick=async()=>{await setPref(b.dataset.k,b.dataset.v);draw();renderSettings()});
+  p.querySelectorAll('[data-color]').forEach(b=>b.onclick=async()=>{await setPref('color',b.dataset.color);renderSettings()});
+  $('#s-color').oninput=e=>{state.settings.ui.color=e.target.value;applyColor()};$('#s-color').onchange=async e=>{await setPref('color',e.target.value);renderSettings()};
   p.querySelectorAll('[data-sw]').forEach(b=>b.onclick=async()=>{const k=b.dataset.sw,on=b.classList.contains('on');
     await setPref(k,k=='force_dark'?String(!on):(on?'off':'on'));if(k=='force_dark')applyDarkNow();if(k=='restore')saveSession();renderSettings()});
   $('#s-hist').onclick=e=>{e.preventDefault();openPanel('history')};$('#s-ws').onclick=()=>openPanel('ws');

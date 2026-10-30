@@ -34,7 +34,7 @@ body.bottom #bar{bottom:auto;top:-1px}
 #bar.on{opacity:1;width:70%;transition:width 6s cubic-bezier(.1,.6,.2,1)}#bar.done{opacity:0;width:100%}
 #view{flex:1;overflow:auto;position:relative}
 .home{display:grid;place-items:center;text-align:center;padding:12vh 18px 40px}
-.home .wordmark{display:block;height:58px;width:auto;margin:0 auto 14px}.home p{color:var(--mute)}
+.home .wordmark{font:300 62px/1 ui-serif,"Times New Roman",Times,Georgia,serif;letter-spacing:-2px;margin:0 auto 12px}.home p{color:var(--mute)}
 .home .stats{font-size:12px;margin-top:8px;font-variant-numeric:tabular-nums}.home .stats b{color:var(--ink)}
 .home.priv .wordmark{opacity:.85}
 .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px 10px;margin-top:30px;width:100%;max-width:420px}
@@ -53,14 +53,18 @@ body.bottom #bar{bottom:auto;top:-1px}
 .sheet h3{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute);margin:16px 2px 2px;font-weight:600}
 .sheet>*{flex:none}
 .cards{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;min-height:110px;position:relative;display:flex;flex-direction:column;justify-content:flex-end;text-align:left;min-width:0;touch-action:pan-y;transition:transform .2s,opacity .2s}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:0;min-height:190px;overflow:hidden;position:relative;display:flex;flex-direction:column;justify-content:flex-end;text-align:left;min-width:0;touch-action:pan-y;transition:transform .2s,opacity .2s}
 .card.cur{border-color:var(--acc);box-shadow:0 0 0 3px var(--glow)}.card.priv{border-style:dashed}
+.card .shot{flex:1;background:var(--bg) center top/cover no-repeat;border-bottom:1px solid var(--line);display:grid;place-items:center;color:var(--mute);font:300 28px ui-serif,Georgia,serif}
+.card .meta{padding:8px 10px 10px;min-width:0;display:grid}
+.card .x{background:var(--card);border-radius:50%;width:30px;height:30px;top:6px;right:6px;box-shadow:0 1px 3px #0003}
+.swatches{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.swatches button{width:30px;height:30px;border-radius:50%;border:2px solid var(--line)}.swatches button.on{outline:2px solid var(--ink);outline-offset:2px}
 .card b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.card small{color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .card .x{position:absolute;top:4px;right:4px;width:36px;height:36px;color:var(--mute);font-size:16px}
 .card .tag{position:absolute;top:12px;left:12px;font-size:11px;color:var(--mute)}
 .chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px}
 .chips button{flex:none;height:32px;padding:0 14px;border:1px solid var(--line);border-radius:99px;font-size:13px;background:var(--card)}
-.chips button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.chips button.on{background:var(--acc);color:var(--bg);border-color:var(--acc)}
 .row{display:flex;gap:8px}
 .btn{flex:1;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px;font-size:14px;text-align:center}
 .btn.acc{background:var(--acc);color:var(--bg);border-color:var(--acc);font-weight:600}.btn.sm{flex:none;padding:7px 12px;font-size:13px}
@@ -71,7 +75,7 @@ body.bottom #bar{bottom:auto;top:-1px}
 .seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 2px #0002}
 .sw{width:42px;height:24px;border-radius:12px;background:var(--line);position:relative;flex:none}
 .sw::after{content:"";position:absolute;left:2px;top:2px;width:20px;height:20px;border-radius:50%;background:var(--card);transition:.15s}
-.sw.on{background:var(--ink)}.sw.on::after{left:20px}
+.sw.on{background:var(--acc)}.sw.on::after{left:20px}
 select,textarea,input.txt{font:inherit;font-size:14px;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px}
 textarea,input.txt{width:100%}
 .empty{color:var(--mute);text-align:center;padding:40px 10px}
@@ -120,18 +124,30 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const hostOf=u=>{try{return new URL(u).hostname}catch{return""}};
 const bare=u=>hostOf(u).replace(/^www\./,"");
 const vibe=()=>{try{navigator.vibrate&&navigator.vibrate(8)}catch(e){}};
-const WORDMARK=`<svg class="wordmark" viewBox="-30 -30 1180 460" role="img" aria-label="hush."><g fill="none" stroke="currentColor" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V400M0 400V260c0-70 42-110 100-110s100 40 100 110v140"/><path transform="translate(290 0)" d="M0 150v140c0 70 42 110 100 110s100-40 100-110V150M200 150v250"/><path transform="translate(580 0)" d="M152 190c-18-26-44-40-76-40-44 0-72 24-72 58 0 74 152 42 152 124 0 42-34 68-82 68-36 0-66-14-84-40"/><path transform="translate(820 0)" d="M0 0V400M0 400V260c0-70 42-110 100-110s100 40 100 110v140"/></g><circle cx="1112" cy="393" r="30" fill="currentColor"/></svg>`;
+const WORDMARK=`<div class="wordmark">hush.</div>`;
 let state={settings:{search:"duckduckgo",ui:{}},bookmarks:[],allow_sites:[],site_dark:{},session:[]}, allow=new Set();
 // tabs: {id, native (label of the native WebView; null = not opened yet), url, title, priv, ws, canBack, canFwd}
 let tabs=[], cur=null, nid=1, sheet=null, downloads=[], typing=false, finding=false;
 const T=()=>tabs.find(t=>t.id===cur);
 
 // ---------- preferences (stored in Rust as ui.<name>) ----------
-const DEF={bar_pos:"top",theme:"system",text_zoom:"100",desktop:"false",pull_refresh:"true",force_dark:"false",history:"off",restore:"off",workspaces:"Personal",ws:"Personal"};
+const DEF={color:"graphite",bar_pos:"top",theme:"system",text_zoom:"100",desktop:"false",pull_refresh:"true",force_dark:"false",history:"off",restore:"off",workspaces:"Personal",ws:"Personal"};
 const pref=k=>state.settings.ui?.[k]??DEF[k];
 async function setPref(k,v){state.settings.ui[k]=String(v);applyPrefs();try{await inv("set_setting",{key:"ui."+k,value:String(v)})}catch(e){}}
+// Browser color: a hue/saturation tints every surface; light and dark variants are derived from it.
+const COLORS={graphite:null,sand:[35,32],sage:[145,20],ocean:[205,48],rose:[345,42],plum:[275,30],ember:[18,62]};
+function hexHS(hex){const n=parseInt(hex.slice(1),16),r=(n>>16&255)/255,g=(n>>8&255)/255,b=(n&255)/255,mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn,l=(mx+mn)/2;
+  let h=0;if(d){h=mx===r?((g-b)/d)%6:mx===g?(b-r)/d+2:(r-g)/d+4;h=Math.round(h*60+360)%360}return[h,d?Math.round(d/(1-Math.abs(2*l-1))*100):0]}
+function applyColor(){const c=pref("color"),v=/^#[0-9a-f]{6}$/i.test(c)?hexHS(c):COLORS[c],r=document.documentElement.style;
+  const P=["--bg","--card","--line","--ink","--mute","--acc","--glow"];if(!v){P.forEach(p=>r.removeProperty(p));return}
+  const [h,s]=v,dark=pref("theme")==="dark"||(pref("theme")==="system"&&matchMedia("(prefers-color-scheme: dark)").matches),H=(l,k)=>`hsl(${h} ${Math.round(s*k)}% ${l}%)`;
+  const t=dark?{"--bg":H(8,.35),"--card":H(12,.35),"--line":H(21,.3),"--ink":H(93,.25),"--mute":H(60,.15),"--acc":H(68,1),"--glow":`hsl(${h} ${s}% 68% / .22)`}
+             :{"--bg":H(95,.5),"--card":H(99,.6),"--line":H(87,.35),"--ink":H(12,.45),"--mute":H(48,.15),"--acc":H(40,1),"--glow":`hsl(${h} ${s}% 40% / .18)`};
+  for(const k in t)r.setProperty(k,t[k])}
+matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",applyColor);
 function applyPrefs(){
   const t=pref("theme");if(t==="system")document.documentElement.removeAttribute("data-theme");else document.documentElement.dataset.theme=t;
+  applyColor();
   document.body.classList.toggle("bottom",pref("bar_pos")==="bottom");
   inv("set_web_prefs",{textZoom:+pref("text_zoom"),desktop:pref("desktop")==="true",pullRefresh:pref("pull_refresh")==="true"}).catch(()=>{});
   requestAnimationFrame(insets);
@@ -255,6 +271,7 @@ window.__hushEvent=(name,d)=>{
     if(d.state==="started"){downloads.unshift({name:d.name,state:"started"});toast("Downloading "+d.name+" — see notifications")}
     else{downloads.unshift({name:d.name,state:"failed"});toast("Download failed"+(d.error?": "+d.error:""))}
     if(sheet==="downloads")drawDownloads()}
+  else if(name==="thumb"){const t=tabs.find(x=>x.native===d.id);if(t&&!t.priv&&typeof d.data==="string"&&d.data.startsWith("data:image/jpeg;base64,")){t.thumb=d.data;if(sheet==="switcher")drawSwitcher()}}
   else if(name==="find"){$("#findn").textContent=d.count?d.index+"/"+d.count:"0"}
   else if(name==="longpress"){if(!d.url)return;const u=d.url;
     actions(d.kind==="image"?"Image":u,[
@@ -289,7 +306,8 @@ function drawSwitcher(dir){const el=$("#switcher"),list=inWs();
   el.innerHTML=head("Tabs")+`<div class="chips">${wsList().map(w=>`<button data-ws="${esc(w)}" class="${w===curWs()?"on":""}">${esc(w)} · ${tabs.filter(t=>t.ws===w).length}</button>`).join("")}<button data-ws-new>＋ Workspace</button></div>
     <div class="row"><button class="btn acc" id="sw-new">＋ New tab</button><button class="btn" id="sw-priv">◌ Private tab</button></div>
     <div class="cards" id="cards">${list.map(t=>`<div class="card ${t.id===cur?"cur":""} ${t.priv?"priv":""}" data-id="${t.id}">${t.priv?`<span class="tag">private</span>`:""}<button class="x" data-x="${t.id}" aria-label="Close tab">✕</button>
-      <b>${esc(t.title||bare(t.url)||"New tab")}</b><small>${t.url?esc(bare(t.url)):"Start page"}</small></div>`).join("")}</div>
+      <div class="shot" ${t.thumb?`style="background-image:url('${esc(t.thumb)}')"`:""}>${t.thumb?"":(t.url?esc((bare(t.url)||"?")[0].toUpperCase()):"hush.")}</div>
+      <div class="meta"><b>${esc(t.title||bare(t.url)||"New tab")}</b><small>${t.url?esc(bare(t.url)):"Start page"}</small></div></div>`).join("")}</div>
     <p class="hint" style="text-align:center">Swipe a card sideways to close it · hold a card for more · swipe here ← → for other workspaces</p>`;
   wire(el);$("#sw-new").onclick=()=>newTab();$("#sw-priv").onclick=()=>newTab(true);
   el.querySelectorAll("[data-ws]").forEach(b=>b.onclick=()=>switchWs(b.dataset.ws));
@@ -378,6 +396,9 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
   el.innerHTML=head("Settings")+`<h3>Layout</h3>
    ${item("Address bar","Swipe it ← → to switch tabs",seg("bar_pos",[["top","Top"],["bottom","Bottom"]]))}
    ${item("Theme","",seg("theme",[["system","Auto"],["light","Light"],["dark","Dark"]]))}
+   <div class="item" style="display:block"><div style="margin-bottom:10px">Browser color</div><div class="swatches">${Object.entries(COLORS).map(([k,v])=>
+     `<button data-color="${k}" class="${pref("color")===k?"on":""}" aria-label="${k}" style="background:${v?`hsl(${v[0]} ${v[1]}% 55%)`:"#555"}"></button>`).join("")}
+     <label class="btn sm" style="position:relative;overflow:hidden">Custom<input type="color" id="s-color" value="${/^#/.test(pref("color"))?pref("color"):"#3b82f6"}" style="position:absolute;inset:0;opacity:0"></label></div></div>
    <h3>Pages</h3>
    ${item("Dark mode for websites","Darkens light sites · change per site from the shield",sw("force_dark",pref("force_dark")==="true"))}
    ${item("Text size","",seg("text_zoom",[["85","S"],["100","M"],["115","L"],["130","XL"]]))}
@@ -405,6 +426,8 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
    <p style="color:var(--mute);font-size:12px;text-align:center;margin-top:14px">Hush keeps everything on this device. No accounts, no tracking.</p>`;
   wire(el);
   el.querySelectorAll(".seg button").forEach(b=>b.onclick=async()=>{await setPref(b.dataset.k,b.dataset.v);drawSettings();render()});
+  el.querySelectorAll("[data-color]").forEach(b=>b.onclick=async()=>{await setPref("color",b.dataset.color);drawSettings()});
+  $("#s-color").oninput=e=>{state.settings.ui.color=e.target.value;applyColor()};$("#s-color").onchange=async e=>{await setPref("color",e.target.value);drawSettings()};
   el.querySelectorAll("[data-sw]").forEach(b=>b.onclick=async()=>{const k=b.dataset.sw,on=b.classList.contains("on"),bin=["force_dark","pull_refresh","desktop"].includes(k);
     await setPref(k,bin?String(!on):(on?"off":"on"));if(k==="force_dark")applyDarkNow();if(k==="restore")saveSession();drawSettings()});
   $("#s-ws").onclick=()=>{const n=prompt("Workspaces, separated by commas",wsList().join(", "));if(n===null)return;

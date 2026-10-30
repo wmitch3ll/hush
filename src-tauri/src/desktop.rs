@@ -236,7 +236,8 @@ pub async fn open_tab(app: AppHandle, input: String, private: Option<bool>) -> R
         .on_download(move |_wv, ev| on_download(&app_dl, &lbl_dl, ev))
         // Private tabs: in-memory profile, nothing written to disk, gone when the tab closes.
         .incognito(private.unwrap_or(false))
-        .initialization_script(include_str!("harden.js"));
+        .initialization_script(include_str!("harden.js"))
+        .initialization_script(&crate::scriptlets_init_js());
     #[cfg(feature = "new-window-api")]
     let builder = builder.on_new_window(|_url, _features| tauri::webview::NewWindowResponse::Deny);
 

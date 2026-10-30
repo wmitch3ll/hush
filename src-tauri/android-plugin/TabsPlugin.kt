@@ -24,7 +24,7 @@ import app.tauri.plugin.*
  * Each tab is a native Android WebView placed over the chrome page (mobile.html), between its bars.
  * Events to the chrome UI are delivered by calling window.__hushEvent(name, data) in the chrome page:
  *   tabUrl {id, url, title, state: started|finished, canBack, canFwd}   download {name, state, error?}   back {}
- *   find {index, count}   longpress {url, kind: link|image}
+ *   find {index, count}   longpress {url, kind: link|image}   thumb {id, data: jpeg data URL}  (tab-grid previews)
  */
 @TauriPlugin
 class TabsPlugin(private val act: Activity) : Plugin(act) {
@@ -104,6 +104,9 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         }
         applyPrefs(w)
         CookieManager.getInstance().setAcceptThirdPartyCookies(w, false)
+        // YouTube / anti-adblock fixes must run before the page's own scripts: document-start injection (WebView 88+).
+        val earlyScripts = try { WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT) } catch (e: Throwable) { false }
+        if (earlyScripts) try { WebViewCompat.addDocumentStartJavaScript(w, Native.scriptletJs(), setOf("*")) } catch (e: Throwable) {}
         w.webViewClient = object : WebViewClient() {
             // NEVER call v.url (or any WebView method) here: this runs on a network thread and WebView throws,
             // which crashes the app ("the installed version of WebView caused the crash").
@@ -122,10 +125,12 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             override fun onPageStarted(v: WebView, u: String, f: android.graphics.Bitmap?) {
                 t.page = u; t.url = u
                 try { v.evaluateJavascript(Native.cosmeticJs(u), null) } catch (e: Throwable) {}
+                if (!earlyScripts) try { v.evaluateJavascript(Native.scriptletJs(), null) } catch (e: Throwable) {}
                 emitUrl(t, v, "started")
             }
             override fun onPageFinished(v: WebView, u: String) {
                 t.url = u; t.box?.isRefreshing = false
+                v.postDelayed({ if (active == t.id && visible) snap(t) }, 900)
                 try { val d = Native.darkJs(u); if (d.isNotEmpty()) v.evaluateJavascript(d, null) } catch (e: Throwable) {}
                 emitUrl(t, v, "finished")
             }
@@ -151,6 +156,20 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                 else -> false
             }
         }
+    }
+
+    /** Small JPEG of what the tab currently shows, for the tab grid. Never for private tabs. */
+    private fun snap(t: Tab) {
+        val w = t.wv ?: return
+        if (t.priv || w.width <= 0 || w.height <= 0 || w.parent == null) return
+        try {
+            val s = 360f / w.width
+            val bmp = android.graphics.Bitmap.createBitmap(360, (w.height * s).toInt().coerceIn(1, 1200), android.graphics.Bitmap.Config.RGB_565)
+            val c = android.graphics.Canvas(bmp); c.scale(s, s); c.translate(-w.scrollX.toFloat(), -w.scrollY.toFloat()); w.draw(c)
+            val out = java.io.ByteArrayOutputStream(); bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 62, out); bmp.recycle()
+            emit("thumb", JSObject().apply { put("id", t.id)
+                put("data", "data:image/jpeg;base64," + android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)) })
+        } catch (e: Throwable) {}
     }
 
     /** The view that goes on screen: the WebView inside a pull-to-refresh container. */
@@ -189,7 +208,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     /** Show the active tab's view (or none while a chrome sheet is open). */
     private fun render() = act.runOnUiThread {
         val root = act.findViewById<ViewGroup>(android.R.id.content)
-        tabs.values.forEach { t -> t.box?.let { if (it.parent != null && (t.id != active || !visible)) root.removeView(it) } }
+        tabs.values.forEach { t -> t.box?.let { if (it.parent != null && (t.id != active || !visible)) { snap(t); root.removeView(it) } } }
         val t = active?.let { tabs[it] } ?: return@runOnUiThread
         if (!visible) return@runOnUiThread
         if (t.wv == null) { t.box = null; t.wv = make(t).also { w -> if (t.saved != null) w.restoreState(t.saved!!) else w.loadUrl(t.url) } }

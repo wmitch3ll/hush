@@ -38,6 +38,13 @@ pub struct AppState {
 
 // ---------- page tools (dark mode, reader, find): one script for every platform ----------
 pub const PAGE_JS: &str = include_str!("page.js");
+/// uBlock Origin scriptlets + rules (YouTube, anti-adblock), built by tools/build-scriptlets.mjs. Runs at document start.
+pub const SCRIPTLETS_JS: &str = include_str!("../lists/scriptlets.js");
+/// Document-start script for a new tab: scriptlets, skipped on sites where the user turned the shield off.
+pub fn scriptlets_init_js() -> String {
+    let off = BLOCKER.get().map(|b| b.allow_sites.read().clone()).unwrap_or_default();
+    format!("window.__hushOff={};\n{}", serde_json::to_string(&off).unwrap_or("[]".into()), SCRIPTLETS_JS)
+}
 /// What every page gets when it starts loading; readable from JNI threads without the AppHandle.
 #[derive(Default)]
 pub struct PagePrefs { pub dark: bool, pub site_dark: std::collections::BTreeMap<String, bool> }
@@ -87,7 +94,9 @@ fn flush_stats(app: &AppHandle) -> store::Stats {
 /// Bundled lists (run tools/fetch-lists.sh to fill them with real lists). The cookie list hides consent banners.
 pub fn load_lists() -> Vec<String> {
     vec![include_str!("../lists/easylist.txt").into(), include_str!("../lists/easyprivacy.txt").into(),
-         include_str!("../lists/easylist-cookie.txt").into()]
+         include_str!("../lists/easylist-cookie.txt").into(),
+         // uBlock Origin lists (GPLv3): YouTube / anti-adblock network + element rules. Their +js() scriptlets run via SCRIPTLETS_JS.
+         include_str!("../lists/ubo-filters.txt").into(), include_str!("../lists/ubo-quick-fixes.txt").into()]
 }
 fn lists_for(app: &AppHandle) -> Vec<String> { store::lists_override(app).unwrap_or_else(load_lists) }
 
@@ -233,6 +242,8 @@ const LIST_URLS: &[(&str, &str)] = &[
     ("easylist.txt", "https://easylist.to/easylist/easylist.txt"),
     ("easyprivacy.txt", "https://easylist.to/easylist/easyprivacy.txt"),
     ("easylist-cookie.txt", "https://secure.fanboy.co.nz/fanboy-cookiemonster.txt"),
+    ("ubo-filters.txt", "https://ublockorigin.github.io/uAssets/filters/filters.min.txt"),
+    ("ubo-quick-fixes.txt", "https://ublockorigin.github.io/uAssets/filters/quick-fixes.min.txt"),
 ];
 
 // ---------- per-site dark, stats, history, session ----------
