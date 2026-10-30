@@ -34,8 +34,9 @@ jobs:
           set -o pipefail
           export NDK_HOME="$ANDROID_NDK_LATEST_HOME"
           cd src-tauri
-          { cargo tauri icon icons/source.png &&
-            cargo tauri android init --ci &&
+          # icon runs AFTER init so it also writes the launcher icons into gen/android (else Tauri's placeholder shows).
+          { cargo tauri android init --ci &&
+            cargo tauri icon icons/source.png &&
             (cd .. && sh tools/android-post-init.sh) &&
             cargo tauri android build --debug --apk --target aarch64 --ci ; } 2>&1 | tee ../build.log
       - name: Report build errors as annotations

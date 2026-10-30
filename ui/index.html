@@ -47,7 +47,7 @@ button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7
 
 #page{position:absolute;overflow:auto}
 #home{height:100%;display:grid;place-content:center;justify-items:center;text-align:center;gap:26px}
-#home h1{font-weight:200;font-size:64px;letter-spacing:-2px}#home p{color:var(--mute);margin-top:-18px}
+#home h1 .wordmark{display:block;height:68px;width:auto;margin:0 auto 22px}#home h1{font-weight:200;font-size:64px;letter-spacing:-2px}#home p{color:var(--mute);margin-top:-18px}
 #bms{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;max-width:560px}
 .bm{all:unset;cursor:pointer;display:grid;justify-items:center;gap:6px;width:68px;color:var(--mute);font-size:11px}
 .bm i{font-style:normal;width:50px;height:50px;border-radius:50%;background:var(--card);border:1px solid var(--line);display:grid;place-items:center;font-size:18px;color:var(--ink);text-transform:uppercase}
@@ -95,7 +95,7 @@ kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:
 </div>
 <div id=load></div>
 <div id=page>
-  <div id=home><h1>hush.</h1><p>nothing here but you.</p><div id=bms></div></div>
+  <div id=home><h1><svg class="wordmark" viewBox="-30 -30 1180 460" role="img" aria-label="hush."><g fill="none" stroke="currentColor" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V400M0 400V260c0-70 42-110 100-110s100 40 100 110v140"/><path transform="translate(290 0)" d="M0 150v140c0 70 42 110 100 110s100-40 100-110V150M200 150v250"/><path transform="translate(580 0)" d="M152 190c-18-26-44-40-76-40-44 0-72 24-72 58 0 74 152 42 152 124 0 42-34 68-82 68-36 0-66-14-84-40"/><path transform="translate(820 0)" d="M0 0V400M0 400V260c0-70 42-110 100-110s100 40 100 110v140"/></g><circle cx="1112" cy="393" r="30" fill="currentColor"/></svg></h1><p>nothing here but you.</p><div id=bms></div></div>
   <div id=panel class=panel hidden></div>
 </div>
 <div id=toast role=status></div>

@@ -29,7 +29,7 @@ body.bottom #bar{bottom:auto;top:-1px}
 #bar.done{opacity:0;width:100%}
 #view{flex:1;overflow:auto;position:relative}
 .home{display:grid;place-items:center;text-align:center;padding:12vh 18px 40px}
-.home h1{font-weight:200;font-size:64px;letter-spacing:-3px}.home p{color:var(--mute)}
+.home h1 .wordmark{display:block;height:64px;width:auto;margin:0 auto 14px}.home h1{font-weight:200;font-size:64px;letter-spacing:-3px}.home p{color:var(--mute)}
 .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px 10px;margin-top:32px;width:100%;max-width:420px}
 .bm{display:grid;gap:6px;justify-items:center;font-size:12px;color:var(--mute);min-width:0}
 .bm i{width:54px;height:54px;border-radius:50%;background:var(--card);border:1px solid var(--line);display:grid;place-items:center;font-style:normal;font-size:19px;font-weight:600;color:var(--ink);text-transform:uppercase}
@@ -127,7 +127,7 @@ function render(){
   if(document.activeElement!==$("#url"))$("#url").value=t&&t.native?h.replace(/^www\./,""):"";
   $("#shield").classList.toggle("off",allow.has(h));$("#shield").disabled=!h;
   $("#tabs-btn span").textContent=tabs.length;
-  $("#view").innerHTML=t&&t.native?"":`<div class="home"><h1>hush.</h1><p>nothing here but you.</p><div class="grid">${
+  $("#view").innerHTML=t&&t.native?"":`<div class="home"><h1><svg class="wordmark" viewBox="-30 -30 1180 460" role="img" aria-label="hush."><g fill="none" stroke="currentColor" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V400M0 400V260c0-70 42-110 100-110s100 40 100 110v140"/><path transform="translate(290 0)" d="M0 150v140c0 70 42 110 100 110s100-40 100-110V150M200 150v250"/><path transform="translate(580 0)" d="M152 190c-18-26-44-40-76-40-44 0-72 24-72 58 0 74 152 42 152 124 0 42-34 68-82 68-36 0-66-14-84-40"/><path transform="translate(820 0)" d="M0 0V400M0 400V260c0-70 42-110 100-110s100 40 100 110v140"/></g><circle cx="1112" cy="393" r="30" fill="currentColor"/></svg></h1><p>nothing here but you.</p><div class="grid">${
     state.bookmarks.slice(0,12).map((b,i)=>`<button class="bm" data-bm="${i}"><i>${esc((hostOf(b.url).replace(/^www\./,"")||"?")[0])}</i><span>${esc(b.title||hostOf(b.url))}</span></button>`).join("")}</div></div>`;
   $("#view").querySelectorAll("[data-bm]").forEach(b=>{const bm=state.bookmarks[b.dataset.bm];b.onclick=()=>go(bm.url);
     let lp;b.ontouchstart=()=>{lp=setTimeout(async()=>{if(confirm("Remove bookmark "+(bm.title||bm.url)+"?")){await inv("bookmark_remove",{url:bm.url});await loadState()}},600)};b.ontouchend=b.ontouchmove=()=>clearTimeout(lp)});
