@@ -365,8 +365,9 @@ function drawSwitcher(dir){const el=$("#switcher"),list=inWs();
       long:()=>{const t=tabs.find(x=>x.id===id);actions(t.title||bare(t.url)||"New tab",[
         ...wsList().filter(w=>w!==t.ws).map(w=>["Move to "+w,()=>{t.ws=w;saveSession();drawSwitcher()}]),
         ...(t.native?[[t.muted?"Unmute tab":"Mute tab",()=>toggleMute(t)]]:[]),["Copy link",()=>copy(t.url)],["Close tab",()=>closeTab(id)],["Close other tabs",()=>inWs().filter(x=>x.id!==id).forEach(x=>closeTab(x.id))]])}})});
-  el.querySelectorAll("[data-x]").forEach(b=>b.onclick=e=>{e.stopPropagation();closeTab(+b.dataset.x)});
-  el.querySelectorAll("[data-snd]").forEach(b=>{b.onclick=e=>{e.stopPropagation();toggleMute(tabs.find(x=>x.id===+b.dataset.snd))};b.ontouchend=e=>e.stopPropagation()});
+  el.querySelectorAll("[data-x]").forEach(b=>{const shut=e=>{e.stopPropagation();e.preventDefault();const c=b.closest(".card");if(c){c.style.transition="transform .16s,opacity .16s";c.style.transform="scale(.9)";c.style.opacity="0"}vibe();setTimeout(()=>closeTab(+b.dataset.x),140)};
+    b.ontouchstart=e=>e.stopPropagation();b.ontouchend=shut;b.onclick=shut});
+  el.querySelectorAll("[data-snd]").forEach(b=>{b.onclick=e=>{e.stopPropagation();toggleMute(tabs.find(x=>x.id===+b.dataset.snd))};b.ontouchstart=e=>e.stopPropagation();b.ontouchend=e=>{e.stopPropagation();e.preventDefault();toggleMute(tabs.find(x=>x.id===+b.dataset.snd))}});
   // Swipe the empty area / header sideways to change workspace.
   const ws=wsList(),i=ws.indexOf(curWs());
   gesture(el.querySelector(".chips"),{left:()=>i<ws.length-1&&switchWs(ws[i+1]),right:()=>i>0&&switchWs(ws[i-1])});
