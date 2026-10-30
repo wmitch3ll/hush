@@ -200,14 +200,14 @@ async function switchWs(name,dir){await setPref("ws",name);const last=inWs().at(
   render();if(sheet==="switcher")drawSwitcher(dir);toast(name)}
 
 // ---------- tabs ----------
-function newTab(priv,quiet){const t={id:nid++,native:null,url:"",title:"",priv:!!priv,ws:curWs(),canBack:false,canFwd:false,last:Date.now()};tabs.push(t);cur=t.id;
+function newTab(priv,quiet){maybeFloat(cur);const t={id:nid++,native:null,url:"",title:"",priv:!!priv,ws:curWs(),canBack:false,canFwd:false,last:Date.now()};tabs.push(t);cur=t.id;
   if(!quiet){show(null);render();setTimeout(()=>$("#url").focus(),80)}return t}
-function select(id,anim){const t=tabs.find(x=>x.id===id);if(!t)return;if(t.ws!==curWs())setPref("ws",t.ws);cur=id;t.last=Date.now();show(null);
+function select(id,anim){const t=tabs.find(x=>x.id===id);if(!t)return;if(t.ws!==curWs())setPref("ws",t.ws);if(id!==cur)maybeFloat(cur);if(floating===t.native){floating=null;native("floatClose",{stop:false}).catch(()=>{})}cur=id;t.last=Date.now();show(null);
   if(anim){const p=$("#pill");p.classList.add(anim);setTimeout(()=>p.classList.remove(anim),180)}
   if(t.url&&!t.native)openNative(t);render()}
 async function openNative(t){try{const r=await inv("open_tab",{input:t.url,private:t.priv});t.native=typeof r==="string"?r:r;render()}catch(e){toast("Couldn’t open that page")}}
 function syncNative(){const t=T();inv("switch_tab",{label:!sheet&&!typing&&t&&t.native?t.native:"none"}).catch(()=>{})}
-async function closeTab(id){const t=tabs.find(x=>x.id===id);if(t&&t.native)inv("close_tab",{label:t.native}).catch(()=>{});
+async function closeTab(id){const t=tabs.find(x=>x.id===id);if(t&&t.native&&floating===t.native){floating=null;native("floatClose",{stop:true}).catch(()=>{})}if(t&&t.native)inv("close_tab",{label:t.native}).catch(()=>{});
   tabs=tabs.filter(x=>x.id!==id);if(!inWs().length)newTab(false,true);else if(cur===id)cur=inWs().at(-1).id;render();saveSession();if(sheet==="switcher")drawSwitcher()}
 function step(d){const w=inWs();if(w.length<2){toast(d>0?"No tab to the right":"No tab to the left");return}const i=w.findIndex(t=>t.id===cur),j=i+d;
   if(j<0||j>=w.length){toast(d>0?"Last tab":"First tab");return}vibe();select(w[j].id,d>0?"sl":"sr");toast(bare(w[j].url)||"New tab")}
@@ -313,6 +313,8 @@ window.__hushEvent=(name,d)=>{
     HX.markup(d.data,{name:"Hush "+(t?bare(t.url):""),save:async x=>{await native("saveImage",{data:x});setTimeout(()=>show(null),0);return "Photos › Pictures/Hush"}});
     const obs=new MutationObserver(()=>{if(!document.querySelector(".hx-shot")){obs.disconnect();if(sheet==="xs")show(null)}});obs.observe(document.body,{childList:true})}
   else if(name==="gesture"){HX.gesture(d)}
+  else if(name==="float"){if(d.a==="open"){floating=null;const t=tabs.find(x=>x.native===d.id);if(t)select(t.id)}else if(d.a==="close")floating=null;
+    else if(d.a==="moved")setPref("float_pos",[d.x,d.y,d.w].map(Math.round).join(","))}
   else if(name==="watchPick"){HX.watchAdd({url:d.url,sel:d.sel,text:d.text});toast("Watching “"+String(d.text||"").slice(0,40)+"”");openWatch()}
   else if(name==="thumb"){const t=tabs.find(x=>x.native===d.id);if(t&&!t.priv&&typeof d.data==="string"&&d.data.startsWith("data:image/jpeg;base64,")){t.thumb=d.data;if(sheet==="switcher")drawSwitcher()}}
   else if(name==="find"){$("#findn").textContent=d.count?d.index+"/"+d.count:"0"}
@@ -345,7 +347,11 @@ function qrSheet(u){const el=$("#site");el.innerHTML=head("Scan to open")+`<div 
 
 // ---------- sheets ----------
 // ---------- start page, Listen, Boosts, Peek, screenshots, auto-archive (shared code in extras.js) ----------
-let listenSt="",lRate=1,torOn=false;
+let listenSt="",lRate=1,torOn=false,floating=null;
+// Floating video: leave a tab that's playing and it keeps going in a small player you can drag and resize.
+function maybeFloat(fromId){if(pref("float_video")==="off")return;const t=tabs.find(x=>x.id===fromId);if(!t||!t.native||!t.audio||t.muted)return;
+  const [x,y,w]=(pref("float_pos")||"").split(",").map(Number);floating=t.native;
+  native("floatTab",{id:t.native,...(w>0?{x,y,w}:{})}).catch(()=>{floating=null})}
 async function setTor(on){show(null);try{
   if(on){toast("Connecting to Tor… the first time can take ~20 s");const port=await inv("tor_start");await native("torMode",{on:true,port});toast("Tor mode on — sites can’t see your IP")}
   else{await native("torMode",{on:false});toast("Tor mode off")}
@@ -535,6 +541,7 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
    ${item("Two-finger gestures & quick wheel","Swipe a page with two fingers · two-finger hold or hold the tabs button for your wheel",'<button class="btn sm" id="s-gest">Customize</button>')}
    ${item("Clean links","Removes tracking tags from links you open and copy",sw("clean_links",pref("clean_links")!=="off"))}
    ${item("Video controls","Speed, ±10 s, loop and pop-out on any video",sw("video_bar",pref("video_bar")!=="off"))}
+   ${item("Floating video","Switch tabs while a video plays and it keeps going in a small player — drag it anywhere, drag its corner to resize",sw("float_video",pref("float_video")!=="off"))}
    ${item("Change watch","Get told when a price or text changes",'<button class="btn sm" id="s-watch">Open</button>')}
    <h3>Gestures</h3>
    <div class="item" style="display:block;line-height:1.9;font-size:13px">Address bar: swipe ← → switch tabs · swipe ${toPage()} all tabs · hold for commands<br>

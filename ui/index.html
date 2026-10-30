@@ -290,15 +290,15 @@ function draw(){
   if($('#home').style.display!='none')loadStats();
   railState();
 }
-async function openTab(v,o={}){closePanel(true);newPending=false;
+async function openTab(v,o={}){closePanel(true);newPending=false;if(!o.background&&!o.quiet)maybeFloat(cur,null);
   const id=await inv('open_tab',{input:v,private:!!(o.priv||o.tor),tor:!!o.tor});tabs.push({id,url:'',priv:!!(o.priv||o.tor),tor:!!o.tor,ws:o.ws||curWs(),zoom:+pref('zoom')/100,last:Date.now()});
   if(pref('zoom')!='100')inv('set_zoom',{factor:+pref('zoom')/100,tab:id}).catch(()=>{});
   if(!o.background){cur=id}draw();layout();sync();if(!o.quiet)peek();return id}
 async function wake(t){const id=await inv('open_tab',{input:t.url,private:t.priv,tor:!!t.tor});const old=t.id;t.id=id;t.sleeping=false;if(cur==old)cur=id;return id}
-function select(id){closePanel(true);const t=tab(id);if(!t)return;t.last=Date.now();if(t.sleeping){wake(t).then(nid=>{cur=nid;draw();sync()});return}if(t.ws!=curWs()){state.settings.ui.ws=t.ws;inv('set_setting',{key:'ui.ws',value:t.ws})}
+function select(id){closePanel(true);const t=tab(id);if(!t)return;maybeFloat(cur,id);t.last=Date.now();if(t.sleeping){wake(t).then(nid=>{cur=nid;draw();sync()});return}if(t.ws!=curWs()){state.settings.ui.ws=t.ws;inv('set_setting',{key:'ui.ws',value:t.ws})}
   cur=id;if(split==id){split=null;inv('set_split',{label:null})}inv('switch_tab',{label:id});draw();sync()}
 const closedStack=[];
-async function closeTab(id,quiet){{const c=tab(id);if(c&&c.url&&!c.priv){closedStack.push({url:c.url,ws:c.ws});if(closedStack.length>25)closedStack.shift()}}const next=await inv('close_tab',{label:id});tabs=tabs.filter(t=>t.id!=id);delete counts[id];if(split==id)split=null;
+async function closeTab(id,quiet){if(floating==id){floating=null;await inv('float_close',{stop:true}).catch(()=>{})}{const c=tab(id);if(c&&c.url&&!c.priv){closedStack.push({url:c.url,ws:c.ws});if(closedStack.length>25)closedStack.shift()}}const next=await inv('close_tab',{label:id});tabs=tabs.filter(t=>t.id!=id);delete counts[id];if(split==id)split=null;
   const t=tab(next);cur=t&&t.ws==curWs()?next:(inWs().at(-1)?.id??null);if(cur&&cur!=next)inv('switch_tab',{label:cur});
   draw();layout();sync();saveSession();if(!quiet&&tabs.length)peek()}
 function cycle(d){const w=inWs();if(w.length<2)return;const i=w.findIndex(t=>t.id==cur);select(w[(i+d+w.length)%w.length].id);peek()}
@@ -455,6 +455,14 @@ T.event.listen('gesture',({payload:p})=>{if(p.tab&&p.tab!=cur)return;HX.gesture(
 T.event.listen('watch-pick',({payload:p})=>{if(!p.url)return;HX.watchAdd({url:p.url,sel:p.sel,text:p.text});toast('Watching “'+(p.text||'').slice(0,40)+'” — Settings › Change watch');openPanel('watch')});
 setInterval(()=>{HX.destructSweep(tabs,id=>closeTab(id,true));railState()},20000);
 setInterval(()=>HX.watchSweep(),5*60000);setTimeout(()=>HX.watchSweep(),20000);
+// ---------- Floating video: leave a tab that's playing and it keeps playing in a small player you can drag and resize ----------
+let floating=null;
+T.event.listen('tab-audio',({payload:p})=>{const t=tab(p.tab);if(t)t.audio=p.audio});
+function maybeFloat(from,to){if(!from||from==to||pref('float_video')=='off')return;const t=tab(from);if(!t||!t.audio||t.muted||t.sleeping)return;
+  const [x,y,w]=(pref('float_pos')||'').split(',').map(Number);floating=from;
+  inv('float_tab',{tab:from,...(isFinite(x)&&isFinite(y)&&w>0?{x,y,w}:{})}).catch(()=>{floating=null})}
+T.event.listen('float-action',({payload:p})=>{if(p.a=='open'){floating=null;select(p.tab)}else if(p.a=='close')floating=null;
+  else if(p.a=='moved')setPref('float_pos',[p.x,p.y,p.w].map(Math.round).join(','))});
 let peeking=false;
 function peekUI(u){$('#peekbar').classList.toggle('on',peeking);if(peeking){$('#bar').value=u||'';toast('Peeking — Esc to close')}else draw()}
 async function peekClose(){peeking=false;await inv('peek_close').catch(()=>{});peekUI()}
@@ -642,6 +650,7 @@ function renderSettings(){
   ${row('Mouse gestures & quick wheel','Right-drag on a page to go back, close tabs… · right-click and hold for your wheel','<button class=btn id=s-gest>Customize</button>')}
   ${row('Clean links','Removes tracking tags (utm, fbclid, gclid…) from links you open and copy',sw('clean_links',pref('clean_links')!='off'))}
   ${row('Video controls','Speed, ±10 s, loop and pop-out on any video',sw('video_bar',pref('video_bar')!='off'))}
+  ${row('Floating video','Switch tabs while a video plays and it keeps going in a small player — drag it anywhere, drag its corner to resize',sw('float_video',pref('float_video')!='off'))}
   ${row('Change watch','Get told when a price or text on a page changes','<button class=btn id=s-watch>Open</button>')}
   <h3>Tabs & history</h3>
   ${row('Reopen tabs on start','Restores your tabs and workspaces next time (private tabs never)',sw('restore',pref('restore')=='on'))}

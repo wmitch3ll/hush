@@ -111,6 +111,83 @@ fn content_rect(win: &Window) -> (f64, f64, f64, f64) {
     (l, t, (s.width - l - r).max(1.0), (s.height - t - b).max(1.0))
 }
 
+// ---------- Floating video: a tab playing video shrinks to a corner and stays on top while you use other tabs ----------
+#[derive(Clone)]
+struct Float { label: String, x: f64, y: f64, w: f64, start: (f64, f64, f64), drag: i64 }   // position/width in the page area; free to drag and resize
+static FLOAT: parking_lot::Mutex<Option<Float>> = parking_lot::Mutex::new(None);
+fn float_rect(win: &Window, f: &Float) -> (f64, f64, f64, f64) {
+    let (cx, cy, cw, ch) = content_rect(win);
+    let w = f.w.clamp(200.0, (cw - 16.0).max(200.0));
+    let h = (w * 9.0 / 16.0).min(ch - 16.0).max(1.0);
+    // x/y < 0 mean "from the right/bottom edge" so the default corner survives window resizes.
+    let x = if f.x < 0.0 { cx + cw - w + f.x } else { cx + f.x };
+    let y = if f.y < 0.0 { cy + ch - h + f.y } else { cy + f.y };
+    (x.clamp(cx, (cx + cw - w).max(cx)), y.clamp(cy, (cy + ch - h).max(cy)), w, h)
+}
+fn float_label() -> Option<String> { FLOAT.lock().as_ref().map(|f| f.label.clone()) }
+fn raise_float(app: &AppHandle) {
+    #[cfg(windows)]
+    if let Some(w) = float_label().and_then(|l| app.get_webview(&l)) { crate::intercept_win::raise(&w); }
+    #[cfg(not(windows))] let _ = app;
+}
+/// Float `tab` (it must be a tab that isn't the one being shown).
+#[tauri::command]
+pub async fn float_tab(app: AppHandle, tab: String, x: Option<f64>, y: Option<f64>, w: Option<f64>) -> Result<(), String> {
+    let w = app.get_webview(&tab).ok_or("no tab")?;
+    if let Some(old) = float_label().filter(|l| *l != tab) { unfloat(&app, &old, false); }
+    let ok = |v: Option<f64>, d: f64| v.filter(|v| v.is_finite() && v.abs() < 20000.0).unwrap_or(d);
+    *FLOAT.lock() = Some(Float { label: tab, x: ok(x, -16.0), y: ok(y, -16.0), w: ok(w, 400.0), start: (0.0, 0.0, 0.0), drag: -1 });
+    let _ = w.eval(&format!("{};__hushFloat(true);", include_str!("float.js")));
+    let _ = w.show();
+    if let Some(win) = app.get_window("main") { relayout(&win); }
+    raise_float(&app);
+    Ok(())
+}
+fn unfloat(app: &AppHandle, label: &str, stop: bool) {
+    { let mut f = FLOAT.lock(); if f.as_ref().map(|f| f.label == label).unwrap_or(false) { *f = None; } else { return; } }
+    if let Some(w) = app.get_webview(label) {
+        let _ = w.eval(&format!("{};__hushFloat(false);{}", include_str!("float.js"), if stop { "document.querySelectorAll('video,audio').forEach(v=>v.pause());" } else { "" }));
+        let st = app.state::<AppState>();
+        if st.active.lock().as_deref() != Some(label) { let _ = w.hide(); }
+    }
+    if let Some(win) = app.get_window("main") { relayout(&win); }
+}
+#[tauri::command]
+pub async fn float_close(app: AppHandle, stop: Option<bool>) {
+    if let Some(l) = float_label() { unfloat(&app, &l, stop.unwrap_or(true)); }
+}
+/// hush-float://open | close | move?dx=..&dy=.. from the floating player's own controls.
+fn handle_float(app: &AppHandle, tab: &str, u: &url::Url) {
+    if float_label().as_deref() != Some(tab) { return; }
+    match u.host_str().unwrap_or("") {
+        "open" => { let _ = app.emit_to("chrome", "float-action", serde_json::json!({ "tab": tab, "a": "open" })); }
+        "close" => { unfloat(app, tab, true); let _ = app.emit_to("chrome", "float-action", serde_json::json!({ "tab": tab, "a": "close" })); }
+        // Live drag / resize: each drag has an id; its first message remembers where the player was, then offsets apply from there.
+        "move" | "size" | "drop" => {
+            let q = |k: &str| u.query_pairs().find(|(n, _)| n == k).and_then(|(_, v)| v.parse::<f64>().ok()).unwrap_or(0.0);
+            let Some(win) = app.get_window("main") else { return };
+            let (cx, cy, _, _) = content_rect(&win);
+            let ev = {
+                let mut g = FLOAT.lock(); let Some(f) = g.as_mut() else { return };
+                let (x, y, w, _) = float_rect(&win, f);
+                let id = q("id") as i64;
+                if id != f.drag { f.drag = id; f.start = (x - cx, y - cy, w); }   // first message of a new drag
+                match u.host_str().unwrap_or("") {
+                    "move" => { f.x = f.start.0 + q("dx"); f.y = f.start.1 + q("dy"); }
+                    "size" => { f.w = f.start.2 + q("dw"); f.x = f.start.0; f.y = f.start.1; }
+                    _ => {}
+                }
+                let (x, y, w, _) = float_rect(&win, f);
+                f.x = x - cx; f.y = y - cy; f.w = w;
+                (u.host_str() == Some("drop")).then(|| serde_json::json!({ "tab": tab, "a": "moved", "x": f.x, "y": f.y, "w": f.w }))
+            };
+            relayout(&win);
+            if let Some(ev) = ev { let _ = app.emit_to("chrome", "float-action", ev); }
+        }
+        _ => {}
+    }
+}
+
 fn relayout(win: &Window) {
     let Ok(sz) = win.inner_size() else { return };
     let s = sz.to_logical::<f64>(win.scale_factor().unwrap_or(1.0));
@@ -121,6 +198,7 @@ fn relayout(win: &Window) {
     for wv in win.webviews() {
         let l = wv.label();
         if l == "rail" { continue; }                      // positioned by set_rail
+        if let Some(f) = FLOAT.lock().clone().filter(|f| f.label == l) { let (x, y, w, h) = float_rect(win, &f); let _ = wv.set_position(LogicalPosition::new(x, y)); let _ = wv.set_size(LogicalSize::new(w, h)); continue; }
         if l.starts_with("peek") { let (px, py, pw, ph) = peek_rect(win); let _ = wv.set_position(LogicalPosition::new(px, py)); let _ = wv.set_size(LogicalSize::new(pw, ph)); continue; }
         let (x, y, w, h) = if l == "chrome" { (0.0, 0.0, s.width, s.height) }
             else if split.as_deref() == Some(l) { (cx + half + 1.0, cy, half, ch) }       // split view: right half
@@ -136,8 +214,10 @@ fn show_only(app: &AppHandle, label: &str) {
     let panel = st.panel_open.load(Ordering::Relaxed);
     let split = st.split.lock().clone().filter(|s| s != label);
     let prev = st.active.lock().clone();
+    if float_label().as_deref() == Some(label) { unfloat(app, label, false); }   // opening the floating tab: back to full size
+    let fl = float_label();
     for t in st.tabs.lock().iter() {
-        let on = !panel && (t == label || split.as_deref() == Some(t.as_str()));
+        let on = !panel && (t == label || split.as_deref() == Some(t.as_str())) || fl.as_deref() == Some(t.as_str());
         if let Some(w) = app.get_webview(t) {
             // Snapshot the tab we're leaving so the tab bar shows what it looked like.
             #[cfg(windows)]
@@ -147,6 +227,7 @@ fn show_only(app: &AppHandle, label: &str) {
     }
     *st.active.lock() = Some(label.into());
     if let Some(win) = app.get_window("main") { relayout(&win); }
+    raise_float(app);
     raise_rail(app);
 }
 
@@ -337,6 +418,7 @@ fn make_tab_with(app: &AppHandle, input: String, private: bool, peek: bool, tor:
     let builder = WebviewBuilder::new(&label, WebviewUrl::External(url))
         .on_navigation(move |u| match u.scheme() {
             "hush-pick" => { handle_pick(&app_nav, &lbl_nav, u); false }
+            "hush-float" => { handle_float(&app_nav, &lbl_nav, u); false }
             // Mouse gesture drawn in the page (tools.js): only the direction letters are passed on.
             "hush-gesture" => {
                 let h = u.host_str().unwrap_or("").to_ascii_lowercase();

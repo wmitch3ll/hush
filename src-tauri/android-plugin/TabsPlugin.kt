@@ -66,6 +66,33 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     private var fsView: View? = null; private var fsCb: WebChromeClient.CustomViewCallback? = null
     private var pendingPerm: PermissionRequest? = null
     private var pendingGeo: Pair<String, GeolocationPermissions.Callback>? = null
+    private var floatId: String? = null; private var floatX = -1; private var floatY = -1; private var floatW = 0
+    private var dragStart = IntArray(3); private var dragId = -1
+    @Command fun floatTab(i: Invoke) { val a = i.parseArgs(FloatArgs::class.java)
+        act.runOnUiThread { val t = tabs[a.id]; val w = t?.wv
+            if (t == null || w == null) { i.reject("no tab"); return@runOnUiThread }
+            floatId?.takeIf { it != a.id }?.let { unfloat(it, false) }
+            floatId = a.id; floatX = a.x; floatY = a.y; floatW = if (a.w > 0) a.w else (act.resources.displayMetrics.widthPixels * 0.62).toInt(); dragId = -1
+            w.evaluateJavascript(Native.floatJs() + ";__hushFloat(true);", null); render(); i.resolve() } }
+    @Command fun floatClose(i: Invoke) { val stop = i.parseArgs(FloatArgs::class.java).stop
+        act.runOnUiThread { floatId?.let { unfloat(it, stop) }; i.resolve() } }
+    private fun unfloat(id: String, stop: Boolean) {
+        if (floatId != id) return; floatId = null
+        tabs[id]?.let { t -> t.wv?.evaluateJavascript(Native.floatJs() + ";__hushFloat(false);" + (if (stop) "document.querySelectorAll('video,audio').forEach(v=>v.pause());" else ""), null)
+            t.box?.let { b -> b.elevation = 0f; b.clipToOutline = false; if (id != active) { (b.parent as? ViewGroup)?.removeView(b) } } }
+        render() }
+    private fun onFloatUrl(t: Tab, u: Uri) { if (t.id != floatId) return
+        val d = act.resources.displayMetrics.density; val q = { k: String -> u.getQueryParameter(k)?.toDoubleOrNull() ?: 0.0 }
+        when (u.host) {
+            "open" -> { unfloat(t.id, false); emit("float", JSObject().apply { put("a", "open"); put("id", t.id) }) }
+            "close" -> { unfloat(t.id, true); emit("float", JSObject().apply { put("a", "close"); put("id", t.id) }) }
+            "move", "size", "drop" -> {
+                val id = q("id").toInt(); val b = t.box ?: return
+                if (id != dragId) { dragId = id; dragStart = intArrayOf(floatX, floatY, b.width) }
+                when (u.host) { "move" -> { floatX = dragStart[0] + (q("dx") * d).toInt(); floatY = dragStart[1] + (q("dy") * d).toInt() }
+                    "size" -> floatW = dragStart[2] + (q("dw") * d).toInt() }
+                render()
+                if (u.host == "drop") emit("float", JSObject().apply { put("a", "moved"); put("x", floatX); put("y", floatY); put("w", floatW) }) } } }
     private var torOn = false
     private val NO_RTC_JS = "(()=>{for(const k of ['RTCPeerConnection','webkitRTCPeerConnection','RTCDataChannel'])try{delete window[k];Object.defineProperty(window,k,{value:undefined})}catch(e){}})();"
     /** Tor mode: route every tab through Hush's local Tor proxy (whole app), or back to a direct connection. */
@@ -261,6 +288,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                             if (r.url.host == "watch") emit("watchPick", JSObject().apply { put("url", t.page); put("sel", sel); put("text", r.url.getQueryParameter("text") ?: "") })
                             else emit("pick", JSObject().apply { put("host", host); put("sel", sel) }) }; true }
                     // Two-finger gestures and the quick wheel (tools.js): only a short shape / action id is passed on.
+                    "hush-float" -> { act.runOnUiThread { onFloatUrl(t, r.url) }; true }
                     "hush-gesture" -> { val h = (r.url.host ?: "").lowercase()
                         if (h.startsWith("a-") && h.length < 20 && h.drop(2).all { it in 'a'..'z' }) emit("gesture", JSObject().apply { put("action", h.drop(2)) })
                         else if (h.length in 1..4 && h.all { it in "lrudt" }) emit("gesture", JSObject().apply { put("g", h.uppercase()) }); true }
@@ -381,14 +409,29 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     /** Show the active tab's view (or none while a chrome sheet is open). */
     private fun render() = act.runOnUiThread {
         val root = act.findViewById<ViewGroup>(android.R.id.content)
-        tabs.values.forEach { t -> t.box?.let { if (it.parent != null && (t.id != active || !visible)) { snap(t); root.removeView(it) } } }
+        tabs.values.forEach { t -> t.box?.let { if (it.parent != null && (t.id != active || !visible) && !(t.id == floatId && visible)) { snap(t); root.removeView(it) } } }
+        // Floating video: that tab's view stays on top in a small, movable, resizable frame.
+        floatId?.let { fid -> tabs[fid]?.let { ft -> if (visible && fid != active) ft.wv?.let { fw ->
+            val fb = boxFor(ft, fw); val m = act.resources.displayMetrics
+            val w = floatW.coerceIn(dp(160), m.widthPixels - dp(8)); val h = w * 9 / 16
+            val maxX = m.widthPixels - w; val maxY = root.height.takeIf { it > 0 }?.let { it - h - bottomPx } ?: (m.heightPixels - h)
+            floatX = if (floatX < 0) maxX - dp(12) else floatX.coerceIn(0, maxX.coerceAtLeast(0)); floatY = if (floatY < 0) maxY - dp(12) else floatY.coerceIn(topPx, maxY.coerceAtLeast(topPx))
+            val lp = FrameLayout.LayoutParams(w, h).apply { leftMargin = floatX; topMargin = floatY }
+            if (fb.parent == null) root.addView(fb, lp) else fb.layoutParams = lp
+            fb.elevation = dp(10).toFloat(); fb.clipToOutline = true
+            fb.outlineProvider = object : android.view.ViewOutlineProvider() { override fun getOutline(v: android.view.View, o: android.graphics.Outline) { o.setRoundRect(0, 0, v.width, v.height, dp(12).toFloat()) } }
+            fb.bringToFront() } } }
         val t = active?.let { tabs[it] } ?: return@runOnUiThread
         if (!visible) return@runOnUiThread
         if (t.wv == null) { t.box = null; t.wv = make(t).also { w -> if (t.saved != null) w.restoreState(t.saved!!) else w.loadUrl(t.url) } }
         t.lastUsed = System.currentTimeMillis()
         val b = boxFor(t, t.wv!!)
+        if (floatId == t.id) { floatId = null; t.wv?.evaluateJavascript(Native.floatJs() + ";__hushFloat(false);", null) }
+        if ((b.layoutParams?.width ?: -1) != -1) b.layoutParams = android.widget.FrameLayout.LayoutParams(-1, -1)
         if (b.parent == null) root.addView(b, android.widget.FrameLayout.LayoutParams(-1, -1))
+        b.elevation = 0f; b.clipToOutline = false
         layout(b)
+        floatId?.let { tabs[it]?.box }?.takeIf { it.parent != null && floatId != active }?.bringToFront()
     }
 
     @Command fun openTab(i: Invoke) {
@@ -542,6 +585,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         act.runOnUiThread { active?.let { tabs[it]?.wv }?.evaluateJavascript(js, null) }; i.resolve() }
 
     @InvokeArg class PickArgs { var mode: String = "" }
+    @InvokeArg class FloatArgs { var id: String = ""; var x: Int = -1; var y: Int = -1; var w: Int = 0; var stop: Boolean = true }
     @InvokeArg class TorArgs { var on: Boolean = false; var port: Int = 0 }
     @InvokeArg class ListenArgs { var action: String = ""; var rate: Double = 1.0 }
     @InvokeArg class ImgArgs { var data: String = "" }

@@ -13,4 +13,6 @@ object Native {
     external fun pageJs(): String
     /** The element picker script (Boosts → zap elements). */
     external fun pickerJs(): String
+    /** The floating-video player script. */
+    external fun floatJs(): String
 }
