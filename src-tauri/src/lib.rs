@@ -436,7 +436,8 @@ pub fn run() {
             add_custom_filter, export_data, import_data, update_lists,
             site_dark, get_stats, history_add, history_list, history_clear, suggest, session_save,
             check_update, app_info, import_bookmarks,
-            desktop::page_action, desktop::set_split,
+            desktop::page_action, desktop::set_split, desktop::set_rail, desktop::set_zoom, desktop::set_muted,
+            desktop::toggle_fullscreen, desktop::capture_tab,
             extensions::extension_list, extensions::extension_install, extensions::extension_remove,
             desktop::open_tab, desktop::switch_tab, desktop::close_tab, desktop::navigate, desktop::nav,
             desktop::clear_data, desktop::start_picker, desktop::set_layout, desktop::show_content,
@@ -463,7 +464,7 @@ mod security_tests {
     #[test] fn only_the_chrome_ui_can_call_hush_on_desktop() {
         // Web pages live in tab webviews; if a capability ever matched them, a website could call Hush commands.
         let c = cap("default");
-        assert_eq!(c["webviews"], json!(["chrome"]));
+        assert_eq!(c["webviews"], json!(["chrome", "rail"]));   // both are Hush's own local pages
         assert!(c.get("windows").is_none(), "a window-wide capability would include every tab");
         assert!(c.get("remote").is_none(), "remote URLs must never get IPC");
     }

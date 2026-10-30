@@ -37,7 +37,7 @@ strip = true
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.39"   # keep in lockstep with the version wry/tauri resolves (cargo tree -i webview2-com)
-windows = { version = "0.62", features = ["Win32_UI_Input_KeyboardAndMouse"] }
+windows = { version = "0.62", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Memory"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21"

@@ -17,9 +17,58 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     win.add_child(
         WebviewBuilder::new("chrome", WebviewUrl::App("index.html".into())).browser_extensions_enabled(true),
         LogicalPosition::new(0.0, 0.0), LogicalSize::new(s.width, s.height))?;
+    // The tab bar is its own small view that slides OVER the page (the page never resizes when it shows or hides).
+    win.add_child(
+        WebviewBuilder::new("rail", WebviewUrl::App("rail.html".into())).browser_extensions_enabled(true),
+        LogicalPosition::new(-4000.0, 0.0), LogicalSize::new(1.0, 1.0))?;
     let w2 = win.clone();
     win.on_window_event(move |e| { if let tauri::WindowEvent::Resized(_) = e { relayout(&w2); } });
     Ok(())
+}
+
+/// Put the tab-bar view on top of every page view (each webview is its own native child window on Windows).
+pub fn raise_rail(app: &AppHandle) {
+    #[cfg(windows)]
+    if let Some(r) = app.get_webview("rail") { crate::intercept_win::raise(&r); }
+    #[cfg(not(windows))]
+    let _ = app;
+}
+/// Place the tab-bar view (logical px). The chrome UI animates this for the slide in/out.
+#[tauri::command]
+pub async fn set_rail(app: AppHandle, x: f64, y: f64, w: f64, h: f64, visible: bool) {
+    let Some(r) = app.get_webview("rail") else { return };
+    let ok = |v: f64| v.is_finite() && v.abs() < 20000.0;
+    if !(ok(x) && ok(y) && ok(w) && ok(h)) { return; }
+    let _ = r.set_position(LogicalPosition::new(x, y));
+    let _ = r.set_size(LogicalSize::new(w.max(1.0), h.max(1.0)));
+    if visible { let _ = r.show(); } else { let _ = r.hide(); }
+    raise_rail(&app);
+}
+/// Page zoom for the active tab (1.0 = 100%).
+#[tauri::command]
+pub async fn set_zoom(app: AppHandle, factor: f64, tab: Option<String>) {
+    let l = tab.or_else(|| app.state::<AppState>().active.lock().clone());
+    if let Some(w) = l.and_then(|l| app.get_webview(&l)) { let _ = w.set_zoom(factor.clamp(0.25, 5.0)); }
+}
+/// Mute or unmute a tab (Windows).
+#[tauri::command]
+pub async fn set_muted(app: AppHandle, tab: String, muted: bool) {
+    #[cfg(windows)]
+    if let Some(w) = app.get_webview(&tab) { crate::intercept_win::mute(&w, muted); }
+    #[cfg(not(windows))]
+    let _ = (app, tab, muted);
+}
+#[tauri::command]
+pub async fn toggle_fullscreen(app: AppHandle) {
+    if let Some(w) = app.get_window("main") { let f = w.is_fullscreen().unwrap_or(false); let _ = w.set_fullscreen(!f); }
+}
+/// Ask for a fresh preview image of a tab (sent back as a `thumb` event to the tab bar).
+#[tauri::command]
+pub async fn capture_tab(app: AppHandle, tab: String) {
+    #[cfg(windows)]
+    if let Some(w) = app.get_webview(&tab) { crate::intercept_win::capture(&w); }
+    #[cfg(not(windows))]
+    let _ = (app, tab);
 }
 
 /// Page area (x, y, w, h) in logical px = window minus the insets the chrome reported.
@@ -39,6 +88,7 @@ fn relayout(win: &Window) {
     let half = ((cw - 1.0) / 2.0).max(1.0);
     for wv in win.webviews() {
         let l = wv.label();
+        if l == "rail" { continue; }                      // positioned by set_rail
         let (x, y, w, h) = if l == "chrome" { (0.0, 0.0, s.width, s.height) }
             else if split.as_deref() == Some(l) { (cx + half + 1.0, cy, half, ch) }       // split view: right half
             else if split.is_some() { (cx, cy, half, ch) }                                  // split view: left half
@@ -52,12 +102,19 @@ fn show_only(app: &AppHandle, label: &str) {
     let st = app.state::<AppState>();
     let panel = st.panel_open.load(Ordering::Relaxed);
     let split = st.split.lock().clone().filter(|s| s != label);
+    let prev = st.active.lock().clone();
     for t in st.tabs.lock().iter() {
         let on = !panel && (t == label || split.as_deref() == Some(t.as_str()));
-        if let Some(w) = app.get_webview(t) { if on { let _ = w.show(); } else { let _ = w.hide(); } }
+        if let Some(w) = app.get_webview(t) {
+            // Snapshot the tab we're leaving so the tab bar shows what it looked like.
+            #[cfg(windows)]
+            if !on && prev.as_deref() == Some(t.as_str()) && w.is_visible().unwrap_or(false) { crate::intercept_win::capture(&w); }
+            if on { let _ = w.show(); } else { let _ = w.hide(); }
+        }
     }
     *st.active.lock() = Some(label.into());
     if let Some(win) = app.get_window("main") { relayout(&win); }
+    raise_rail(app);
 }
 
 /// Split view: show `label` on the right half next to the active tab (None = back to one tab).
@@ -260,7 +317,9 @@ pub async fn open_tab(app: AppHandle, input: String, private: Option<bool>) -> R
     if let Some(w) = app.get_webview(&label) {
         crate::intercept_win::install(&w, st.blocker.clone());
         crate::intercept_win::install_shortcuts(&w);
+        crate::intercept_win::install_extras(&w);
     }
+    raise_rail(&app);
 
     st.tabs.lock().push(label.clone());
     show_only(&app, &label);

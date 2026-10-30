@@ -75,9 +75,14 @@ pub fn install_shortcuts(wv: &tauri::Webview) {
             args.VirtualKey(&mut vk)?;
             let down = |k: i32| GetKeyState(k) < 0;
             let (ctrl, shift) = (down(0x11), down(0x10));
+            if vk == 0x7A { args.SetHandled(true)?; let a = app.clone();               // F11: fullscreen
+                tauri::async_runtime::spawn(async move { let _ = a.emit_to("chrome", "shortcut", serde_json::json!({ "key": "f11" })); }); return Ok(()); }
             if !ctrl { return Ok(()); }
+            let digit = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
             let name = match vk {
-                0x4E if shift => "shift+n",
+                0x4E if shift => "shift+n", 0x54 if shift => "shift+t", 0x42 if shift => "shift+b",
+                0x31..=0x39 => digit[(vk - 0x31) as usize], 0x30 => "0", 0xBB | 0x6B => "+", 0xBD | 0x6D => "-",
+                0x4D => "m", 0x47 => "g",
                 0x54 => "t", 0x57 => "w", 0x4C => "l", 0x44 => "d", 0x42 => "b", 0x4A => "j", 0xBC => ",",
                 0x4B => "k", 0x46 => "f", 0x45 => "e", 0x48 => "h", 0xDC => "\\",
                 0x09 if shift => "shift+tab", 0x09 => "tab",
@@ -86,7 +91,7 @@ pub fn install_shortcuts(wv: &tauri::Webview) {
             args.SetHandled(true)?;
             // Typing shortcuts (new tab, address bar) need the chrome webview focused; do it outside this callback.
             let a = app.clone();
-            let focus = matches!(name, "t" | "l" | "," | "k" | "f" | "h" | "shift+n");
+            let focus = matches!(name, "t" | "l" | "," | "k" | "f" | "h" | "shift+n" | "g");
             tauri::async_runtime::spawn(async move {
                 if focus { if let Some(c) = a.get_webview("chrome") { let _ = c.set_focus(); } }
                 let _ = a.emit_to("chrome", "shortcut", serde_json::json!({ "key": name }));
@@ -95,5 +100,93 @@ pub fn install_shortcuts(wv: &tauri::Webview) {
         }));
         let mut token = Default::default();
         let _ = controller.add_AcceleratorKeyPressed(&handler, &mut token);
+    });
+}
+
+/// Raise this webview's native container window above its siblings (used for the slide-over tab bar).
+pub fn raise(wv: &tauri::Webview) {
+    use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, HWND_TOP, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE};
+    let _ = wv.with_webview(|p| unsafe {
+        if let Ok(parent) = p.controller().ParentWindow() {
+            let _ = SetWindowPos(parent, Some(HWND_TOP), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
+    });
+}
+
+pub fn mute(wv: &tauri::Webview, muted: bool) {
+    let _ = wv.with_webview(move |p| unsafe {
+        if let Ok(c8) = p.controller().CoreWebView2().and_then(|c| c.cast::<ICoreWebView2_8>()) { let _ = c8.SetIsMuted(muted); }
+    });
+}
+
+/// Page title and audio changes -> chrome + tab bar; preview capture when a page finishes loading.
+pub fn install_extras(wv: &tauri::Webview) {
+    let app = wv.app_handle().clone();
+    let label = wv.label().to_string();
+    let wv2 = wv.clone();
+    let _ = wv.with_webview(move |p| unsafe {
+        let Ok(core) = p.controller().CoreWebView2() else { return };
+        let (a1, l1, c1) = (app.clone(), label.clone(), core.clone());
+        let h = webview2_com::DocumentTitleChangedEventHandler::create(Box::new(move |_, _| {
+            let mut t = PWSTR::null();
+            if c1.DocumentTitle(&mut t).is_ok() {
+                let title = take_pwstr(t);
+                let p = serde_json::json!({ "tab": l1, "title": title });
+                let _ = a1.emit_to("chrome", "tab-title", p.clone()); let _ = a1.emit_to("rail", "tab-title", p);
+            }
+            Ok(())
+        }));
+        let mut tok = Default::default();
+        let _ = core.add_DocumentTitleChanged(&h, &mut tok);
+        let (a2, l2) = (app.clone(), label.clone());
+        if let Ok(c8) = core.cast::<ICoreWebView2_8>() {
+            let c8b = c8.clone();
+            let h = webview2_com::IsDocumentPlayingAudioChangedEventHandler::create(Box::new(move |_, _| {
+                let mut on = windows::core::BOOL::default();
+                let _ = c8b.IsDocumentPlayingAudio(&mut on);
+                let p = serde_json::json!({ "tab": l2, "audio": on.as_bool() });
+                let _ = a2.emit_to("chrome", "tab-audio", p.clone()); let _ = a2.emit_to("rail", "tab-audio", p);
+                Ok(())
+            }));
+            let mut tok = Default::default();
+            let _ = c8.add_IsDocumentPlayingAudioChanged(&h, &mut tok);
+        }
+        let w3 = wv2.clone();
+        let h = webview2_com::NavigationCompletedEventHandler::create(Box::new(move |_, _| {
+            let w = w3.clone();
+            tauri::async_runtime::spawn(async move { tokio_sleep(900).await; if w.is_visible().unwrap_or(false) { capture(&w); } });
+            Ok(())
+        }));
+        let mut tok = Default::default();
+        let _ = core.add_NavigationCompleted(&h, &mut tok);
+    });
+}
+async fn tokio_sleep(ms: u64) { let _ = tauri::async_runtime::spawn_blocking(move || std::thread::sleep(std::time::Duration::from_millis(ms))).await; }
+
+/// JPEG snapshot of what the tab shows -> `thumb {tab, data}` to the tab bar.
+pub fn capture(wv: &tauri::Webview) {
+    use windows::Win32::System::Com::StructuredStorage::{CreateStreamOnHGlobal, GetHGlobalFromStream};
+    use windows::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
+    use base64::Engine;
+    let app = wv.app_handle().clone();
+    let label = wv.label().to_string();
+    let _ = wv.with_webview(move |p| unsafe {
+        let Ok(core) = p.controller().CoreWebView2() else { return };
+        let Ok(stream) = CreateStreamOnHGlobal(Default::default(), true) else { return };
+        let s2 = stream.clone();
+        let h = webview2_com::CapturePreviewCompletedHandler::create(Box::new(move |res| {
+            if res.is_err() { return Ok(()); }
+            if let Ok(hg) = GetHGlobalFromStream(&s2) {
+                let n = GlobalSize(hg); let ptr = GlobalLock(hg) as *const u8;
+                if !ptr.is_null() && n > 0 && n < 8_000_000 {
+                    let bytes = std::slice::from_raw_parts(ptr, n);
+                    let data = format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes));
+                    let _ = app.emit_to("rail", "thumb", serde_json::json!({ "tab": label, "data": data }));
+                }
+                let _ = GlobalUnlock(hg);
+            }
+            Ok(())
+        }));
+        let _ = core.CapturePreview(COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_JPEG, &stream, &h);
     });
 }
