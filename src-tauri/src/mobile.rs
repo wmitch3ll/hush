@@ -61,7 +61,7 @@ pub async fn page_action(app: AppHandle, action: String, arg: Option<String>) ->
 #[tauri::command]
 pub async fn native_call(app: AppHandle, cmd: String, args: Option<Value>) -> Result<Value, String> {
     const ALLOWED: &[&str] = &["takeIntent", "askDefault", "isDefault", "pip", "permissionReply", "sitePerms", "resetSitePerms",
-        "printPage", "voice", "discardBackground"];
+        "printPage", "voice", "discardBackground", "muteTab"];
     if !ALLOWED.contains(&cmd.as_str()) { return Err("not allowed".into()); }
     call(&app, &cmd, args.unwrap_or(json!({})))
 }

@@ -108,7 +108,7 @@ fn show_only(app: &AppHandle, label: &str) {
         if let Some(w) = app.get_webview(t) {
             // Snapshot the tab we're leaving so the tab bar shows what it looked like.
             #[cfg(windows)]
-            if !on && prev.as_deref() == Some(t.as_str()) && w.is_visible().unwrap_or(false) { crate::intercept_win::capture(&w); }
+            if !on && prev.as_deref() == Some(t.as_str()) && !panel { crate::intercept_win::capture(&w); }
             if on { let _ = w.show(); } else { let _ = w.hide(); }
         }
     }

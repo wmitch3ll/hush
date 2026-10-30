@@ -1,1 +1,107 @@
-<!doctype html><meta charset=utf-8><title>Hush tabs</title><body>tabs</body>
+<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+<title>Hush tabs</title>
+<style>
+/* The tab bar: its own small view that slides OVER the page. Colors arrive from the main UI (same tokens). */
+:root{--bg:#f5f5f4;--card:#fff;--line:#e4e4e2;--ink:#161616;--mute:#8b8b88;--acc:#161616;--glow:#16161622;color-scheme:light}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--ink);font:12.5px/1.3 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;user-select:none}
+body{display:flex;flex-direction:column}
+body.h{flex-direction:row}
+body.left{border-right:1px solid var(--line);box-shadow:4px 0 24px #0002}body.right{border-left:1px solid var(--line);box-shadow:-4px 0 24px #0002}
+body.top{border-bottom:1px solid var(--line);box-shadow:0 4px 24px #0002}body.bottom{border-top:1px solid var(--line);box-shadow:0 -4px 24px #0002}
+body.pinned{box-shadow:none}
+/* Collapsed: a thin edge you can hover to bring the bar back. */
+#edge{display:none;position:fixed;inset:0;background:var(--bg)}
+#edge::after{content:"";position:absolute;background:var(--mute);opacity:.5;border-radius:2px;left:50%;top:50%;width:2px;height:44px;transform:translate(-50%,-50%)}
+body.h #edge::after{width:44px;height:2px}
+body.collapsed #edge{display:block}body.collapsed>*:not(#edge){visibility:hidden}
+header{display:flex;gap:6px;align-items:center;padding:10px 10px 6px;flex:none}
+body.h header{flex-direction:column;padding:8px 6px;justify-content:center}
+button{all:unset;cursor:pointer;border-radius:8px;display:grid;place-items:center}
+button:focus-visible{box-shadow:0 0 0 2px var(--glow)}
+#ws{height:26px;padding:0 10px;border:1px solid var(--line);font-weight:600;font-size:11.5px;color:var(--mute);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;line-height:24px}
+#ws:hover,#new:hover,#newp:hover{color:var(--ink);background:var(--card)}
+#new,#newp{width:28px;height:28px;color:var(--mute)}
+#new svg,#newp svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+.sp{flex:1}
+#list{flex:1;overflow:auto;padding:4px 10px 12px;display:flex;flex-direction:column;gap:10px;scrollbar-width:thin}
+body.h #list{flex-direction:row;padding:10px 12px 10px 4px;overflow-y:hidden}
+.t{position:relative;border-radius:12px;background:var(--card);border:1px solid var(--line);overflow:hidden;cursor:pointer;flex:none;transition:transform .12s,border-color .12s,box-shadow .12s}
+body.h .t{width:200px}
+.t:hover{transform:translateY(-1px)}.t.on{border-color:var(--acc);box-shadow:0 0 0 3px var(--glow)}
+.t.priv{border-style:dashed}.t.sleep .shot{filter:grayscale(1) opacity(.55)}.t.split .shot::after{content:"split";position:absolute;right:6px;bottom:6px;font-size:10px;background:var(--ink);color:var(--bg);padding:1px 6px;border-radius:99px}
+.t.drag{opacity:.35}.t.over{box-shadow:0 0 0 2px var(--acc)}
+.shot{position:relative;aspect-ratio:16/10;background:var(--bg) center top/cover no-repeat;display:grid;place-items:center;color:var(--mute);font:300 30px/1 ui-serif,"Times New Roman",Georgia,serif;border-bottom:1px solid var(--line)}
+body.small .shot{aspect-ratio:16/7}body.noprev .shot{display:none}
+.meta{display:flex;gap:6px;align-items:center;padding:6px 8px;min-width:0}
+.meta b{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.meta i{font-style:normal;color:var(--mute);font-size:11px;flex:none}
+.x{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;background:var(--card);color:var(--mute);box-shadow:0 1px 4px #0003;opacity:0;font-size:12px}
+.t:hover .x{opacity:1}.x:hover{color:var(--ink)}
+.au{width:20px;height:20px;color:var(--mute);flex:none}.au svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+.au:hover{color:var(--ink)}
+#menu{position:fixed;z-index:9;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 30px #0003;padding:4px;display:none;min-width:170px}
+#menu.on{display:block}#menu button{display:block;width:100%;padding:7px 10px;border-radius:6px;text-align:left}#menu button:hover{background:var(--bg)}
+.hint{color:var(--mute);font-size:11px;padding:2px 12px 10px;flex:none}body.h .hint{display:none}
+@media (prefers-reduced-motion:reduce){.t{transition:none}}
+</style>
+<div id=edge></div>
+<header>
+  <button id=ws title="Switch workspace">Personal</button><span class=sp></span>
+  <button id=newp title="New private tab (Ctrl+Shift+N)" aria-label="New private tab"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" stroke-dasharray="3 3"/></svg></button>
+  <button id=new title="New tab (Ctrl+T)" aria-label="New tab"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+</header>
+<div id=list role=tablist aria-label="Tabs"></div>
+<div class=hint>Drag to reorder · middle-click to close · right-click for more</div>
+<div id=menu role=menu></div>
+<script>
+const T=window.__TAURI__, $=s=>document.querySelector(s);
+const send=(type,data={})=>T.event.emitTo('chrome','rail-action',{type,...data}).catch(()=>{});
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const host=u=>{try{return new URL(u).hostname.replace(/^www\./,'')}catch{return''}};
+let S={tabs:[],cur:null,split:null,pos:'left',ws:'Personal',wsList:['Personal'],collapsed:true,pinned:false,previews:'large'};
+const THUMBS={},TITLES={},AUDIO={};
+
+function draw(){
+  const b=document.body,h=S.pos=='top'||S.pos=='bottom';
+  b.className=[S.pos,h?'h':'v',S.collapsed?'collapsed':'',S.pinned?'pinned':'',S.previews=='off'?'noprev':S.previews=='small'?'small':''].join(' ');
+  $('#ws').textContent=S.ws;
+  $('#list').innerHTML=S.tabs.map(t=>{const th=THUMBS[t.id],ti=TITLES[t.id]||t.title||host(t.url)||'New tab',au=AUDIO[t.id];
+    return `<div class="t ${t.id==S.cur?'on':''} ${t.priv?'priv':''} ${t.sleeping?'sleep':''} ${t.id==S.split?'split':''}" data-id="${esc(t.id)}" draggable=true role=tab aria-selected=${t.id==S.cur} title="${esc(ti)}\n${esc(t.url)}">
+      <div class=shot ${th&&!t.priv?`style="background-image:url('${th}')"`:''}>${th&&!t.priv?'':(t.priv?'◌':esc((host(t.url)||'·')[0].toUpperCase()))}</div>
+      <div class=meta>${au||t.muted?`<button class=au data-mute="${esc(t.id)}" title="${t.muted?'Unmute':'Mute'} (Ctrl+M)">${t.muted?'<svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM16 9l5 6M21 9l-5 6"/></svg>':'<svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM16 8a5 5 0 0 1 0 8"/></svg>'}</button>`:''}
+        <b>${esc(ti)}</b>${t.sleeping?'<i>asleep</i>':''}</div>
+      <button class=x data-x="${esc(t.id)}" aria-label="Close tab">✕</button></div>`}).join('')||'<div style="color:var(--mute);padding:20px 4px;text-align:center">No tabs in this workspace</div>';
+  document.querySelectorAll('.t').forEach(el=>{const id=el.dataset.id;
+    el.onclick=e=>{if(e.target.closest('[data-x],[data-mute]'))return;send(e.shiftKey?'split':'select',{id})};
+    el.onauxclick=e=>{if(e.button==1){e.preventDefault();send('close',{id})}};
+    el.oncontextmenu=e=>{e.preventDefault();menu(e,id)};
+    el.ondragstart=e=>{e.dataTransfer.setData('text/hush-tab',id);el.classList.add('drag')};el.ondragend=()=>el.classList.remove('drag');
+    el.ondragover=e=>{e.preventDefault();el.classList.add('over')};el.ondragleave=()=>el.classList.remove('over');
+    el.ondrop=e=>{e.preventDefault();el.classList.remove('over');const from=e.dataTransfer.getData('text/hush-tab');if(from&&from!=id)send('reorder',{from,to:id})}});
+  document.querySelectorAll('[data-x]').forEach(x=>x.onclick=e=>{e.stopPropagation();send('close',{id:x.dataset.x})});
+  document.querySelectorAll('[data-mute]').forEach(x=>x.onclick=e=>{e.stopPropagation();send('mute',{id:x.dataset.mute})});
+  const on=document.querySelector('.t.on');if(on&&!S.collapsed)on.scrollIntoView({block:'nearest',inline:'nearest'});
+}
+function menu(e,id){const t=S.tabs.find(x=>x.id==id);if(!t)return;const m=$('#menu');
+  const items=[['Split view with this tab','split'],[t.muted?'Unmute tab':'Mute tab','mute'],['Duplicate tab','dup'],['Copy link','copy'],
+    ...S.wsList.filter(w=>w!=S.ws).map(w=>['Move to '+w,'move:'+w]),['Close other tabs','others'],['Close tab','close']];
+  m.innerHTML=items.map(([l,a])=>`<button data-a="${esc(a)}" role=menuitem>${esc(l)}</button>`).join('');
+  m.style.left=Math.min(e.clientX,innerWidth-180)+'px';m.style.top=Math.min(e.clientY,innerHeight-items.length*32-10)+'px';m.classList.add('on');
+  m.querySelectorAll('[data-a]').forEach(b=>b.onclick=async()=>{m.classList.remove('on');const a=b.dataset.a;
+    if(a=='copy'){try{await navigator.clipboard.writeText(t.url)}catch(e){}return}
+    if(a.startsWith('move:'))return send('move',{id,ws:a.slice(5)});send(a,{id})})}
+addEventListener('click',e=>{if(!e.target.closest('#menu'))$('#menu').classList.remove('on')});
+$('#new').onclick=()=>send('new');$('#newp').onclick=()=>send('newpriv');$('#ws').onclick=()=>send('ws');
+// Hover: the main UI decides when to slide in/out.
+document.documentElement.addEventListener('mouseenter',()=>send('hover'));
+document.documentElement.addEventListener('mouseleave',()=>send('leave'));
+addEventListener('keydown',e=>{if(e.key=='Escape')send('leave')});
+
+T.event.listen('rail-state',({payload:p})=>{S=p;if(p.vars)for(const[k,v]of Object.entries(p.vars))document.documentElement.style.setProperty(k,v);
+  document.documentElement.style.colorScheme=p.dark?'dark':'light';draw()});
+T.event.listen('thumb',({payload:p})=>{if(typeof p.data=='string'&&p.data.startsWith('data:image/jpeg;base64,')){THUMBS[p.tab]=p.data;draw()}});
+T.event.listen('tab-title',({payload:p})=>{TITLES[p.tab]=p.title;draw()});
+T.event.listen('tab-audio',({payload:p})=>{AUDIO[p.tab]=p.audio;draw()});
+send('ready');
+</script>

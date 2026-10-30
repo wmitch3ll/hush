@@ -107,7 +107,8 @@ pub fn install_shortcuts(wv: &tauri::Webview) {
 pub fn raise(wv: &tauri::Webview) {
     use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, HWND_TOP, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE};
     let _ = wv.with_webview(|p| unsafe {
-        if let Ok(parent) = p.controller().ParentWindow() {
+        let mut parent = windows::Win32::Foundation::HWND::default();
+        if p.controller().ParentWindow(&mut parent).is_ok() && !parent.is_invalid() {
             let _ = SetWindowPos(parent, Some(HWND_TOP), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         }
     });
@@ -151,10 +152,12 @@ pub fn install_extras(wv: &tauri::Webview) {
             let mut tok = Default::default();
             let _ = c8.add_IsDocumentPlayingAudioChanged(&h, &mut tok);
         }
-        let w3 = wv2.clone();
+        let (w3, a3, l3) = (wv2.clone(), app.clone(), label.clone());
         let h = webview2_com::NavigationCompletedEventHandler::create(Box::new(move |_, _| {
-            let w = w3.clone();
-            tauri::async_runtime::spawn(async move { tokio_sleep(900).await; if w.is_visible().unwrap_or(false) { capture(&w); } });
+            let (w, a, l) = (w3.clone(), a3.clone(), l3.clone());
+            // Only snapshot the tab you're looking at (hidden tabs can't be captured).
+            tauri::async_runtime::spawn(async move { tokio_sleep(900).await;
+                if a.state::<crate::AppState>().active.lock().as_deref() == Some(l.as_str()) { capture(&w); } });
             Ok(())
         }));
         let mut tok = Default::default();

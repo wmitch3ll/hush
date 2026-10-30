@@ -44,7 +44,7 @@ import app.tauri.plugin.*
  * Events to the chrome UI are delivered by calling window.__hushEvent(name, data) in the chrome page:
  *   tabUrl {id, url, title, state: started|finished, canBack, canFwd}   download {name, state, error?}   back {}
  *   find {index, count}   longpress {url, kind: link|image}   thumb {id, data: jpeg data URL}  (tab-grid previews)
- *   icon {id, host, data}   openUrl {}  (a link/share/widget arrived — call takeIntent)   permission {host, kinds[]}
+ *   tabAudio {id, audio}   icon {id, host, data}   openUrl {}  (a link/share/widget arrived — call takeIntent)   permission {host, kinds[]}
  */
 @TauriPlugin
 class TabsPlugin(private val act: Activity) : Plugin(act) {
@@ -214,6 +214,13 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         // YouTube / anti-adblock fixes must run before the page's own scripts: document-start injection (WebView 88+).
         val earlyScripts = try { WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT) } catch (e: Throwable) { false }
         if (earlyScripts) try { WebViewCompat.addDocumentStartJavaScript(w, Native.scriptletJs(), setOf("*")) } catch (e: Throwable) {}
+        // Audio indicator: the page reports (only) whether something is playing. Spoofing it can't do anything but flip an icon.
+        val audioMsgs = try { WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) } catch (e: Throwable) { false }
+        if (audioMsgs) try {
+            WebViewCompat.addWebMessageListener(w, "hushAudio", setOf("*")) { _, msg, _, _, _ ->
+                emit("tabAudio", JSObject().apply { put("id", t.id); put("audio", msg.data == "1") }) }
+            if (earlyScripts) WebViewCompat.addDocumentStartJavaScript(w, AUDIO_JS, setOf("*"))
+        } catch (e: Throwable) {}
         w.webViewClient = object : WebViewClient() {
             // NEVER call v.url (or any WebView method) here: this runs on a network thread and WebView throws,
             // which crashes the app ("the installed version of WebView caused the crash").
@@ -238,6 +245,8 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                 try { v.evaluateJavascript(Native.cosmeticJs(u), null) } catch (e: Throwable) {}
                 if (!earlyScripts) try { v.evaluateJavascript(Native.scriptletJs(), null) } catch (e: Throwable) {}
                 if (bgPlay) v.evaluateJavascript(BG_PLAY_JS, null)
+                if (!earlyScripts) v.evaluateJavascript(AUDIO_JS, null)
+                emit("tabAudio", JSObject().apply { put("id", t.id); put("audio", false) })
                 emitUrl(t, v, "started")
             }
             override fun onPageFinished(v: WebView, u: String) {
@@ -308,7 +317,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     }
 
     /** The view that goes on screen: the WebView inside a pull-to-refresh container. */
-    private fun boxFor(t: Tab, w: WebView): SwipeRefreshLayout = t.box ?: SwipeRefreshLayout(act).also { b ->
+    private fun boxFor(t: Tab, w: WebView): SwipeRefreshLayout = t.box ?: HushRefresh(act).also { b ->
         b.addView(w, ViewGroup.LayoutParams(-1, -1))
         b.setOnRefreshListener { w.reload() }
         b.isEnabled = pullRefresh
@@ -406,10 +415,16 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                 else -> w.findNext(a.action != "find-back")
             } }
         i.resolve() }
+    /** Mute / unmute everything a tab plays (keeps new media muted too). */
+    @Command fun muteTab(i: Invoke) { val a = i.parseArgs(MuteArgs::class.java)
+        act.runOnUiThread { tabs[a.id]?.wv?.evaluateJavascript("(m=>{window.__hushMuted=m;const f=()=>document.querySelectorAll('video,audio').forEach(x=>x.muted=m);f();" +
+            "if(!window.__hushMuteHook){window.__hushMuteHook=1;document.addEventListener('play',e=>{if(window.__hushMuted)e.target.muted=true},true)}})(" + a.muted + ")", null) }
+        i.resolve() }
     /** Run a page tool script (built by Rust from a fixed list of actions) in the active tab. */
     @Command fun evalJs(i: Invoke) { val js = i.parseArgs(JsArgs::class.java).js
         act.runOnUiThread { active?.let { tabs[it]?.wv }?.evaluateJavascript(js, null) }; i.resolve() }
 
+    @InvokeArg class MuteArgs { var id: String = ""; var muted: Boolean = true }
     @InvokeArg class FindArgs { var query: String = ""; var action: String = "find" }
     @InvokeArg class JsArgs { var js: String = "" }
     @InvokeArg class InsetArgs { var px: Int = 0; var bottom: Int = 0 }
@@ -423,6 +438,11 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
 
     companion object {
         private const val PRIVATE = "hush-private"
+        /** Tells Hush whether this page is playing sound (for the speaker icon). */
+        private const val AUDIO_JS = "(()=>{if(window.__hushAu||typeof hushAudio==='undefined')return;window.__hushAu=1;let last=null;" +
+            "const tell=()=>{const on=[...document.querySelectorAll('video,audio')].some(m=>!m.paused&&!m.ended&&!m.muted&&m.volume>0);" +
+            "if(on!==last){last=on;try{hushAudio.postMessage(on?'1':'0')}catch(e){}}};" +
+            "for(const e of ['play','playing','pause','ended','volumechange','emptied'])document.addEventListener(e,()=>setTimeout(tell,50),true);setInterval(tell,4000)})()"
         /** Background play: pages can't tell the app is in the background, so videos keep playing. */
         private const val BG_PLAY_JS = "(()=>{if(window.__hushBg)return;window.__hushBg=1;try{Object.defineProperty(document,'visibilityState',{get:()=>'visible'});" +
             "Object.defineProperty(document,'hidden',{get:()=>false});Object.defineProperty(document,'webkitVisibilityState',{get:()=>'visible'});" +

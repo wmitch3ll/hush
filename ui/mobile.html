@@ -28,6 +28,8 @@ body.bottom #top{border-bottom:0;border-top:1px solid var(--line)}
 .ib svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .ib:active{background:var(--line)}
 #shield.off{opacity:.4}#shield.priv::after{content:"";position:absolute;inset:9px;border:1.5px dashed var(--mute);border-radius:50%}
+#tabs-btn.playing::after{content:"";position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:50%;background:var(--acc);border:2px solid var(--bg)}
+.card .snd{position:absolute;top:6px;left:6px;width:30px;height:30px;border-radius:50%;background:var(--card);box-shadow:0 1px 3px #0003;display:grid;place-items:center}.card .snd svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round}
 #tabs-btn span{width:22px;height:22px;border:1.6px solid var(--ink);border-radius:7px;font-weight:600;font-size:12px;display:grid;place-items:center}
 body.priv #tabs-btn span{border-style:dashed}
 #bar{height:2px;background:var(--acc);width:0;position:absolute;left:0;bottom:-1px;transition:width .4s,opacity .3s;opacity:0}
@@ -95,6 +97,7 @@ body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
     <div id="pill">
       <button class="ib" id="shield" aria-label="Site settings"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/></svg></button>
       <input id="url" inputmode="url" enterkeyhint="go" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="Search or enter address">
+      <button class="ib" id="snd" aria-label="Mute this tab" style="display:none"></button>
       <button class="ib" id="mic" aria-label="Voice search" style="display:none"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
       <button class="ib" id="reload" aria-label="Reload"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.5-5.8M20 4v4h-4"/></svg></button>
       <span id="find"><input id="findq" enterkeyhint="search" placeholder="Find in page" autocapitalize="off" spellcheck="false"><span id="findn"></span>
@@ -129,6 +132,8 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const hostOf=u=>{try{return new URL(u).hostname}catch{return""}};
 const bare=u=>hostOf(u).replace(/^www\./,"");
 const vibe=()=>{try{navigator.vibrate&&navigator.vibrate(8)}catch(e){}};
+const SPK=`<svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM16 8a5 5 0 0 1 0 8"/></svg>`,MUT=`<svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM16 9l5 6M21 9l-5 6"/></svg>`;
+function toggleMute(t){if(!t||!t.native)return;t.muted=!t.muted;native("muteTab",{id:t.native,muted:t.muted});toast(t.muted?"Tab muted":"Tab unmuted");render();if(sheet==="switcher")drawSwitcher()}
 const native=(cmd,args)=>inv("native_call",{cmd,args:args||{}});
 // Site icons (sent by Android as tiny PNGs), kept on this phone in browser storage — a convenience, safe to lose.
 let ICONS={};try{ICONS=JSON.parse(localStorage.getItem("hush-icons")||"{}")}catch(e){}
@@ -204,6 +209,8 @@ function render(){
   $("#url").placeholder=t?.priv?"Private — nothing is saved":"Search or enter address";
   $("#shield").classList.toggle("off",allow.has(h));$("#shield").classList.toggle("priv",!!t?.priv);
   $("#tabs-btn span").textContent=inWs().length;
+  const snd=$("#snd");snd.style.display=live&&(t.audio||t.muted)&&!typing?"grid":"none";snd.innerHTML=t?.muted?MUT:SPK;snd.setAttribute("aria-label",t?.muted?"Unmute this tab":"Mute this tab");
+  $("#tabs-btn").classList.toggle("playing",tabs.some(x=>x.id!==cur&&x.audio&&!x.muted));
   if(typing){renderSuggest();syncNative();return}
   $("#view").innerHTML=live?"":`<div class="home ${t?.priv?"priv":""}">${WORDMARK}<p>${t?.priv?"private tab — nothing here gets saved.":"nothing here but you."}</p>
     <p class="stats" id="stats"></p><div class="grid">${state.bookmarks.map((b,i)=>[b,i]).filter(([b])=>b.folder!=="reading").slice(0,12).map(([b,i])=>`<button class="bm" data-bm="${i}"><i ${icon(b.url)?`style="background-image:url('${esc(icon(b.url))}');color:transparent"`:""}>${esc((bare(b.url)||"?")[0])}</i><span>${esc(b.title||bare(b.url))}</span></button>`).join("")}</div>
@@ -252,6 +259,7 @@ let sugItems=[];
 $("#url").addEventListener("focus",e=>{const t=T(),v=t&&t.native?t.url:"";e.target.value=v;typing=true;syncNative();renderSuggest();if(v)setTimeout(()=>{if(e.target.value===v)e.target.select()},0)});
 $("#url").addEventListener("blur",()=>setTimeout(()=>{if(document.activeElement!==$("#url")){typing=false;document.body.classList.remove("typing");render()}},120));
 $("#url").addEventListener("focus",()=>document.body.classList.add("typing"));
+$("#snd").onclick=()=>toggleMute(T());
 $("#mic").onpointerdown=e=>{e.preventDefault();voice()};
 async function voice(){try{const r=await native("voice");if(r&&r.text){$("#url").value=r.text;go(r.text)}}catch(e){toast(String(e).includes("available")?"Voice search isn’t available on this phone":"Didn’t catch that")}}
 $("#url").addEventListener("input",()=>renderSuggest());
@@ -285,6 +293,7 @@ window.__hushEvent=(name,d)=>{
     if(d.state==="started"){downloads.unshift({name:d.name,state:"started"});toast("Downloading "+d.name+" — see notifications")}
     else{downloads.unshift({name:d.name,state:"failed"});toast("Download failed"+(d.error?": "+d.error:""))}
     if(sheet==="downloads")drawDownloads()}
+  else if(name==="tabAudio"){const t=tabs.find(x=>x.native===d.id);if(t&&t.audio!==!!d.audio){t.audio=!!d.audio;render();if(sheet==="switcher")drawSwitcher()}}
   else if(name==="thumb"){const t=tabs.find(x=>x.native===d.id);if(t&&!t.priv&&typeof d.data==="string"&&d.data.startsWith("data:image/jpeg;base64,")){t.thumb=d.data;if(sheet==="switcher")drawSwitcher()}}
   else if(name==="find"){$("#findn").textContent=d.count?d.index+"/"+d.count:"0"}
   else if(name==="longpress"){if(!d.url)return;const u=d.url;
@@ -325,7 +334,7 @@ function openSwitcher(){drawSwitcher();show("switcher")}
 function drawSwitcher(dir){const el=$("#switcher"),list=inWs();
   el.innerHTML=head("Tabs")+`<div class="chips">${wsList().map(w=>`<button data-ws="${esc(w)}" class="${w===curWs()?"on":""}">${esc(w)} · ${tabs.filter(t=>t.ws===w).length}</button>`).join("")}<button data-ws-new>＋ Workspace</button></div>
     <div class="row"><button class="btn acc" id="sw-new">＋ New tab</button><button class="btn" id="sw-priv">◌ Private tab</button></div>
-    <div class="cards" id="cards">${list.map(t=>`<div class="card ${t.id===cur?"cur":""} ${t.priv?"priv":""}" data-id="${t.id}">${t.priv?`<span class="tag">private</span>`:""}<button class="x" data-x="${t.id}" aria-label="Close tab">✕</button>
+    <div class="cards" id="cards">${list.map(t=>`<div class="card ${t.id===cur?"cur":""} ${t.priv?"priv":""}" data-id="${t.id}">${t.priv?`<span class="tag">private</span>`:""}<button class="x" data-x="${t.id}" aria-label="Close tab">✕</button>${t.audio||t.muted?`<button class="snd" data-snd="${t.id}" aria-label="${t.muted?"Unmute":"Mute"} tab">${t.muted?MUT:SPK}</button>`:""}
       <div class="shot" ${t.thumb?`style="background-image:url('${esc(t.thumb)}')"`:""}>${t.thumb?"":(t.url?esc((bare(t.url)||"?")[0].toUpperCase()):"hush.")}</div>
       <div class="meta"><b>${esc(t.title||bare(t.url)||"New tab")}</b><small>${t.url?esc(bare(t.url)):"Start page"}</small></div></div>`).join("")}</div>
     <p class="hint" style="text-align:center">Swipe a card sideways to close it · hold a card for more · swipe here ← → for other workspaces</p>`;
@@ -341,8 +350,9 @@ function drawSwitcher(dir){const el=$("#switcher"),list=inWs();
       right:()=>{c.style.transform="translateX(400px)";c.style.opacity="0";vibe();setTimeout(()=>closeTab(id),160)},
       long:()=>{const t=tabs.find(x=>x.id===id);actions(t.title||bare(t.url)||"New tab",[
         ...wsList().filter(w=>w!==t.ws).map(w=>["Move to "+w,()=>{t.ws=w;saveSession();drawSwitcher()}]),
-        ["Copy link",()=>copy(t.url)],["Close tab",()=>closeTab(id)],["Close other tabs",()=>inWs().filter(x=>x.id!==id).forEach(x=>closeTab(x.id))]])}})});
+        ...(t.native?[[t.muted?"Unmute tab":"Mute tab",()=>toggleMute(t)]]:[]),["Copy link",()=>copy(t.url)],["Close tab",()=>closeTab(id)],["Close other tabs",()=>inWs().filter(x=>x.id!==id).forEach(x=>closeTab(x.id))]])}})});
   el.querySelectorAll("[data-x]").forEach(b=>b.onclick=e=>{e.stopPropagation();closeTab(+b.dataset.x)});
+  el.querySelectorAll("[data-snd]").forEach(b=>{b.onclick=e=>{e.stopPropagation();toggleMute(tabs.find(x=>x.id===+b.dataset.snd))};b.ontouchend=e=>e.stopPropagation()});
   // Swipe the empty area / header sideways to change workspace.
   const ws=wsList(),i=ws.indexOf(curWs());
   gesture(el.querySelector(".chips"),{left:()=>i<ws.length-1&&switchWs(ws[i+1]),right:()=>i>0&&switchWs(ws[i-1])});
