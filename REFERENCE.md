@@ -24,7 +24,19 @@ For the published demo page, change it with the Artifact tool, action "edit" (ol
 | Workspaces | rail button / palette | tabs sheet chips | ui.workspaces / ui.ws |
 | QR codes | site panel | site sheet, link hold | ui/qr.js (verified with OpenCV) |
 | Gestures | wheel on tab bar, drag reorder | swipe bar ←→ tabs, swipe toward page = grid, swipe cards to close, pull to refresh, link long-press | UI + TabsPlugin.kt |
-| YouTube / anti-adblock scriptlets | TODO (R-15/R-16) | TODO | needs uBO resources |
+| YouTube / anti-adblock | ✓ | ✓ | tools/build-scriptlets.mjs → lists/scriptlets.js (uBO scriptlets, document start); uBO lists in engine |
+| Default browser, share target, hush:// import | — | ✓ | manifest filters (android-post-init.sh), TabsPlugin `handleIntent`/`takeIntent`, UI `handleIncoming` |
+| Permanent signing + update check | (git pull) | ✓ | CI cache key hush-signing-v1 / secret HUSH_KEYSTORE_B64; `check_update`, `app_info` |
+| Background play, fullscreen video, PiP | — | ✓ | TabsPlugin BG_PLAY_JS, onShowCustomView, autoPip, `pip` |
+| Site permissions (camera/mic/location) | WebView2 native prompt | ✓ ask/remember | TabsPlugin onPermissionRequest / onGeolocation…, `permissionReply` |
+| Site icons | — | ✓ | onReceivedIcon → `icon` event → localStorage |
+| Search shortcuts (!bangs) | ✓ | ✓ | lib.rs `bang()` + ui.bangs |
+| Memory saver | ✓ (closes/reopens) | ✓ discardBackground(minutes) | UI timers |
+| Save as PDF, reading list | ✓ print() | ✓ PrintManager | bookmarks folder "reading" |
+| Focus mode | ✓ on_navigation | ✓ shouldInterceptRequest page | lib.rs `focus_blocks`, ui.focus_* |
+| Widget, quick tile, voice search | — | ✓ | HushWidget.kt, HushTile.kt, res/, TabsPlugin `voice` |
+| Send bookmarks to phone | ✓ QR | ✓ import | desktop renderSend, `import_bookmarks` |
+| About, privacy policy, licenses | ✓ | ✓ | LICENSE (GPLv3) |
 
 ## 1. Repo map
 | Path | What it is | Size/Touch when |

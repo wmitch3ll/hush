@@ -22,7 +22,8 @@ body.bottom #top{border-bottom:0;border-top:1px solid var(--line)}
 #url,#findq{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--ink);font:inherit;font-size:15px;height:100%;text-overflow:ellipsis}
 #url::placeholder,#findq::placeholder{color:var(--mute)}
 #find{display:none;flex:1;align-items:center;gap:2px;min-width:0}#findn{color:var(--mute);font-size:12px;padding:0 4px;font-variant-numeric:tabular-nums}
-#pill.finding #find{display:flex}#pill.finding #shield,#pill.finding #url,#pill.finding #reload{display:none}
+#pill.finding #find{display:flex}body.typing #reload{display:none}body.typing #mic{display:grid!important}
+.bm i{background-size:60% auto;background-position:center;background-repeat:no-repeat}.card .meta b img,.sug img{width:16px;height:16px;border-radius:4px;vertical-align:-3px;margin-right:6px}#pill.finding #shield,#pill.finding #url,#pill.finding #reload{display:none}
 .ib{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;position:relative;flex:none}
 .ib svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .ib:active{background:var(--line)}
@@ -94,6 +95,7 @@ body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
     <div id="pill">
       <button class="ib" id="shield" aria-label="Site settings"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/></svg></button>
       <input id="url" inputmode="url" enterkeyhint="go" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="Search or enter address">
+      <button class="ib" id="mic" aria-label="Voice search" style="display:none"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
       <button class="ib" id="reload" aria-label="Reload"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.5-5.8M20 4v4h-4"/></svg></button>
       <span id="find"><input id="findq" enterkeyhint="search" placeholder="Find in page" autocapitalize="off" spellcheck="false"><span id="findn"></span>
         <button class="ib" id="findup" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M18 15l-6-6-6 6"/></svg></button>
@@ -113,6 +115,9 @@ body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
 <div class="sheet" id="site"></div>
 <div class="sheet" id="history"></div>
 <div class="sheet" id="cmd"></div>
+<div class="sheet" id="reading"></div>
+<div class="sheet" id="focus"></div>
+<div class="sheet" id="about"></div>
 <div id="scrim"></div><div class="act" id="act"></div>
 <div id="toast" role="status"></div>
 <script src="qr.js"></script>
@@ -124,6 +129,12 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const hostOf=u=>{try{return new URL(u).hostname}catch{return""}};
 const bare=u=>hostOf(u).replace(/^www\./,"");
 const vibe=()=>{try{navigator.vibrate&&navigator.vibrate(8)}catch(e){}};
+const native=(cmd,args)=>inv("native_call",{cmd,args:args||{}});
+// Site icons (sent by Android as tiny PNGs), kept on this phone in browser storage — a convenience, safe to lose.
+let ICONS={};try{ICONS=JSON.parse(localStorage.getItem("hush-icons")||"{}")}catch(e){}
+const icon=u=>ICONS[bare(u)]||"";
+function saveIcon(host,data){host=host.replace(/^www\./,"");if(!host||ICONS[host]===data)return;ICONS[host]=data;const k=Object.keys(ICONS);if(k.length>300)delete ICONS[k[0]];
+  try{localStorage.setItem("hush-icons",JSON.stringify(ICONS))}catch(e){}}
 const WORDMARK=`<div class="wordmark">hush.</div>`;
 let state={settings:{search:"duckduckgo",ui:{}},bookmarks:[],allow_sites:[],site_dark:{},session:[]}, allow=new Set();
 // tabs: {id, native (label of the native WebView; null = not opened yet), url, title, priv, ws, canBack, canFwd}
@@ -131,7 +142,7 @@ let tabs=[], cur=null, nid=1, sheet=null, downloads=[], typing=false, finding=fa
 const T=()=>tabs.find(t=>t.id===cur);
 
 // ---------- preferences (stored in Rust as ui.<name>) ----------
-const DEF={color:"graphite",bar_pos:"top",theme:"system",text_zoom:"100",desktop:"false",pull_refresh:"true",force_dark:"false",history:"off",restore:"off",workspaces:"Personal",ws:"Personal"};
+const DEF={bg_play:"true",memory_saver:"10",bangs:"",focus_sites:"youtube.com,reddit.com,x.com,instagram.com,tiktok.com,facebook.com",focus_until:"0",color:"graphite",bar_pos:"top",theme:"system",text_zoom:"100",desktop:"false",pull_refresh:"true",force_dark:"false",history:"off",restore:"off",workspaces:"Personal",ws:"Personal"};
 const pref=k=>state.settings.ui?.[k]??DEF[k];
 async function setPref(k,v){state.settings.ui[k]=String(v);applyPrefs();try{await inv("set_setting",{key:"ui."+k,value:String(v)})}catch(e){}}
 // Browser color: a hue/saturation tints every surface; light and dark variants are derived from it.
@@ -149,7 +160,7 @@ function applyPrefs(){
   const t=pref("theme");if(t==="system")document.documentElement.removeAttribute("data-theme");else document.documentElement.dataset.theme=t;
   applyColor();
   document.body.classList.toggle("bottom",pref("bar_pos")==="bottom");
-  inv("set_web_prefs",{textZoom:+pref("text_zoom"),desktop:pref("desktop")==="true",pullRefresh:pref("pull_refresh")==="true"}).catch(()=>{});
+  inv("set_web_prefs",{textZoom:+pref("text_zoom"),desktop:pref("desktop")==="true",pullRefresh:pref("pull_refresh")==="true",bgPlay:pref("bg_play")==="true"}).catch(()=>{});
   requestAnimationFrame(insets);
 }
 // Native tab views sit between the bars. Android wants device pixels.
@@ -195,7 +206,7 @@ function render(){
   $("#tabs-btn span").textContent=inWs().length;
   if(typing){renderSuggest();syncNative();return}
   $("#view").innerHTML=live?"":`<div class="home ${t?.priv?"priv":""}">${WORDMARK}<p>${t?.priv?"private tab — nothing here gets saved.":"nothing here but you."}</p>
-    <p class="stats" id="stats"></p><div class="grid">${state.bookmarks.slice(0,12).map((b,i)=>`<button class="bm" data-bm="${i}"><i>${esc((bare(b.url)||"?")[0])}</i><span>${esc(b.title||bare(b.url))}</span></button>`).join("")}</div>
+    <p class="stats" id="stats"></p><div class="grid">${state.bookmarks.map((b,i)=>[b,i]).filter(([b])=>b.folder!=="reading").slice(0,12).map(([b,i])=>`<button class="bm" data-bm="${i}"><i ${icon(b.url)?`style="background-image:url('${esc(icon(b.url))}');color:transparent"`:""}>${esc((bare(b.url)||"?")[0])}</i><span>${esc(b.title||bare(b.url))}</span></button>`).join("")}</div>
     <p class="hint">Swipe the address bar ← → to switch tabs · swipe it ${pref("bar_pos")==="bottom"?"up":"down"} for all tabs · hold it for commands</p></div>`;
   $("#view").querySelectorAll("[data-bm]").forEach(b=>{const bm=state.bookmarks[b.dataset.bm];
     gesture(b,{tap:()=>go(bm.url),long:()=>actions(bm.title||bare(bm.url),[["Open",()=>go(bm.url)],["Open in new tab",()=>{newTab(false,true);go(bm.url)}],
@@ -239,7 +250,10 @@ function sheetGestures(el){gesture(el,{down:()=>show(null)})}
 // ---------- typing: suggestions replace the page while the address bar is focused ----------
 let sugItems=[];
 $("#url").addEventListener("focus",e=>{const t=T(),v=t&&t.native?t.url:"";e.target.value=v;typing=true;syncNative();renderSuggest();if(v)setTimeout(()=>{if(e.target.value===v)e.target.select()},0)});
-$("#url").addEventListener("blur",()=>setTimeout(()=>{if(document.activeElement!==$("#url")){typing=false;render()}},120));
+$("#url").addEventListener("blur",()=>setTimeout(()=>{if(document.activeElement!==$("#url")){typing=false;document.body.classList.remove("typing");render()}},120));
+$("#url").addEventListener("focus",()=>document.body.classList.add("typing"));
+$("#mic").onpointerdown=e=>{e.preventDefault();voice()};
+async function voice(){try{const r=await native("voice");if(r&&r.text){$("#url").value=r.text;go(r.text)}}catch(e){toast(String(e).includes("available")?"Voice search isn’t available on this phone":"Didn’t catch that")}}
 $("#url").addEventListener("input",()=>renderSuggest());
 $("#url").addEventListener("keydown",e=>{if(e.key==="Enter")go(e.target.value)});
 async function renderSuggest(){const q=$("#url").value.trim(),v=$("#view");
@@ -279,6 +293,12 @@ window.__hushEvent=(name,d)=>{
       ["Open in background",()=>{const keep=cur,t=newTab(false,true);t.url=u;cur=keep;inv("open_tab",{input:u}).then(id=>{t.native=id;inv("switch_tab",{label:T().native||"none"});render()});toast("Opened in background")}],
       ["Open in private tab",()=>{const t=newTab(true,true);t.url=u;openNative(t);render()}],
       ["Copy link",()=>copy(u)],["Show QR code",()=>qrSheet(u)]])}
+  else if(name==="icon"){if(typeof d.data==="string"&&d.data.startsWith("data:image/png;base64,")&&d.data.length<20000)saveIcon(d.host||"",d.data)}
+  else if(name==="openUrl"){handleIncoming()}
+  else if(name==="permission"){const what=(d.kinds||[]).map(k=>({camera:"camera",microphone:"microphone",location:"location"}[k]||k)).join(" & ");
+    actions(bare("https://"+d.host)+" wants to use your "+what,[["Allow",()=>native("permissionReply",{allow:true,remember:true})],
+      ["Allow this time",()=>native("permissionReply",{allow:true,remember:false})],["Block",()=>native("permissionReply",{allow:false,remember:true})]]);
+    $("#scrim").onclick=()=>{closeActions();native("permissionReply",{allow:false,remember:false});$("#scrim").onclick=closeActions}}
   else if(name==="back"){if(document.querySelector(".act.on"))closeActions();else if(finding)findMode(false);else if(sheet)show(null);else if(typing)$("#url").blur();
     else if(inWs().length>1)closeTab(cur)}
 };
@@ -294,7 +314,7 @@ async function copy(t){try{await navigator.clipboard.writeText(t);toast("Copied"
 function qrSheet(u){const el=$("#site");el.innerHTML=head("Scan to open")+`<div class="qr">${hushQR.svg(u)}</div><p style="text-align:center;color:var(--mute);font-size:13px;word-break:break-all">${esc(u)}</p>`;wire(el);show("site")}
 
 // ---------- sheets ----------
-function show(id){sheet=id;["switcher","menu","settings","downloads","site","history","cmd"].forEach(s=>$("#"+s).classList.toggle("on",s===id));
+function show(id){sheet=id;["switcher","menu","settings","downloads","site","history","cmd","reading","focus","about"].forEach(s=>$("#"+s).classList.toggle("on",s===id));
   if(id!=="cmd"&&document.activeElement?.id==="cmdq")document.activeElement.blur();syncNative()}
 const head=title=>`<div class="grab"></div><h2>${title}<button class="btn sm" data-done>Done</button></h2>`;
 const wire=el=>{el.querySelectorAll("[data-done]").forEach(b=>b.onclick=()=>show(null));const h=el.querySelector("h2");if(h)sheetGestures(h)};
@@ -330,18 +350,25 @@ function drawSwitcher(dir){const el=$("#switcher"),list=inWs();
 function drawMenu(){const el=$("#menu"),t=T(),live=!!(t&&t.native);
   el.innerHTML=head("Menu")+`<div class="row"><button class="btn" id="m-back" ${live&&t.canBack?"":"disabled"}>‹ Back</button><button class="btn" id="m-fwd" ${live&&t.canFwd?"":"disabled"}>Forward ›</button></div>
    <div class="row"><button class="btn" id="m-find" ${live?"":"disabled"}>Find</button><button class="btn" id="m-read" ${live?"":"disabled"}>Reader</button><button class="btn" id="m-qr" ${live?"":"disabled"}>QR</button></div>
+   <div class="row"><button class="btn" id="m-later" ${live?"":"disabled"}>Read later</button><button class="btn" id="m-pdf" ${live?"":"disabled"}>Save as PDF</button><button class="btn" id="m-pip" ${live?"":"disabled"}>Pop-out video</button></div>
    <button class="item" id="m-new"><div>New private tab<small>separate cookies & storage, gone when you close it</small></div></button>
    <button class="item" id="m-bm" ${live?"":"disabled"}><div>Bookmark this page<small>shows on the start page</small></div></button>
    <button class="item" id="m-cmd"><div>Commands<small>or hold the address bar</small></div></button>
    <button class="item" id="m-hist"><div>History<small>${pref("history")==="on"?"on — kept only on this phone":"off"}</small></div></button>
    <button class="item" id="m-dl"><div>Downloads<small>saved to your Downloads folder</small></div></button>
-   <button class="item" id="m-set"><div>Settings<small>layout · dark mode · text size · search · privacy</small></div></button>`;
+   <button class="item" id="m-rl"><div>Reading list<small>${state.bookmarks.filter(b=>b.folder==="reading").length} saved</small></div></button>
+   <button class="item" id="m-focus"><div>Focus mode<small>${focusLeft()>0?"on — "+Math.ceil(focusLeft()/60)+" min left":"pause distracting sites"}</small></div></button>
+   <button class="item" id="m-set"><div>Settings<small>layout · color · dark mode · search · privacy</small></div></button>
+   <button class="item" id="m-about"><div>About Hush<small>updates · default browser · privacy · licenses</small></div></button>`;
   wire(el);
   $("#m-back").onclick=()=>{show(null);inv("nav",{action:"back"})};$("#m-fwd").onclick=()=>{show(null);inv("nav",{action:"fwd"})};
   $("#m-find").onclick=()=>{show(null);findMode(true)};$("#m-read").onclick=()=>{show(null);inv("page_action",{action:"reader"})};$("#m-qr").onclick=()=>qrSheet(t.url);
   $("#m-new").onclick=()=>newTab(true);$("#m-cmd").onclick=openCmd;$("#m-hist").onclick=()=>{drawHistory();show("history")};
   $("#m-bm").onclick=async()=>{try{await inv("bookmark_add",{title:t.title||bare(t.url),url:t.url});await loadState();show(null);toast("Bookmarked")}catch(e){toast("Couldn’t save")}};
-  $("#m-dl").onclick=()=>{drawDownloads();show("downloads")};$("#m-set").onclick=()=>{drawSettings();show("settings")}}
+  $("#m-dl").onclick=()=>{drawDownloads();show("downloads")};$("#m-set").onclick=()=>{drawSettings();show("settings")};
+  $("#m-later").onclick=async()=>{await inv("bookmark_add",{title:t.title||bare(t.url),url:t.url,folder:"reading"});await loadState();show(null);toast("Added to reading list")};
+  $("#m-pdf").onclick=()=>{show(null);native("printPage")};$("#m-pip").onclick=()=>{show(null);toast("Start the video in fullscreen first for the best fit");native("pip")};
+  $("#m-rl").onclick=()=>{drawReading();show("reading")};$("#m-focus").onclick=()=>{drawFocus();show("focus")};$("#m-about").onclick=()=>{drawAbout();show("about")}}
 
 function siteDark(h){const v=state.site_dark?.[h];return v===true?"on":v===false?"off":"auto"}
 function applyDarkNow(){const t=T();if(!t?.native)return;const sd=siteDark(hostOf(t.url)),on=sd==="auto"?pref("force_dark")==="true":sd==="on";
@@ -351,11 +378,14 @@ function drawSite(){const el=$("#site"),t=T(),h=hostOf(t.url),off=allow.has(h),s
    ${item("Shield",off?"Off — ads and trackers allowed here":"On — ads, trackers & cookie banners blocked",`<button class="sw ${off?"":"on"}" id="st-shield"></button>`)}
    ${item("Dark mode here","Auto follows Settings",`<div class="seg">${[["auto","Auto"],["on","On"],["off","Off"]].map(([v,l])=>`<button data-d="${v}" class="${sd===v?"on":""}">${l}</button>`).join("")}</div>`)}
    ${t.priv?item("Private tab","Separate cookies & storage · nothing saved"):""}
+   <div id="st-perms"></div>
    <div class="row"><button class="btn" id="st-read">Reader view</button><button class="btn" id="st-find">Find</button><button class="btn" id="st-copy">Copy link</button></div>
    <h3>Open on another device</h3><div class="qr">${(()=>{try{return hushQR.svg(t.url)}catch(e){return""}})()}</div>
    <p class="hint" style="text-align:center;margin-top:4px">Tip: hold the shield to switch it on/off instantly</p>`;
   wire(el);
   $("#st-shield").onclick=async()=>{await quickShield();drawSite()};
+  native("sitePerms",{host:h}).then(p=>{const k=Object.keys(p||{});if(!k.length)return;$("#st-perms").innerHTML=item("Permissions",k.map(x=>x+": "+(p[x]?"allowed":"blocked")).join(" · "),'<button class="btn sm" id="st-preset">Reset</button>');
+    $("#st-preset").onclick=async()=>{await native("resetSitePerms",{host:h});drawSite();toast("Permissions reset")}}).catch(()=>{});
   el.querySelectorAll("[data-d]").forEach(b=>b.onclick=async()=>{const v=b.dataset.d;await inv("site_dark",{host:h,value:v==="auto"?null:v==="on"});
     if(v==="auto")delete state.site_dark[h];else state.site_dark[h]=v==="on";applyDarkNow();drawSite()});
   $("#st-read").onclick=()=>{show(null);inv("page_action",{action:"reader"})};$("#st-find").onclick=()=>{show(null);findMode(true)};$("#st-copy").onclick=()=>copy(t.url)}
@@ -365,7 +395,9 @@ function openCmd(){vibe();const el=$("#cmd");
     ["Dark mode for websites: "+(pref("force_dark")==="true"?"on → off":"off → on"),async()=>{await setPref("force_dark",pref("force_dark")==="true"?"false":"true");applyDarkNow();show(null)}],
     ["Address bar to "+(pref("bar_pos")==="top"?"bottom":"top"),()=>{setPref("bar_pos",pref("bar_pos")==="top"?"bottom":"top");show(null)}],
     ["Site settings & QR",()=>{if(T()?.native){drawSite();show("site")}}],["All tabs",openSwitcher],["History",()=>{drawHistory();show("history")}],
-    ["Downloads",()=>{drawDownloads();show("downloads")}],["Settings",()=>{drawSettings();show("settings")}],["Close tab",()=>{show(null);closeTab(cur)}],
+    ["Downloads",()=>{drawDownloads();show("downloads")}],["Settings",()=>{drawSettings();show("settings")}],
+    ["Reading list",()=>{drawReading();show("reading")}],["Focus mode",()=>{drawFocus();show("focus")}],["Voice search",()=>{show(null);voice()}],
+    ["Save page as PDF",()=>{show(null);native("printPage")}],["Pop-out video (picture-in-picture)",()=>{show(null);native("pip")}],["About & updates",()=>{drawAbout();show("about")}],["Close tab",()=>{show(null);closeTab(cur)}],
     ...wsList().filter(w=>w!==curWs()).map(w=>["Workspace: "+w,()=>{show(null);switchWs(w)}])];
   el.innerHTML=head("Commands")+`<input class="txt" id="cmdq" placeholder="Type a command, tab or site" autocapitalize="off" spellcheck="false"><div class="sug" id="cmdr" style="padding:0"></div>`;
   wire(el);show("cmd");const q=$("#cmdq");setTimeout(()=>q.focus(),60);
@@ -404,12 +436,15 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
    ${item("Text size","",seg("text_zoom",[["85","S"],["100","M"],["115","L"],["130","XL"]]))}
    ${item("Pull down to refresh","",sw("pull_refresh",pref("pull_refresh")==="true"))}
    ${item("Desktop site","Ask sites for their full desktop layout",sw("desktop",pref("desktop")==="true"))}
+   ${item("Background play","Videos keep playing when you switch apps or lock the screen",sw("bg_play",pref("bg_play")==="true"))}
+   ${item("Memory saver","Unused tabs sleep and reload when you return",seg("memory_saver",[["0","Off"],["10","10 min"],["30","30 min"],["120","2 h"]]))}
    <h3>Tabs & history</h3>
    ${item("Reopen tabs on start","Private tabs never",sw("restore",pref("restore")==="on"))}
    ${item("Remember history","Off by default · only on this phone",sw("history",pref("history")==="on"))}
    ${item("Workspaces",esc(wsList().join(" · ")),`<button class="btn sm" id="s-ws">Edit</button>`)}
    <h3>Search</h3>
    ${item("Search engine","",`<select id="s-engine">${[["duckduckgo","DuckDuckGo"],["brave","Brave"],["startpage","Startpage"],["ecosia","Ecosia"],["custom","Custom…"]].map(([v,l])=>`<option value="${v}" ${s.search===v?"selected":""}>${l}</option>`).join("")}</select>`)}
+   <button class="item" id="s-bangs"><div>Search shortcuts<small>type !w for Wikipedia, !yt YouTube, !a Amazon, !gh GitHub, !r Reddit, !m maps, !i images… ${pref("bangs")?"· yours: "+esc(pref("bangs").split("|").map(x=>"!"+x.split("=")[0]).join(" ")):"· tap to add your own"}</small></div></button>
    ${s.search==="custom"?`<input class="txt" id="s-custom" placeholder="https://example.com/search?q=%s" value="${esc(s.custom_search)}">`:""}
    <h3>Privacy</h3>
    <button class="item" id="s-lists"><div>Update filter lists<small>ads, trackers and cookie banners</small></div></button>
@@ -428,7 +463,7 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
   el.querySelectorAll(".seg button").forEach(b=>b.onclick=async()=>{await setPref(b.dataset.k,b.dataset.v);drawSettings();render()});
   el.querySelectorAll("[data-color]").forEach(b=>b.onclick=async()=>{await setPref("color",b.dataset.color);drawSettings()});
   $("#s-color").oninput=e=>{state.settings.ui.color=e.target.value;applyColor()};$("#s-color").onchange=async e=>{await setPref("color",e.target.value);drawSettings()};
-  el.querySelectorAll("[data-sw]").forEach(b=>b.onclick=async()=>{const k=b.dataset.sw,on=b.classList.contains("on"),bin=["force_dark","pull_refresh","desktop"].includes(k);
+  el.querySelectorAll("[data-sw]").forEach(b=>b.onclick=async()=>{const k=b.dataset.sw,on=b.classList.contains("on"),bin=["force_dark","pull_refresh","desktop","bg_play"].includes(k);
     await setPref(k,bin?String(!on):(on?"off":"on"));if(k==="force_dark")applyDarkNow();if(k==="restore")saveSession();drawSettings()});
   $("#s-ws").onclick=()=>{const n=prompt("Workspaces, separated by commas",wsList().join(", "));if(n===null)return;
     const list=[...new Set(n.split(",").map(x=>x.trim().replace(/\|/g,"").slice(0,24)).filter(Boolean))];if(!list.length)return;
@@ -438,6 +473,8 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
     s.custom_search=v;await inv("set_setting",{key:"custom_search",value:v});toast("Saved")};
   $("#s-lists").onclick=async()=>{toast("Updating…");try{toast(await inv("update_lists"))}catch(e){toast("Update failed")}};
   $("#s-clear").onclick=clearData;
+  $("#s-bangs").onclick=async()=>{const v=prompt("Your shortcuts, one per line as  key=https://site.com/search?q=%s",pref("bangs").split("|").join("\n"));if(v===null)return;
+    const list=v.split(/\n|\|/).map(x=>x.trim()).filter(x=>/^[a-z0-9]{1,12}=https:\/\/\S+$/i.test(x));await setPref("bangs",list.join("|"));drawSettings();toast(list.length+" shortcuts saved")};
   el.querySelectorAll("[data-allow]").forEach(b=>b.onclick=async()=>{await inv("toggle_shield",{host:b.dataset.allow});allow.delete(b.dataset.allow);drawSettings();render()});
   $("#s-export").onclick=async()=>{try{const j=await inv("export_data");try{await navigator.clipboard.writeText(j);toast("Copied")}catch(e){$("#s-json").value=j;toast("Select the text above to copy it")}}catch(e){toast("Export failed")}};
   $("#s-import").onclick=async()=>{try{await inv("import_data",{json:$("#s-json").value});await loadState();drawSettings();toast("Imported")}catch(e){toast("Not a Hush export")}};
@@ -445,11 +482,63 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
 function clearData(){if(confirm("Clear cookies, cache and site data for every site?")){inv("clear_data");show(null);toast("Browsing data cleared")}}
 
 function toast(m){const e=$("#toast");e.textContent=m;e.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove("on"),1800)}
+// ---------- links from other apps, shares, widget, tile, hush: imports ----------
+async function handleIncoming(){let u="";try{u=(await native("takeIntent")).url||""}catch(e){}if(!u)return;
+  if(u==="hush:private")return newTab(true);if(u==="hush:search")return newTab();if(u==="hush:voice"){newTab(false,true);render();return voice()}
+  if(u.startsWith("hush://import")||u.startsWith("hush:import")){try{const raw=u.split("#")[1]||"",j=JSON.parse(decodeURIComponent(escape(atob(raw.replace(/-/g,"+").replace(/_/g,"/")))));
+    const items=(j.b||[]).map(x=>({title:String(x[0]||""),url:String(x[1]||""),folder:String(x[2]||"")})).filter(x=>/^https?:\/\//.test(x.url));
+    if(items.length&&confirm(`Add ${items.length} bookmarks sent from your computer?`)){const n=await inv("import_bookmarks",{items});await loadState();toast(n+" bookmarks added")}}catch(e){toast("That link couldn’t be read")}return}
+  const t=T();if(t&&!t.native)go(u);else{newTab(false,true);go(u)}}
+// Memory saver: tabs you haven't looked at for a while give back their memory (they reload when you return).
+setInterval(()=>{const m=+pref("memory_saver");if(m>0)native("discardBackground",{minutes:m}).catch(()=>{})},60000);
+
+function drawReading(){const el=$("#reading"),list=state.bookmarks.filter(b=>b.folder==="reading");
+  el.innerHTML=head("Reading list")+(list.length?list.map((b,i)=>`<div class="item"><div style="flex:1" data-open="${esc(b.url)}">${esc(b.title||bare(b.url))}<small>${esc(bare(b.url))}</small></div><button class="btn sm" data-done-r="${esc(b.url)}">Done</button></div>`).join("")
+    :`<div class="empty">Nothing saved yet.<br>Menu → “Read later” adds the page you’re on.</div>`)+`<p class="hint" style="text-align:center">Tip: Menu → “Save as PDF” keeps a page for offline reading.</p>`;
+  wire(el);el.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>{show(null);const t=T();if(t&&t.native){newTab(false,true)}go(b.dataset.open)});
+  el.querySelectorAll("[data-done-r]").forEach(b=>b.onclick=async()=>{await inv("bookmark_remove",{url:b.dataset.doneR});await loadState();drawReading()})}
+
+function focusLeft(){return Math.max(0,+pref("focus_until")-Date.now()/1000)}
+function drawFocus(){const el=$("#focus"),left=focusLeft(),sites=pref("focus_sites").split(",").map(x=>x.trim()).filter(Boolean);
+  el.innerHTML=head("Focus mode")+(left>0?`<div class="item"><div>Focus is on<small>${Math.ceil(left/60)} minutes left · ${sites.length} sites paused</small></div><button class="btn sm" id="f-end">End</button></div>`
+    :`<p style="color:var(--mute);margin:0 4px 6px">Pause distracting sites for a while. They show a calm “hush.” page instead.</p>
+      <div class="chips">${[25,50,90,180].map(m=>`<button data-min="${m}">${m<60?m+" min":m/60+" h"}</button>`).join("")}</div>`)+
+    `<h3>Paused sites</h3>${sites.map(s=>item(esc(s),"",`<button class="btn sm" data-rm="${esc(s)}">Remove</button>`)).join("")}
+     <div class="row"><input class="txt" id="f-add" placeholder="Add a site, e.g. news.com" autocapitalize="off"><button class="btn sm" id="f-addb">Add</button></div>`;
+  wire(el);
+  el.querySelectorAll("[data-min]").forEach(b=>b.onclick=async()=>{await setPref("focus_until",String(Math.floor(Date.now()/1000)+ +b.dataset.min*60));toast("Focus on for "+b.textContent);drawFocus()});
+  if($("#f-end"))$("#f-end").onclick=async()=>{await setPref("focus_until","0");drawFocus()};
+  el.querySelectorAll("[data-rm]").forEach(b=>b.onclick=async()=>{await setPref("focus_sites",sites.filter(x=>x!==b.dataset.rm).join(","));drawFocus()});
+  $("#f-addb").onclick=async()=>{const v=bare("https://"+$("#f-add").value.trim().replace(/^https?:\/\//,""));if(v&&!sites.includes(v)){await setPref("focus_sites",[...sites,v].join(","));drawFocus()}}}
+
+async function drawAbout(){const el=$("#about");let info={build:"?"};try{info=await inv("app_info")}catch(e){}
+  el.innerHTML=head("About Hush")+`<div style="text-align:center;margin:8px 0 4px"><div class="wordmark" style="font:300 44px ui-serif,'Times New Roman',Georgia,serif">hush.</div>
+    <small style="color:var(--mute)">Test build ${esc(info.build)} · Android</small></div>
+   <button class="item" id="a-upd"><div>Check for updates<small id="a-updt">Looks for a newer test build on GitHub</small></div></button>
+   <button class="item" id="a-def"><div>Make Hush your default browser<small id="a-deft">Links from other apps open here</small></div></button>
+   <h3>Privacy policy</h3>
+   <div class="item" style="display:block;font-size:13px;line-height:1.6">Hush collects nothing. There are no accounts, no analytics, no crash reports and no Hush servers.
+    Your bookmarks, settings and (if you turn it on) history stay on this phone. Hush only connects to the sites you visit, and — when you ask —
+    to the filter-list sites (easylist.to, fanboy.co.nz, ublockorigin.github.io) and to GitHub to check for updates.</div>
+   <h3>Open-source licenses</h3>
+   <div class="item" style="display:block;font-size:12.5px;line-height:1.7">Hush is free software under the <b>GNU GPL v3</b>.<br>
+    uBlock Origin scriptlets & filter lists — GPL v3, © Raymond Hill & contributors<br>adblock-rust — MPL 2.0, © Brave Software<br>
+    EasyList, EasyPrivacy — GPL v3 / CC BY-SA 3.0, © The EasyList authors<br>Fanboy’s Cookie List — © Fanboy & contributors<br>
+    Tauri, wry, tao — MIT / Apache 2.0<br>AndroidX libraries — Apache 2.0<br>QR code generator based on Project Nayuki’s algorithm — MIT</div>`;
+  wire(el);
+  $("#a-upd").onclick=async()=>{$("#a-updt").textContent="Checking…";try{const u=await inv("check_update");
+      if(u.newer){$("#a-updt").textContent=`Build ${u.latest} is ready — tap to open it`;$("#a-upd").onclick=()=>{show(null);newTab(false,true);go(u.page)}}
+      else $("#a-updt").textContent="You’re on the newest build ("+u.latest+")"}
+    catch(e){if(String(e).includes("private")){$("#a-updt").textContent="Your GitHub repo is private — tap to open the releases page";$("#a-upd").onclick=()=>{show(null);newTab(false,true);go("https://github.com/wmitch3ll/hush/releases")}}
+      else $("#a-updt").textContent="Couldn’t check right now"}};
+  $("#a-def").onclick=()=>native("askDefault");
+  native("isDefault").then(r=>{if(r&&r.default)$("#a-deft").textContent="Hush is your default browser ✓"}).catch(()=>{})}
+
 async function loadState(first){try{state=await inv("get_state");state.settings.ui=state.settings.ui||{};state.site_dark=state.site_dark||{};allow=new Set(state.allow_sites||[])}catch(e){}
   applyPrefs();
   if(first&&pref("restore")==="on"&&state.session?.length){tabs=[];state.session.forEach(s=>tabs.push({id:nid++,native:null,url:s.url,title:"",priv:false,ws:wsList().includes(s.ws)?s.ws:curWs(),canBack:false,canFwd:false}));
     const last=inWs().at(-1);if(last){cur=last.id;openNative(last)}else newTab(false,true);toast("Restored "+state.session.length+" tabs")}
   render()}
-newTab(false,true);render();loadState(true);
+newTab(false,true);render();loadState(true).then(handleIncoming);
 </script>
 </body></html>
