@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hush — mobile</title>
+<style>
+:root{--bg:#f2f2f2;--ink:#111;--mute:#8c8c8c;--card:#fff;--line:#e0e0e0;--acc:#111;--glow:#00000014;--bad:#999;color-scheme:light dark;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e0e0e;--ink:#eee;--mute:#808080;--card:#1a1a1a;--line:#2a2a2a;--acc:#eee;--glow:#ffffff14;--bad:#777}}
+:root[data-theme="dark"]{--bg:#0e0e0e;--ink:#eee;--mute:#808080;--card:#1a1a1a;--line:#2a2a2a;--acc:#eee;--glow:#ffffff14;--bad:#777}
+*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,"SF Pro Text",Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;letter-spacing:-.01em;overflow:hidden}
+body.priv{--bg:#000;--card:#141414;--line:#262626;--acc:#ddd;--glow:#ffffff14;--ink:#e6e6e6;--mute:#777}
+#app{height:100%;display:flex;flex-direction:column;position:relative}
+#top{display:flex;gap:6px;align-items:center;padding:6px 10px 8px;position:relative;z-index:5;border-bottom:1px solid var(--line)}
+#pill{flex:1;display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:0 3px;height:34px;transition:.2s;min-width:0;box-shadow:0 1px 2px #0000000d}
+#pill:focus-within{border-color:var(--mute);box-shadow:0 0 0 3px var(--glow)}
+#url{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--ink);font:inherit;font-size:14px;height:100%;text-overflow:ellipsis}
+button{font:inherit;color:var(--ink);background:none;border:0;cursor:pointer}
+.ib{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;font-size:15px;position:relative;flex:none}.ib svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.ib:active{background:var(--line)}
+#shield.off{opacity:.4} #cnt{position:absolute;top:-2px;right:-2px;background:var(--acc);color:var(--bg);font-size:9px;font-weight:600;border-radius:7px;padding:0 3px;min-width:14px;line-height:14px;text-align:center}
+#tabs-btn{width:28px;height:28px;border:1.5px solid var(--ink);border-radius:8px;font-weight:600;font-size:12px}
+#bar{height:1px;background:var(--acc);width:0;position:absolute;left:0;bottom:-1px;transition:width .35s}
+#view{flex:1;overflow:auto;position:relative;-webkit-overflow-scrolling:touch}
+.page{padding:18px 18px 60px;max-width:640px;margin:auto}
+h1{font:500 28px/1.12 ui-serif,Georgia,serif;letter-spacing:-.02em;margin:6px 0 10px}
+.mute{color:var(--mute)}#url::placeholder{color:var(--mute)}button{transition:background .15s,transform .1s}.btn:active,.menu button:active{transform:scale(.98)}.bm:active i{transform:scale(.93)}
+.home{display:grid;place-items:center;text-align:center;padding-top:8vh}
+.home h1{font:200 64px ui-serif,Georgia,serif;letter-spacing:-3px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:28px;width:100%}
+.bm{display:grid;gap:6px;justify-items:center;font-size:12px;color:var(--mute)}
+.bm i{width:52px;height:52px;border-radius:50%;background:var(--card);border:1px solid var(--line);display:grid;place-items:center;font-style:normal;font-size:18px;font-weight:600;transition:.15s}
+.ad{background:repeating-linear-gradient(45deg,#bbb,#bbb 10px,#ccc 10px,#ccc 20px);color:#222;border-radius:10px;padding:26px 10px;text-align:center;font-weight:700;margin:14px 0}
+.cta{display:inline-block;background:var(--acc);color:var(--bg);padding:9px 16px;border-radius:999px;font-weight:600;margin:8px 0}
+.fake-modal{position:fixed;inset:0;background:#000b;z-index:20;display:grid;place-items:center}
+.fake-modal div{background:#fff;color:#000;padding:24px;border-radius:14px;max-width:80%;text-align:center}
+.sheet{position:absolute;inset:0;background:var(--bg);z-index:10;padding:calc(env(safe-area-inset-top,0px) + 12px) 14px 20px;display:none;flex-direction:column;gap:12px;overflow:auto}
+.sheet.on{display:flex;animation:up .22s ease-out}@keyframes up{from{opacity:0;transform:translateY(14px)}}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 12px 10px;min-height:120px;transition:.15s;position:relative;display:flex;flex-direction:column;justify-content:flex-end}
+.card.cur{border-color:var(--acc);box-shadow:0 0 0 3px var(--glow)}
+.card b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .x{position:absolute;top:6px;right:6px;width:28px;height:28px;color:var(--mute)}
+.zz{position:absolute;top:10px;left:12px;font-size:12px;color:var(--mute)}
+.row{display:flex;gap:10px}
+.btn{flex:1;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px;font-size:14px;text-align:center}
+.btn.acc{background:var(--acc);color:var(--bg);border-color:var(--acc);font-weight:600}
+.menu button{display:flex;justify-content:space-between;width:100%;padding:13px 14px;font-size:14px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+#toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);transform:translate(-50%,30px);opacity:0;background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:999px;font-size:13px;transition:.25s;z-index:30;pointer-events:none;white-space:nowrap}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+.sr{display:grid;gap:3px;margin:16px 0}.sr b{color:var(--acc)}
+</style></head><body>
+<div id="app">
+  <div id="top">
+    <div id="pill">
+      <button class="ib" id="shield" title="Shield for this site"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/></svg><span id="cnt">0</span></button>
+      <input id="url" inputmode="url" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="Search or enter address">
+      <button class="ib" id="reload" title="Reload"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.5-5.8M20 4v4h-4"/></svg></button>
+    </div>
+    <button id="tabs-btn" class="ib" title="Tabs">1</button>
+    <button id="menu-btn" class="ib" title="Menu"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="19" cy="12" r="1" fill="currentColor"/></svg></button>
+    <div id="bar"></div>
+  </div>
+  <div id="view"></div>
+
+  <div class="sheet" id="switcher">
+    <div class="row"><button class="btn" id="priv-toggle">Private: off</button><button class="btn acc" id="new-tab">＋ New tab</button><button class="btn" id="close-sw">Done</button></div>
+    <div class="cards" id="cards"></div>
+  </div>
+  <div class="sheet menu" id="menu">
+    <div class="row"><button class="btn" id="m-back">‹ Back</button><button class="btn" id="m-fwd">Forward ›</button></div>
+    <button id="m-priv">New private tab <span class="mute">leaves no trace</span></button>
+    <button id="m-clear">Clear data <span class="mute">cookies · cache · history</span></button>
+    <button id="m-theme">Theme <span class="mute" id="theme-lbl">system</span></button>
+    <button id="m-sound">Popup test page <span class="mute">try to open one</span></button>
+    <button id="m-close">Close menu</button>
+    <p class="mute" style="padding:6px">Demo: pages are simulated. In the real app each tab is a native web view. Swipe from the left edge to go back.</p>
+  </div>
+</div>
+<div id="toast"></div>
+<script>
+const $=s=>document.querySelector(s);
+const BM=[["🦆","DuckDuckGo","duckduckgo.com"],["📰","Daily","daily-example.com"],["📚","Wiki","wikipedia.org"],["🗺️","Maps","maps.example.com"],["🎵","Music","music.example.com"],["💬","Chat","chat.example.com"],["🧰","Tools","tools.example.com"],["✉️","Mail","mail.example.com"]];
+let tabs=[],cur=null,nid=1,priv=false,shieldOff=new Set(),themeI=0;
+const THEMES=["system","light","dark"];
+const hostOf=u=>{try{return new URL(u).host}catch{return ""}};
+const esc=s=>s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function toast(t){const e=$("#toast");e.textContent=t;e.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove("on"),1800)}
+function newTab(url,isPriv){const t={id:nid++,url:url||"hush://new",hist:[],idx:-1,priv:!!isPriv,blocked:0,last:Date.now()};t.hist.push(t.url);t.idx=0;tabs.push(t);select(t.id);return t}
+const T=()=>tabs.find(t=>t.id===cur);
+function select(id){cur=id;const t=T();t.last=Date.now();document.body.classList.toggle("priv",t.priv);show(null);load()}
+function resolve(v){v=v.trim();if(!v)return"hush://new";if(/^https?:\/\//.test(v))return v.replace(/^http:/,"https:");if(!/\s/.test(v)&&v.includes("."))return"https://"+v;return"https://duckduckgo.com/?q="+encodeURIComponent(v)}
+function go(v,push=true){const t=T(),u=resolve(v);if(push){t.hist=t.hist.slice(0,t.idx+1);t.hist.push(u);t.idx++}t.url=u;t.blocked=0;load()}
+function step(d){const t=T(),i=t.idx+d;if(i<0||i>=t.hist.length)return toast(d<0?"Nothing to go back to":"Nothing ahead");t.idx=i;t.url=t.hist[i];t.blocked=0;load()}
+function progress(){const b=$("#bar");b.style.transition="none";b.style.width="0";requestAnimationFrame(()=>{b.style.transition="width .35s";b.style.width="100%";setTimeout(()=>{b.style.opacity=0;setTimeout(()=>{b.style.width="0";b.style.opacity=1},200)},380)})}
+function load(){const t=T(),h=hostOf(t.url),on=!shieldOff.has(h);progress();
+ const v=$("#view");v.scrollTop=0;
+ if(t.url==="hush://new"){v.innerHTML=`<div class="page home"><h1>hush.</h1><p class="mute">nothing here but you.</p><div class="grid">${BM.map(b=>`<a class="bm" data-go="https://${b[2]}"><i>${b[1][0]}</i>${b[1]}</a>`).join("")}</div></div>`;$("#url").value="";}
+ else if(h.includes("daily")||h.includes("news")){
+  const ads=on?"":`<div class="ad">SPONSORED · You won’t believe this one trick</div>`;
+  t.blocked=on?4:0;
+  v.innerHTML=`<div class="page"><p class="mute">daily-example.com</p>${ads}<h1>Local library extends hours after record turnout</h1><p>Officials said the change takes effect Monday, with weekend hours doubling at all branches.</p>${ads}<p class="mute" style="margin-top:12px">Readers can still find the full schedule on the city website.</p>${on?"":`<div class="ad">ENORMOUS DISCOUNT — CLICK NOW</div>`}<a class="cta" id="popbtn">Continue reading →</a><p class="mute">Shield ${on?"on: 4 ads and a popup blocked":"off: ads and popups allowed"}.</p></div>`;
+  $("#popbtn").onclick=()=>popup();
+ }else if(h.includes("duckduckgo")&&t.url.includes("?q=")){const q=decodeURIComponent(t.url.split("?q=")[1]||"");
+  v.innerHTML=`<div class="page"><p class="mute">Search · no tracking</p><h1>${esc(q)}</h1>${[1,2,3].map(i=>`<div class="sr"><b>${esc(q)} — result ${i}</b><span class="mute">example${i}.org</span><span>A short, plain snippet about ${esc(q)}. Demo content only.</span></div>`).join("")}</div>`}
+ else{v.innerHTML=`<div class="page"><p class="mute">${esc(h)}</p><h1>${esc(h||t.url)}</h1><p>This is a demo page. In the real app, the system web view loads the live site here, with the blocker running on every request.</p><p class="mute" style="margin-top:12px">Try the Daily bookmark to see the shield in action.</p></div>`;}
+ if(t.url!=="hush://new")$("#url").value=h+(t.url.includes("?q=")?"":"");
+ $("#shield").classList.toggle("off",!on);$("#cnt").textContent=t.blocked;$("#cnt").style.display=t.blocked?"block":"none";
+ $("#tabs-btn").textContent=tabs.length;
+ v.querySelectorAll("[data-go]").forEach(a=>a.onclick=()=>go(a.dataset.go));
+}
+function popup(){const t=T(),h=hostOf(t.url);
+ if(!shieldOff.has(h)){t.blocked++;$("#cnt").textContent=t.blocked;$("#cnt").style.display="block";toast("Popup blocked");return}
+ const m=document.createElement("div");m.className="fake-modal";m.innerHTML=`<div><h2>You’re the 1,000,000th visitor!</h2><p>(this is what the shield stops)</p><br><button class="btn" id="mx">Close</button></div>`;document.body.append(m);m.querySelector("#mx").onclick=()=>m.remove()}
+function show(id){["switcher","menu"].forEach(s=>$("#"+s).classList.toggle("on",s===id))}
+function drawCards(){const now=Date.now();$("#cards").innerHTML=tabs.map(t=>{const sleep=t.id!==cur&&now-t.last>15000;return`<div class="card ${t.id===cur?"cur":""}" data-id="${t.id}">${sleep?`<span class="zz">asleep</span>`:""}${t.priv?`<span class="zz" style="left:auto;right:40px">private</span>`:""}<button class="x" data-x="${t.id}">✕</button><b>${esc(hostOf(t.url)||"New tab")}</b><span class="mute">${t.url==="hush://new"?"Start page":esc(t.url.slice(8,40))}</span></div>`}).join("");
+ $("#cards").querySelectorAll(".card").forEach(c=>c.onclick=e=>{if(e.target.dataset.x)return;select(+c.dataset.id)});
+ $("#cards").querySelectorAll("[data-x]").forEach(b=>b.onclick=()=>closeTab(+b.dataset.x))}
+function closeTab(id){tabs=tabs.filter(t=>t.id!==id);if(!tabs.length)newTab();else if(cur===id)select(tabs.at(-1).id);$("#tabs-btn").textContent=tabs.length;drawCards()}
+$("#url").addEventListener("focus",e=>{const t=T();e.target.value=t.url==="hush://new"?"":t.url;setTimeout(()=>e.target.select(),0)});
+$("#url").addEventListener("blur",()=>load.noprog=1);
+$("#url").addEventListener("keydown",e=>{if(e.key==="Enter"){go(e.target.value);e.target.blur()}});
+$("#reload").onclick=()=>{T().blocked=0;load()};
+$("#shield").onclick=()=>{const h=hostOf(T().url);if(!h)return toast("Nothing to shield here");shieldOff.has(h)?shieldOff.delete(h):shieldOff.add(h);toast(shieldOff.has(h)?"Shield off for "+h:"Shield on for "+h);load()};
+$("#tabs-btn").onclick=()=>{drawCards();show("switcher")};
+$("#close-sw").onclick=()=>show(null);
+$("#new-tab").onclick=()=>{newTab(null,priv)};
+$("#priv-toggle").onclick=e=>{priv=!priv;e.target.textContent="Private: "+(priv?"on":"off")};
+$("#menu-btn").onclick=()=>show("menu");$("#m-close").onclick=()=>show(null);
+$("#m-back").onclick=()=>{show(null);step(-1)};$("#m-fwd").onclick=()=>{show(null);step(1)};
+$("#m-priv").onclick=()=>newTab(null,true);
+$("#m-clear").onclick=()=>{if(confirm("Clear cookies, cache, history and site data?")){tabs.forEach(t=>{t.hist=[t.url];t.idx=0});shieldOff.clear();show(null);toast("Cleared")}};
+$("#m-theme").onclick=()=>{themeI=(themeI+1)%3;const v=THEMES[themeI];document.documentElement.removeAttribute("data-theme");if(v!=="system")document.documentElement.setAttribute("data-theme",v);$("#theme-lbl").textContent=v};
+$("#m-sound").onclick=()=>{show(null);go("https://daily-example.com")};
+// Edge-swipe back (touch)
+let sx=null,sy=0;addEventListener("touchstart",e=>{const p=e.touches[0];sx=p.clientX<24?p.clientX:null;sy=p.clientY},{passive:true});
+addEventListener("touchend",e=>{if(sx===null)return;const p=e.changedTouches[0];if(p.clientX-sx>70&&Math.abs(p.clientY-sy)<60)step(-1);sx=null},{passive:true});
+// Keyboard: Ctrl/Cmd+L
+addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&e.key==="l"){e.preventDefault();$("#url").focus()}});
+newTab();
+</script>
+<script src="bridge.js"></script></body></html>

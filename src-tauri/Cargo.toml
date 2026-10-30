@@ -1,0 +1,40 @@
+[package]
+name = "hush"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "hush_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+default = ["new-window-api"]
+# Disable if your pinned Tauri lacks WebviewBuilder::on_new_window (then rely on harden.js + on_navigation).
+new-window-api = []
+
+[dependencies]
+tauri = { version = "2", features = ["unstable"] }   # "unstable" = multi-webview (tabs as child webviews)
+adblock = { version = "0.10", default-features = false, features = ["content-blocking", "embedded-domain-resolver"] }  # pin to latest 0.x you verify
+   rmp = "=0.8.14"   # adblock 0.10 -> rmp-serde 0.15 breaks on rmp 0.8.15+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+url = "2"
+parking_lot = "0.12"
+ureq = { version = "2", default-features = false, features = ["tls"] }  # user-triggered list updates only
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.39"   # keep in lockstep with the version wry/tauri resolves (cargo tree -i webview2-com)
+windows = "0.62"
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"

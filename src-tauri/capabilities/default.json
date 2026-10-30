@@ -1,0 +1,7 @@
+{
+  "identifier": "desktop-chrome",
+  "description": "Desktop: only the local 'chrome' webview may call commands. Tab webviews get nothing.",
+  "platforms": ["windows", "macOS", "linux"],
+  "webviews": ["chrome"],
+  "permissions": ["core:default"]
+}

@@ -1,0 +1,37 @@
+# Unverified starter CI (R-65). Desktop: compile + unit tests. Android: debug APK artifact.
+name: ci
+on: [push, pull_request]
+jobs:
+  desktop:
+    strategy: { matrix: { os: [ubuntu-22.04, windows-latest, macos-latest] }, fail-fast: false }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - if: startsWith(matrix.os, 'ubuntu')
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - run: sh tools/fetch-lists.sh
+        shell: bash
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+  android:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: android-actions/setup-android@v3
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: "aarch64-linux-android" }
+      - run: sdkmanager "ndk;27.0.12077973" "platforms;android-34" "build-tools;34.0.0"
+      - run: sh tools/fetch-lists.sh
+      - run: cargo install tauri-cli --version "^2" --locked
+      - run: |
+          cd src-tauri
+          cargo tauri icon icons/source.png
+          cargo tauri android init
+          cd .. && sh tools/android-post-init.sh && cd src-tauri
+          cargo tauri android build --debug --apk --target aarch64
+        env:
+          NDK_HOME: /usr/local/lib/android/sdk/ndk/27.0.12077973
+      - uses: actions/upload-artifact@v4
+        with: { name: hush-debug-apk, path: "src-tauri/gen/android/app/build/outputs/apk/**/*.apk" }

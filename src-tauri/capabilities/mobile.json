@@ -1,0 +1,7 @@
+{
+  "identifier": "mobile-chrome",
+  "description": "Mobile: the single config webview is the local chrome; tabs are native views with no IPC.",
+  "platforms": ["android", "iOS"],
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
