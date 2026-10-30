@@ -356,7 +356,7 @@ function qrSheet(u){const el=$("#site");el.innerHTML=head("Scan to open")+`<div 
 let listenSt="",lRate=1,torOn=false,floating=null;
 function torInfo(){$("#xs").innerHTML=head("What is Tor?")+'<div style="padding:0 6px 24px">'+HX.TOR_INFO+'</div>';wire($("#xs"));show("xs")}
 // Hush Messenger (full-screen sheet). Stays connected through Tor in the background once set up.
-const HM=HushMsg({inv,invRaw:(c,d,h)=>window.__TAURI__.core.invoke(c,d,{headers:h}),listen:(e,f)=>window.__TAURI__.event.listen(e,f),toast,mobile:true,open:u=>{show(null);newTab(false,true);go(u)},
+const HM=HushMsg({inv,secret:{get:n=>native('secretGet',{name:n}).then(r=>r&&typeof r.value==='string'?r.value:null),set:(n,v)=>native('secretSet',{name:n,value:v}),del:n=>native('secretDel',{name:n})},biometric:()=>native('biometric'),invRaw:(c,d,h)=>window.__TAURI__.core.invoke(c,d,{headers:h}),listen:(e,f)=>window.__TAURI__.event.listen(e,f),toast,mobile:true,open:u=>{show(null);newTab(false,true);go(u)},
   page:()=>{const t=T();return t&&t.native&&!t.priv&&/^https?:/.test(t.url)?{url:t.url}:null},
   badge:n=>{const b=$("#menu-btn");b.classList.toggle("msgdot",n>0);b.dataset.n=n>99?"99+":n},qr:s=>{try{return hushQR.svg(s)}catch(e){return ""}},close:()=>{HM.close();show(null)},
   saveImage:d=>native("saveImage",{data:d}).then(()=>toast("Saved to Photos")).catch(e=>toast(String(e)))});
@@ -443,7 +443,7 @@ function drawMenu(){const el=$("#menu"),t=T(),live=!!(t&&t.native);
    <div class="row"><button class="btn" id="m-later" ${live?"":"disabled"}>Read later</button><button class="btn" id="m-pdf" ${live?"":"disabled"}>Save as PDF</button><button class="btn" id="m-pip" ${live?"":"disabled"}>Pop-out video</button></div>
    ${live?`<div class="row"><button class="btn" id="m-listen">${listenSt?"■ Stop reading":"▶ Listen"}</button><button class="btn" id="m-boost">Boosts</button><button class="btn" id="m-shot">Screenshot</button></div>`:""}
    ${listenSt?`<div class="row"><button class="btn" id="l-prev">‹ Prev</button><button class="btn" id="l-pp">${listenSt==="paused"?"Resume":"Pause"}</button><button class="btn" id="l-next">Next ›</button><button class="btn" id="l-rate">${lRate}×</button></div>`:""}
-   <button class="item" id="m-msg"><div>Messages<small>${HM.unread()?HM.unread()+" unread · ":""}private chat through Tor</small></div></button>
+   <button class="item" id="m-msg"><div>Murmur<small>${HM.unread()?HM.unread()+" unread · ":""}private chat through Tor</small></div></button>
    <div class="item"><div>Tor mode <button class="btn sm" id="m-tori" aria-label="What is Tor?" style="padding:0 8px;min-width:0">ⓘ</button><small>${torOn?"on — every tab goes through Tor":"hide your IP and location from every site"}</small></div><button class="sw ${torOn?"on":""}" id="m-tor"></button></div>
    ${torOn?'<button class="item" id="m-newid"><div>New Tor identity<small>fresh circuits and a new IP, then reload</small></div></button>':""}
    <button class="item" id="m-arch"><div>Archived tabs<small>${+pref("archive")?"tabs unused for "+(+pref("archive")>=24?pref("archive")/24+" day(s)":pref("archive")+" hours")+" are archived":"off — tap to set up"}</small></div></button>
@@ -608,7 +608,7 @@ function toast(m){const e=$("#toast");e.textContent=m;e.classList.add("on");clea
 // ---------- links from other apps, shares, widget, tile, hush: imports ----------
 async function handleIncoming(){let u="";try{u=(await native("takeIntent")).url||""}catch(e){}if(!u)return;
   if(u==="hush:private")return newTab(true);if(u==="hush:search")return newTab();if(u==="hush:voice"){newTab(false,true);render();return voice()}
-  if(/^hush:(\/\/)?add/i.test(u)){const pk=HM.addFromLink(u);if(pk){openMsgs(pk);toast("Contact added — say hi")}else{openMsgs();toast("Set up Messages first, then scan again")}return}
+  if(/^hush:(\/\/)?add/i.test(u)){const pk=await HM.addFromLink(u);if(pk){openMsgs(pk);toast("Contact added — say hi")}else{openMsgs();toast("Set up Murmur first, then scan again")}return}
   if(u.startsWith("hush://import")||u.startsWith("hush:import")){try{const raw=u.split("#")[1]||"",j=JSON.parse(decodeURIComponent(escape(atob(raw.replace(/-/g,"+").replace(/_/g,"/")))));
     const items=(j.b||[]).map(x=>({title:String(x[0]||""),url:String(x[1]||""),folder:String(x[2]||"")})).filter(x=>/^https?:\/\//.test(x.url));
     const tl=(j.t||[]).filter(x=>typeof x==="string"&&/^https:\/\//.test(x)).slice(0,60),st=j.s&&typeof j.s==="object"?j.s:{},sk=Object.keys(st).filter(k=>/^[a-z_]{1,20}$/.test(k)&&typeof st[k]==="string");

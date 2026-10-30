@@ -20,13 +20,14 @@ import re,sys
 p=sys.argv[1]; s=open(p).read()
 if 'android.permission.INTERNET' not in s:
     s=re.sub(r'(<manifest[^>]*>)',r'\1\n    <uses-permission android:name="android.permission.INTERNET" />',s,count=1)
-if 'android:allowBackup' not in s:
-    s=s.replace('<application','<application android:allowBackup="false"',1)
+# Never let Android copy app data (Murmur keys, chats) into Google cloud backups or device-to-device transfers.
+s=re.sub(r'\s+android:(allowBackup|fullBackupContent|dataExtractionRules)="[^"]*"','',s)
+s=s.replace('<application','<application android:allowBackup="false" android:fullBackupContent="false"',1)
 open(p,'w').write(s); print("manifest ok")
 PY
 # Libraries the plugin uses: androidx.webkit (private-tab profiles), SwipeRefreshLayout (pull to refresh).
 # (Tauri's template already depends on androidx.webkit; add each library only if it's missing.)
-for dep in "androidx.webkit:webkit:1.12.1" "androidx.swiperefreshlayout:swiperefreshlayout:1.1.0"; do
+for dep in "androidx.webkit:webkit:1.12.1" "androidx.swiperefreshlayout:swiperefreshlayout:1.1.0" "androidx.biometric:biometric:1.1.0"; do
   grep -q "${dep%:*}" "$A/build.gradle.kts" || printf '\ndependencies {\n    implementation("%s")\n}\n' "$dep" >> "$A/build.gradle.kts"
 done
 # Widget + quick-settings tile resources.

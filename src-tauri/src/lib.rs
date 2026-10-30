@@ -530,7 +530,7 @@ pub fn run() {
             extensions::extension_list, extensions::extension_install, extensions::extension_remove,
             desktop::open_tab, desktop::switch_tab, desktop::close_tab, desktop::navigate, desktop::nav,
             desktop::clear_data, desktop::start_picker, desktop::set_layout, desktop::show_content,
-            desktop::download_open, desktop::download_reveal, desktop::float_tab, desktop::float_close, tor::tor_start, tor::tor_new_identity, tor::tor_state, watch_check, msgnet::msg_ws_open, msgnet::msg_ws_send, msgnet::msg_ws_close, msgnet::blob_put, msgnet::blob_get])
+            desktop::download_open, desktop::download_reveal, desktop::float_tab, desktop::float_close, tor::tor_start, tor::tor_new_identity, tor::tor_state, watch_check, msgnet::msg_ws_open, msgnet::msg_ws_send, msgnet::msg_ws_close, msgnet::blob_put, msgnet::blob_get, msgnet::secret_set, msgnet::secret_get, msgnet::secret_del])
         .setup(desktop::setup);
     #[cfg(mobile)] let b = b
         .invoke_handler(tauri::generate_handler![toggle_shield, get_state, set_setting, bookmark_add, bookmark_remove,

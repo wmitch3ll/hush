@@ -67,7 +67,40 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     private var fsView: View? = null; private var fsCb: WebChromeClient.CustomViewCallback? = null
     private var pendingPerm: PermissionRequest? = null
     private var pendingGeo: Pair<String, GeolocationPermissions.Callback>? = null
+    // ---------- Secrets in the Android Keystore (Murmur / Echo identity). The AES key never leaves secure hardware. ----------
+    private fun vaultKey(): javax.crypto.SecretKey {
+        val ks = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (ks.getKey("hush-vault", null) as? javax.crypto.SecretKey)?.let { return it }
+        val g = javax.crypto.KeyGenerator.getInstance(android.security.keystore.KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        g.init(android.security.keystore.KeyGenParameterSpec.Builder("hush-vault", android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT)
+            .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE).setKeySize(256).build())
+        return g.generateKey()
+    }
+    private val vault by lazy { act.getSharedPreferences("hush-vault", android.content.Context.MODE_PRIVATE) }
+    @Command fun secretSet(i: Invoke) { val a = i.parseArgs(SecretArgs::class.java)
+        if (!a.name.matches(Regex("[A-Za-z0-9-]{1,40}"))) { i.reject("bad name"); return }
+        try { val c = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding"); c.init(javax.crypto.Cipher.ENCRYPT_MODE, vaultKey())
+            val enc = c.doFinal(a.value.toByteArray(Charsets.UTF_8)); val b = { x: ByteArray -> android.util.Base64.encodeToString(x, android.util.Base64.NO_WRAP) }
+            vault.edit().putString(a.name, b(c.iv) + ":" + b(enc)).apply(); i.resolve() } catch (e: Throwable) { i.reject("Couldn’t store securely: " + e.message) } }
+    @Command fun secretGet(i: Invoke) { val a = i.parseArgs(SecretArgs::class.java)
+        val v = vault.getString(a.name, null); if (v == null) { i.resolve(JSObject().put("value", org.json.JSONObject.NULL)); return }
+        try { val (iv, enc) = v.split(":").map { android.util.Base64.decode(it, android.util.Base64.NO_WRAP) }
+            val c = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding"); c.init(javax.crypto.Cipher.DECRYPT_MODE, vaultKey(), javax.crypto.spec.GCMParameterSpec(128, iv))
+            i.resolve(JSObject().put("value", String(c.doFinal(enc), Charsets.UTF_8))) } catch (e: Throwable) { i.reject("Couldn’t read the secure store: " + e.message) } }
+    @Command fun secretDel(i: Invoke) { val a = i.parseArgs(SecretArgs::class.java); vault.edit().remove(a.name).apply(); i.resolve() }
+    /** App lock: fingerprint / face (falls back to the in-app PIN). */
+    @Command fun biometric(i: Invoke) { act.runOnUiThread {
+        val fa = act as? androidx.fragment.app.FragmentActivity
+        val ok = androidx.biometric.BiometricManager.from(act).canAuthenticate(androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK) == androidx.biometric.BiometricManager.BIOMETRIC_SUCCESS
+        if (fa == null || !ok) { i.resolve(JSObject().put("ok", false).put("available", false)); return@runOnUiThread }
+        var done = false
+        androidx.biometric.BiometricPrompt(fa, androidx.core.content.ContextCompat.getMainExecutor(act), object : androidx.biometric.BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(r: androidx.biometric.BiometricPrompt.AuthenticationResult) { if (!done) { done = true; i.resolve(JSObject().put("ok", true).put("available", true)) } }
+            override fun onAuthenticationError(code: Int, msg: CharSequence) { if (!done) { done = true; i.resolve(JSObject().put("ok", false).put("available", true)) } }
+        }).authenticate(androidx.biometric.BiometricPrompt.PromptInfo.Builder().setTitle("Unlock Hush").setSubtitle("Murmur & Echo")
+            .setAllowedAuthenticators(androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK).setNegativeButtonText("Use PIN").build()) } }
     private val keepIds = mutableSetOf<String>()
+    private val sunk = mutableSetOf<String>()
     /** Background media: keep | release | pause | play for one tab. */
     @Command fun media(i: Invoke) { val a = i.parseArgs(MediaArgs::class.java)
         act.runOnUiThread { val t = tabs[a.id]
@@ -435,10 +468,17 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         // Media keeps playing: a tab you chose to keep playing (or the tab you're watching while the tab list is open)
         // stays attached but moved off-screen, so the page isn't paused. Everything else is taken off screen.
         tabs.values.forEach { t -> t.box?.let { b -> val off = (t.id != active || !visible) && !(t.id == floatId && visible)
-            if (off && (t.id in keepIds || (t.id == active && !visible && t.audio))) { if (b.parent == null) root.addView(b, FrameLayout.LayoutParams(-1, -1)) else if (b.translationX == 0f) snap(t); b.translationX = -100000f; return@let }
-            if (!off) b.translationX = 0f
+            // Kept tabs sink BEHIND the app's own screen (lower Z): still attached and "visible" to the page so media
+            // keeps playing, but every touch goes to the tab list / sheets on top. (Moving them off-screen could leave
+            // video layers catching touches.)
+            if (off && (t.id in keepIds || (t.id == active && !visible && t.audio))) {
+                if (b.parent == null) root.addView(b, 0, FrameLayout.LayoutParams(-1, -1)) else if (t.id !in sunk) snap(t)
+                if (t.id !in sunk) { sunk += t.id; b.translationZ = -1000f; b.elevation = 0f
+                    b.importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS; b.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS; t.wv?.clearFocus() }
+                return@let }
+            if (t.id in sunk) { sunk -= t.id; b.translationZ = 0f; b.importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_AUTO; b.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS; if (!off) b.bringToFront() }
         } }
-        tabs.values.forEach { t -> t.box?.let { b -> if (b.parent != null && b.translationX == 0f && (t.id != active || !visible) && !(t.id == floatId && visible)) {
+        tabs.values.forEach { t -> t.box?.let { b -> if (b.parent != null && t.id !in sunk && (t.id != active || !visible) && !(t.id == floatId && visible)) {
             // Grab the preview first (it needs the tab on screen), then take it off one frame later (the new tab covers it).
             if (b.tag != "leaving") { b.tag = "leaving"; snap(t) { b.tag = null; if ((t.id != active || !visible) && !(t.id == floatId && visible)) (b.parent as? ViewGroup)?.removeView(b) } } } } }
         // Floating video: that tab's view stays on top in a small, movable, resizable frame.
@@ -615,6 +655,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         act.runOnUiThread { active?.let { tabs[it]?.wv }?.evaluateJavascript(js, null) }; i.resolve() }
 
     @InvokeArg class PickArgs { var mode: String = "" }
+    @InvokeArg class SecretArgs { var name: String = ""; var value: String = "" }
     @InvokeArg class MediaArgs { var id: String = ""; var action: String = "" }
     @InvokeArg class FloatArgs { var id: String = ""; var x: Int = -1; var y: Int = -1; var w: Int = 0; var stop: Boolean = true }
     @InvokeArg class TorArgs { var on: Boolean = false; var port: Int = 0 }

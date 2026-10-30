@@ -142,3 +142,46 @@ pub async fn blob_get(app: AppHandle, url: String) -> Result<tauri::ipc::Respons
     if !(200..300).contains(&st) { return Err(format!("download failed ({st})")); }
     Ok(tauri::ipc::Response::new(body))
 }
+
+// ---------- Secrets (the Murmur / Echo identity key) in the OS vault ----------
+// Windows: DPAPI (encrypted to your Windows account). Other desktops: a file only your user can read.
+// Android uses the Keystore from Kotlin (TabsPlugin.secretGet/Set), not these commands.
+fn secret_path(app: &AppHandle, name: &str) -> Result<std::path::PathBuf, String> {
+    use tauri::Manager;
+    if name.is_empty() || name.len() > 40 || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') { return Err("bad name".into()); }
+    let d = app.path().app_data_dir().map_err(|e| e.to_string())?.join("vault");
+    std::fs::create_dir_all(&d).map_err(|e| e.to_string())?;
+    Ok(d.join(format!("{name}.bin")))
+}
+#[cfg(windows)]
+fn dpapi(data: &[u8], decrypt: bool) -> Result<Vec<u8>, String> {
+    use windows::Win32::Security::Cryptography::{CryptProtectData, CryptUnprotectData, CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN};
+    use windows::Win32::Foundation::{LocalFree, HLOCAL};
+    unsafe {
+        let inb = CRYPT_INTEGER_BLOB { cbData: data.len() as u32, pbData: data.as_ptr() as *mut u8 };
+        let mut out = CRYPT_INTEGER_BLOB::default();
+        if decrypt { CryptUnprotectData(&inb, None, None, None, None, CRYPTPROTECT_UI_FORBIDDEN, &mut out) }
+        else { CryptProtectData(&inb, windows::core::w!("Hush"), None, None, None, CRYPTPROTECT_UI_FORBIDDEN, &mut out) }.map_err(|e| e.to_string())?;
+        let v = std::slice::from_raw_parts(out.pbData, out.cbData as usize).to_vec();
+        let _ = LocalFree(Some(HLOCAL(out.pbData as _)));
+        Ok(v)
+    }
+}
+#[tauri::command]
+pub fn secret_set(app: AppHandle, name: String, value: String) -> Result<(), String> {
+    let p = secret_path(&app, &name)?;
+    #[cfg(windows)] let bytes = dpapi(value.as_bytes(), false)?;
+    #[cfg(not(windows))] let bytes = value.into_bytes();
+    std::fs::write(&p, bytes).map_err(|e| e.to_string())?;
+    #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; let _ = std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600)); }
+    Ok(())
+}
+#[tauri::command]
+pub fn secret_get(app: AppHandle, name: String) -> Result<Option<String>, String> {
+    let p = secret_path(&app, &name)?;
+    let Ok(bytes) = std::fs::read(&p) else { return Ok(None) };
+    #[cfg(windows)] let bytes = dpapi(&bytes, true)?;
+    String::from_utf8(bytes).map(Some).map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn secret_del(app: AppHandle, name: String) -> Result<(), String> { let p = secret_path(&app, &name)?; let _ = std::fs::remove_file(p); Ok(()) }
