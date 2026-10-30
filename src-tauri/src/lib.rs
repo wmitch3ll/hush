@@ -53,6 +53,17 @@ fn refresh_page_prefs(s: &store::Store) {
     let mut p = PAGE_PREFS.write();
     p.dark = s.settings.ui.get("force_dark").map(|v| v == "true").unwrap_or(false);
     p.site_dark = s.site_dark.clone();
+    let until = s.settings.ui.get("focus_until").and_then(|v| v.parse().ok()).unwrap_or(0);
+    let sites = s.settings.ui.get("focus_sites").map(|v| v.split(',').map(|x| x.trim().trim_start_matches("www.").to_lowercase()).filter(|x| !x.is_empty()).collect()).unwrap_or_default();
+    *FOCUS.write() = (until, sites);
+}
+/// Focus mode: (until unix-seconds, sites). Document loads on those sites are replaced by a "focus" page.
+pub static FOCUS: LazyLock<parking_lot::RwLock<(u64, Vec<String>)>> = LazyLock::new(Default::default);
+pub fn focus_blocks(url: &str) -> bool {
+    let f = FOCUS.read();
+    if f.0 <= now_secs() || f.1.is_empty() { return false; }
+    let host = url::Url::parse(url).ok().and_then(|u| u.host_str().map(str::to_string)).unwrap_or_default();
+    f.1.iter().any(|s| host == *s || host.ends_with(&format!(".{s}")))
 }
 pub fn dark_for(url: &str) -> bool {
     let host = url::Url::parse(url).ok().and_then(|u| u.host_str().map(str::to_string)).unwrap_or_default();
@@ -75,6 +86,7 @@ pub fn page_action_js(action: &str, arg: &str) -> Result<String, String> {
         "find" => format!("__hushPage.find({a},false)"),
         "find-back" => format!("__hushPage.find({a},true)"),
         "find-clear" => "__hushPage.find('',false)".to_string(),
+        "print" => "print()".to_string(),
         _ => return Err("unknown page action".into()),
     };
     Ok(format!("{PAGE_JS};{call};"))
@@ -122,8 +134,30 @@ pub fn init_state(app: &AppHandle) {
 }
 
 /// Address-bar input -> URL. HTTPS-first; searches use the chosen engine. (Mirror in ui/mobile.html resolve().)
+/// Search shortcuts ("bangs"): "!w hush" searches Wikipedia. Users add their own as `key=https://…%s` in Settings.
+const BANGS: &[(&str, &str)] = &[
+    ("w", "https://en.wikipedia.org/w/index.php?search=%s"), ("yt", "https://www.youtube.com/results?search_query=%s"),
+    ("a", "https://www.amazon.com/s?k=%s"), ("g", "https://www.google.com/search?q=%s"), ("ddg", "https://duckduckgo.com/?q=%s"),
+    ("b", "https://search.brave.com/search?q=%s"), ("gh", "https://github.com/search?q=%s"), ("r", "https://www.reddit.com/search/?q=%s"),
+    ("m", "https://www.openstreetmap.org/search?query=%s"), ("i", "https://duckduckgo.com/?q=%s&ia=images&iax=images"),
+    ("n", "https://duckduckgo.com/?q=%s&ia=news&iar=news"), ("imdb", "https://www.imdb.com/find/?q=%s"),
+    ("so", "https://stackoverflow.com/search?q=%s"), ("wa", "https://www.wolframalpha.com/input?i=%s"),
+    ("e", "https://www.ebay.com/sch/i.html?_nkw=%s"), ("maps", "https://www.google.com/maps/search/%s"),
+];
+pub fn bang(s: &store::Settings, t: &str) -> Option<String> {
+    let words: Vec<&str> = t.split_whitespace().collect();
+    let pos = words.iter().position(|w| w.starts_with('!') && w.len() > 1)?;
+    let key = words[pos][1..].to_lowercase();
+    let custom = s.ui.get("bangs").cloned().unwrap_or_default();
+    let tpl = custom.split('|').filter_map(|x| x.split_once('=')).find(|(k, v)| k.trim().eq_ignore_ascii_case(&key) && v.trim().starts_with("https://"))
+        .map(|(_, v)| v.trim().to_string()).or_else(|| BANGS.iter().find(|(k, _)| *k == key).map(|(_, v)| v.to_string()))?;
+    let q: String = words.iter().enumerate().filter(|(i, _)| *i != pos).map(|(_, w)| *w).collect::<Vec<_>>().join(" ");
+    let enc: String = url::form_urlencoded::byte_serialize(q.as_bytes()).collect();
+    Some(if tpl.contains("%s") { tpl.replace("%s", &enc) } else { tpl })
+}
 pub fn resolve_with(s: &store::Settings, input: &str) -> String {
     let t = input.trim();
+    if t.contains('!') { if let Some(u) = bang(s, t) { return u; } }
     if let Ok(u) = url::Url::parse(t) { if u.has_host() && (u.scheme() == "http" || u.scheme() == "https") { return t.replacen("http://", "https://", 1); } }
     if t.contains('.') && !t.contains(' ') && !t.contains("://") { return format!("https://{t}"); }
     let q: String = url::form_urlencoded::byte_serialize(t.as_bytes()).collect();
@@ -177,7 +211,8 @@ async fn set_setting(app: AppHandle, key: String, value: String) -> Result<(), S
         // Free-form UI preferences (layout, auto-hide, density...). The UI owns their meaning; Rust only stores them.
         k if k.starts_with("ui.") => {
             let name = &k[3..];
-            if name.is_empty() || name.len() > 40 || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') || value.len() > 200 {
+            let max = if matches!(name, "bangs" | "focus_sites" | "workspaces") { 4000 } else { 200 };
+            if name.is_empty() || name.len() > 40 || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') || value.len() > max {
                 return Err("invalid ui setting".into());
             }
             if name == "history" && value != "on" { st.history.lock().clear(); store::save_history(&app, &[]); }
@@ -191,11 +226,13 @@ async fn set_setting(app: AppHandle, key: String, value: String) -> Result<(), S
     Ok(())
 }
 #[tauri::command]
-async fn bookmark_add(app: AppHandle, title: String, url: String) -> Result<(), String> {
+async fn bookmark_add(app: AppHandle, title: String, url: String, folder: Option<String>) -> Result<(), String> {
     if !(url.starts_with("https://") || url.starts_with("http://")) { return Err("bad url".into()); }
     let st = app.state::<AppState>();
     let mut s = st.store.lock();
-    if !s.bookmarks.iter().any(|b| b.url == url) { s.bookmarks.push(store::Bookmark { title, url, folder: String::new() }); store::save(&app, &s); }
+    let folder = folder.unwrap_or_default().chars().take(30).collect::<String>();
+    if let Some(b) = s.bookmarks.iter_mut().find(|b| b.url == url) { b.folder = folder; } else { s.bookmarks.push(store::Bookmark { title, url, folder }); }
+    store::save(&app, &s);
     Ok(())
 }
 #[tauri::command]
@@ -297,6 +334,41 @@ async fn suggest(app: AppHandle, q: String) -> Vec<Value> {
     }
     out
 }
+/// Version of this build (CI sets HUSH_BUILD to the build number).
+pub const BUILD: &str = match option_env!("HUSH_BUILD") { Some(b) => b, None => "dev" };
+/// Newest Hush test build on GitHub. Errors if the repository is private (GitHub hides it without a login).
+#[tauri::command]
+async fn check_update() -> Result<Value, String> {
+    let body = tauri::async_runtime::spawn_blocking(|| -> Result<String, String> {
+        ureq::get("https://api.github.com/repos/wmitch3ll/hush/releases?per_page=1").set("User-Agent", "Hush-browser")
+            .set("Accept", "application/vnd.github+json").call().map_err(|e| match e {
+                ureq::Error::Status(404, _) => "private".to_string(), e => e.to_string() })?
+            .into_string().map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())??;
+    let v: Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
+    let r = v.get(0).ok_or("no releases yet")?;
+    let tag = r["tag_name"].as_str().unwrap_or("");
+    let latest: u64 = tag.trim_start_matches("build-").parse().unwrap_or(0);
+    let mine: u64 = BUILD.parse().unwrap_or(0);
+    Ok(json!({ "current": BUILD, "latest": latest, "newer": mine > 0 && latest > mine, "name": r["name"], "page": r["html_url"],
+               "apk": r["assets"].as_array().and_then(|a| a.iter().find(|x| x["name"].as_str().map(|n| n.ends_with(".apk")).unwrap_or(false))).map(|x| x["browser_download_url"].clone()) }))
+}
+#[tauri::command]
+async fn app_info() -> Value { json!({ "build": BUILD, "version": env!("CARGO_PKG_VERSION"), "platform": std::env::consts::OS }) }
+/// Merge bookmarks sent from another device (QR code / hush: link). Only web URLs are accepted.
+#[tauri::command]
+async fn import_bookmarks(app: AppHandle, items: Vec<store::Bookmark>) -> usize {
+    let st = app.state::<AppState>();
+    let mut s = st.store.lock();
+    let mut n = 0;
+    for b in items.into_iter().take(500) {
+        if (b.url.starts_with("https://") || b.url.starts_with("http://")) && b.url.len() < 2048 && !s.bookmarks.iter().any(|x| x.url == b.url) {
+            s.bookmarks.push(store::Bookmark { title: b.title.chars().take(200).collect(), url: b.url, folder: b.folder.chars().take(30).collect() }); n += 1;
+        }
+    }
+    store::save(&app, &s);
+    n
+}
 /// Remember open tabs for "restore tabs" (only when that setting is on).
 #[tauri::command]
 async fn session_save(app: AppHandle, tabs: Vec<store::SessionTab>) {
@@ -344,6 +416,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![toggle_shield, get_state, set_setting, bookmark_add, bookmark_remove,
             add_custom_filter, export_data, import_data, update_lists,
             site_dark, get_stats, history_add, history_list, history_clear, suggest, session_save,
+            check_update, app_info, import_bookmarks,
             desktop::page_action, desktop::set_split,
             desktop::open_tab, desktop::switch_tab, desktop::close_tab, desktop::navigate, desktop::nav,
             desktop::clear_data, desktop::start_picker, desktop::set_layout, desktop::show_content,
@@ -353,7 +426,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![toggle_shield, get_state, set_setting, bookmark_add, bookmark_remove,
             add_custom_filter, export_data, import_data, update_lists,
             site_dark, get_stats, history_add, history_list, history_clear, suggest, session_save,
-            mobile::page_action,
+            check_update, app_info, import_bookmarks,
+            mobile::page_action, mobile::native_call,
             mobile::open_tab, mobile::switch_tab, mobile::close_tab, mobile::navigate, mobile::nav,
             mobile::clear_data, mobile::set_chrome_inset, mobile::set_web_prefs])
         .setup(mobile::setup);

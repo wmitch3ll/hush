@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="horizontal" android:gravity="center_vertical"
+    android:background="@drawable/hush_widget_bg" android:padding="6dp">
+    <TextView android:id="@+id/hush_widget_search" android:layout_width="0dp" android:layout_weight="1"
+        android:layout_height="match_parent" android:gravity="center_vertical" android:paddingStart="14dp"
+        android:text="hush.  Search or enter address" android:textColor="#9A9A9A" android:textSize="15sp" />
+    <TextView android:id="@+id/hush_widget_voice" android:layout_width="44dp" android:layout_height="match_parent"
+        android:gravity="center" android:text="🎙" android:textSize="18sp" android:contentDescription="Voice search" />
+    <TextView android:id="@+id/hush_widget_private" android:layout_width="44dp" android:layout_height="match_parent"
+        android:gravity="center" android:text="◌" android:textColor="#EEEEEE" android:textSize="20sp" android:contentDescription="Private tab" />
+</LinearLayout>

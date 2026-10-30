@@ -39,3 +39,9 @@ pub extern "system" fn Java_app_hush_browser_Native_scriptletJs(env: JNIEnv, _c:
     let js = std::panic::catch_unwind(crate::scriptlets_init_js).unwrap_or_default();
     env.new_string(js).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
 }
+
+#[no_mangle]
+pub extern "system" fn Java_app_hush_browser_Native_focusBlock(mut env: JNIEnv, _c: JClass, url: JString) -> jboolean {
+    let u: String = env.get_string(&url).map(|s| s.into()).unwrap_or_default();
+    std::panic::catch_unwind(|| crate::focus_blocks(&u)).unwrap_or(false) as jboolean
+}

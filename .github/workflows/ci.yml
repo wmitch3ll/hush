@@ -45,8 +45,37 @@ jobs:
           git clone -q --depth 1 https://github.com/gorhill/uBlock /tmp/ublock
           git clone -q --depth 1 --branch gh-pages https://github.com/uBlockOrigin/uAssets /tmp/uassets
           node tools/build-scriptlets.mjs /tmp/ublock /tmp/uassets
+      # Permanent signing key so each build installs over the last one (main branch only).
+      # Uses the HUSH_KEYSTORE_B64 secret if you add one; otherwise one key is generated once and kept in the Actions cache.
+      - name: Restore signing key
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache@v4
+        with: { path: ~/.hush, key: hush-signing-v1 }
+      - name: Prepare signing key
+        if: github.ref == 'refs/heads/main'
+        id: key
+        shell: bash
+        env: { KS_B64: "${{ secrets.HUSH_KEYSTORE_B64 }}" }
+        run: |
+          mkdir -p ~/.hush
+          if [ -n "$KS_B64" ]; then echo "$KS_B64" | base64 -d > ~/.hush/hush.jks
+          elif [ ! -f ~/.hush/hush.jks ]; then
+            keytool -genkeypair -keystore ~/.hush/hush.jks -alias hush -keyalg RSA -keysize 4096 -validity 10000 \
+              -storepass hushdebug -keypass hushdebug -dname "CN=Hush, O=Hush Browser" -noprompt
+            echo "new=1" >> "$GITHUB_OUTPUT"
+          fi
+          echo "HUSH_KEYSTORE=$HOME/.hush/hush.jks" >> "$GITHUB_ENV"
+      - name: Back up a newly created signing key
+        if: steps.key.outputs.new == '1'
+        uses: actions/upload-artifact@v4
+        with: { name: SIGNING-KEY-BACKUP-keep-private, path: ~/.hush/hush.jks, retention-days: 90 }
+      - name: Version from build number
+        shell: bash
+        run: |
+          sed -i 's/"version": "[^"]*"/"version": "0.1.${{ github.run_number }}"/' src-tauri/tauri.conf.json
       - name: Build APK
         shell: bash
+        env: { HUSH_BUILD: "${{ github.run_number }}" }
         run: |
           set -o pipefail
           export NDK_HOME="$ANDROID_NDK_LATEST_HOME"

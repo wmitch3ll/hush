@@ -213,7 +213,13 @@ pub async fn open_tab(app: AppHandle, input: String, private: Option<bool>) -> R
                 });
                 false
             }
-            "https" => !b_nav.check_request(u.as_str(), u.as_str(), "document"),
+            "https" => {
+                if crate::focus_blocks(u.as_str()) {
+                    let _ = app_nav.emit_to("chrome", "focus-blocked", serde_json::json!({ "tab": lbl_nav, "url": u.as_str() }));
+                    return false;
+                }
+                !b_nav.check_request(u.as_str(), u.as_str(), "document")
+            }
             // Scheme allowlist (R-55): everything else (file:, javascript:, intent:, tauri:, asset:, ipc:, custom app
             // schemes) is refused so a web page can never steer a tab into local files or the app's own origin.
             "about" | "blob" | "data" => true,

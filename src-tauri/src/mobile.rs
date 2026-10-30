@@ -41,8 +41,8 @@ pub async fn open_tab(app: AppHandle, input: String, private: Option<bool>) -> R
     let _ = call(&app, "setTopInset", json!({ "px": px.clamp(0, 4000), "bottom": bottom.unwrap_or(0).clamp(0, 4000) }));
 }
 /// Page text size (percent) and "desktop site" for every tab.
-#[tauri::command] pub async fn set_web_prefs(app: AppHandle, text_zoom: i32, desktop: bool, pull_refresh: Option<bool>) {
-    let _ = call(&app, "setPrefs", json!({ "textZoom": text_zoom.clamp(50, 200), "desktop": desktop, "pullRefresh": pull_refresh.unwrap_or(true) }));
+#[tauri::command] pub async fn set_web_prefs(app: AppHandle, text_zoom: i32, desktop: bool, pull_refresh: Option<bool>, bg_play: Option<bool>) {
+    let _ = call(&app, "setPrefs", json!({ "textZoom": text_zoom.clamp(50, 200), "desktop": desktop, "pullRefresh": pull_refresh.unwrap_or(true), "bgPlay": bg_play.unwrap_or(true) }));
 }
 
 /// Page tools in the active tab. Find uses Android's native find (match counts come back as a `find` event);
@@ -55,4 +55,13 @@ pub async fn page_action(app: AppHandle, action: String, arg: Option<String>) ->
     } else {
         call(&app, "evalJs", json!({ "js": crate::page_action_js(&action, &q)? })).map(|_| ())
     }
+}
+
+/// Phone-only actions that go straight to the native plugin. Only these names are allowed.
+#[tauri::command]
+pub async fn native_call(app: AppHandle, cmd: String, args: Option<Value>) -> Result<Value, String> {
+    const ALLOWED: &[&str] = &["takeIntent", "askDefault", "isDefault", "pip", "permissionReply", "sitePerms", "resetSitePerms",
+        "printPage", "voice", "discardBackground"];
+    if !ALLOWED.contains(&cmd.as_str()) { return Err("not allowed".into()); }
+    call(&app, &cmd, args.unwrap_or(json!({})))
 }
