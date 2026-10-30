@@ -6,9 +6,12 @@ use tauri::{AppHandle, Manager};
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(default)]
-pub struct Settings { pub search: String, pub custom_search: String, pub theme: String, pub counter: bool }
+pub struct Settings { pub search: String, pub custom_search: String, pub theme: String, pub counter: bool,
+    /// UI preferences set from the chrome (`ui.<name>` keys): tabs_pos, tabs_mode, hide_delay, bar_pos, density...
+    pub ui: std::collections::BTreeMap<String, String> }
 impl Default for Settings {
-    fn default() -> Self { Self { search: "duckduckgo".into(), custom_search: String::new(), theme: "system".into(), counter: !cfg!(mobile) } }
+    fn default() -> Self { Self { search: "duckduckgo".into(), custom_search: String::new(), theme: "system".into(), counter: !cfg!(mobile),
+        ui: Default::default() } }
 }
 impl Settings {
     /// URL template with %s for the encoded query.

@@ -24,6 +24,12 @@ pub struct AppState {
     pub active: Mutex<Option<String>>,
     pub next_id: AtomicUsize,
     pub store: Mutex<store::Store>,
+    /// Space the chrome UI reserves around the page, in logical px: [top, right, bottom, left]. Set by `set_layout`.
+    pub layout: Mutex<[f64; 4]>,
+    /// True while a chrome panel (settings, downloads) covers the page area: tabs stay hidden.
+    pub panel_open: std::sync::atomic::AtomicBool,
+    /// Files Hush itself downloaded this session; only these may be opened/revealed from the UI.
+    pub downloads: Mutex<Vec<std::path::PathBuf>>,
 }
 
 /// Bundled lists (run tools/fetch-lists.sh to fill them with real lists).
@@ -99,6 +105,14 @@ async fn set_setting(app: AppHandle, key: String, value: String) -> Result<(), S
         "custom_search" => s.settings.custom_search = value,
         "theme" => s.settings.theme = value,
         "counter" => s.settings.counter = value == "true",
+        // Free-form UI preferences (layout, auto-hide, density...). The UI owns their meaning; Rust only stores them.
+        k if k.starts_with("ui.") => {
+            let name = &k[3..];
+            if name.is_empty() || name.len() > 40 || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') || value.len() > 200 {
+                return Err("invalid ui setting".into());
+            }
+            s.settings.ui.insert(name.to_string(), value);
+        }
         _ => return Err("unknown setting".into()),
     }
     store::save(&app, &s);
@@ -185,13 +199,15 @@ pub fn run() {
 
     let b = tauri::Builder::default().manage(AppState {
         blocker, tabs: Default::default(), active: Default::default(), next_id: AtomicUsize::new(1), store: Default::default(),
+        layout: Mutex::new([52.0, 0.0, 0.0, 64.0]), panel_open: Default::default(), downloads: Default::default(),
     });
     #[cfg(mobile)] let b = b.plugin(tabs_plugin::init());
     #[cfg(desktop)] let b = b
         .invoke_handler(tauri::generate_handler![toggle_shield, get_state, set_setting, bookmark_add, bookmark_remove,
             add_custom_filter, export_data, import_data, update_lists,
             desktop::open_tab, desktop::switch_tab, desktop::close_tab, desktop::navigate, desktop::nav,
-            desktop::clear_data, desktop::start_picker])
+            desktop::clear_data, desktop::start_picker, desktop::set_layout, desktop::show_content,
+            desktop::download_open, desktop::download_reveal])
         .setup(desktop::setup);
     #[cfg(mobile)] let b = b
         .invoke_handler(tauri::generate_handler![toggle_shield, get_state, set_setting, bookmark_add, bookmark_remove,

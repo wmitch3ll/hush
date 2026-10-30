@@ -1,116 +1,291 @@
 <!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
 <title>Hush</title>
 <style>
-/* Grayscale tokens — same names as mobile.html. Layout constants: #rail 64px wide, #top 52px tall (= RAIL_W / CHROME_TOP in desktop.rs). */
+/* Grayscale tokens — same names as mobile.html. Light / dark (system) / forced via [data-theme]. */
 :root{--bg:#f5f5f4;--card:#fff;--line:#e4e4e2;--ink:#161616;--mute:#8b8b88;--acc:#161616;--glow:#16161622;color-scheme:light}
-@media(prefers-color-scheme:dark){:root{--bg:#0f0f0f;--card:#1a1a1a;--line:#262626;--ink:#ececec;--mute:#777;--acc:#ececec;--glow:#ececec22;color-scheme:dark}}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0f0f0f;--card:#1a1a1a;--line:#262626;--ink:#ececec;--mute:#777;--acc:#ececec;--glow:#ececec22;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#0f0f0f;--card:#1a1a1a;--line:#262626;--ink:#ececec;--mute:#777;--acc:#ececec;--glow:#ececec22;color-scheme:dark}
 *{box-sizing:border-box;margin:0}
 body{background:var(--bg);color:var(--ink);font:13px/1.3 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;height:100vh;overflow:hidden;user-select:none}
-#rail{position:absolute;inset:0 auto 0 0;width:64px;display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 0;border-right:1px solid var(--line)}
-#tabs{display:flex;flex-direction:column;gap:8px;overflow-y:auto;scrollbar-width:none}
-#top{position:absolute;inset:0 0 auto 64px;height:52px;display:flex;gap:4px;align-items:center;padding:0 10px;border-bottom:1px solid var(--line)}
 button{all:unset;cursor:pointer;color:var(--mute);width:32px;height:32px;border-radius:9px;display:grid;place-items:center;position:relative;flex:none}
 button:hover{background:var(--card);color:var(--ink)}button:focus-visible{box-shadow:0 0 0 2px var(--glow)}
 button:disabled{opacity:.3;pointer-events:none}
 button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-#pill{flex:1;display:flex;align-items:center;gap:6px;height:34px;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:0 4px 0 12px;margin:0 6px;transition:border-color .15s,box-shadow .15s}
+
+/* Positions/sizes of #addr, #tabsbar, #page are set by layout() in JS — one source of truth, also sent to Rust. */
+#addr{position:absolute;display:flex;gap:4px;align-items:center;padding:0 10px;background:var(--bg);z-index:3}
+#addr.top{border-bottom:1px solid var(--line)}#addr.bottom{border-top:1px solid var(--line)}
+#tabsbar{position:absolute;display:flex;align-items:center;gap:8px;background:var(--bg);z-index:2;transition:transform .18s ease}
+#tabsbar.v{flex-direction:column;padding:10px 0}#tabsbar.h{flex-direction:row;padding:0 8px}
+#tabsbar.left{border-right:1px solid var(--line)}#tabsbar.right{border-left:1px solid var(--line)}
+#tabsbar.top{border-bottom:1px solid var(--line)}#tabsbar.bottom{border-top:1px solid var(--line)}
+#tabsbar.hidden>*{opacity:0;pointer-events:none}
+#tabsbar.hidden::after{content:"";position:absolute;background:var(--line);border-radius:2px}
+#tabsbar.hidden.left::after{right:2px;top:50%;width:2px;height:40px;margin-top:-20px}
+#tabsbar.hidden.right::after{left:2px;top:50%;width:2px;height:40px;margin-top:-20px}
+#tabsbar.hidden.top::after{bottom:2px;left:50%;height:2px;width:40px;margin-left:-20px}
+#tabsbar.hidden.bottom::after{top:2px;left:50%;height:2px;width:40px;margin-left:-20px}
+#tabs{display:flex;gap:8px;overflow:auto;scrollbar-width:none;min-width:0;min-height:0}
+#tabsbar.v #tabs{flex-direction:column}
+.tab{flex:none;height:38px;border-radius:11px;background:var(--card);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;gap:6px;font-weight:600;cursor:pointer;color:var(--mute);transition:.12s;overflow:hidden;white-space:nowrap}
+#tabsbar.v .tab{width:38px;text-transform:uppercase}
+#tabsbar.h .tab{height:28px;max-width:180px;padding:0 10px;font-weight:500}
+#tabsbar.h .tab span{overflow:hidden;text-overflow:ellipsis}
+.tab:hover{color:var(--ink)}.tab.on{border-color:var(--ink);color:var(--ink);box-shadow:0 0 0 3px var(--glow)}
+.compact .tab{height:32px}.compact #tabsbar.v .tab{width:32px}.compact #tabsbar.h .tab{height:24px}
+
+#pill{flex:1;display:flex;align-items:center;gap:6px;height:34px;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:0 4px 0 12px;margin:0 6px;transition:border-color .15s,box-shadow .15s;min-width:0}
+.compact #pill{height:30px}
 #pill:focus-within{border-color:var(--acc);box-shadow:0 0 0 3px var(--glow)}
 #lock{width:12px;height:12px;color:var(--mute);flex:none}
 #bar{all:unset;flex:1;color:var(--ink);font-size:13.5px;user-select:text;min-width:0}
 #bar::placeholder{color:var(--mute)}
-#cnt{position:absolute;top:2px;right:0;min-width:14px;height:14px;padding:0 3px;border-radius:7px;background:var(--ink);color:var(--bg);font-size:9px;font-weight:600;display:none;place-items:center}
-#shield.off{opacity:.4}#shield.off #cnt{display:none!important}
-#load{position:absolute;left:64px;right:0;top:51px;height:1px;background:var(--ink);transform-origin:left;transform:scaleX(0);opacity:0;transition:transform .4s,opacity .3s}
+.badge{position:absolute;top:2px;right:0;min-width:14px;height:14px;padding:0 3px;border-radius:7px;background:var(--ink);color:var(--bg);font-size:9px;font-weight:600;display:none;place-items:center}
+#shield.off{opacity:.4}#shield.off .badge{display:none!important}
+#load{position:absolute;left:0;right:0;height:1px;background:var(--ink);transform-origin:left;transform:scaleX(0);opacity:0;transition:transform .4s,opacity .3s;z-index:4}
 #load.on{opacity:1;transform:scaleX(.7);transition:transform 6s cubic-bezier(.1,.6,.2,1)}
-.tab{width:38px;height:38px;border-radius:11px;background:var(--card);border:1px solid var(--line);display:grid;place-items:center;font-weight:600;text-transform:uppercase;cursor:pointer;color:var(--mute);transition:.12s}
-.tab:hover{color:var(--ink)}.tab.on{border-color:var(--ink);color:var(--ink);box-shadow:0 0 0 3px var(--glow)}
-#toast{position:absolute;right:12px;top:58px;background:var(--ink);color:var(--bg);padding:7px 12px;border-radius:99px;font-size:12px;opacity:0;transition:opacity .2s;pointer-events:none}
-#toast.on{opacity:1}
-#home{position:absolute;inset:52px 0 0 64px;display:grid;place-content:center;justify-items:center;text-align:center;gap:26px}
+
+#page{position:absolute;overflow:auto}
+#home{height:100%;display:grid;place-content:center;justify-items:center;text-align:center;gap:26px}
 #home h1{font-weight:200;font-size:64px;letter-spacing:-2px}#home p{color:var(--mute);margin-top:-18px}
 #bms{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;max-width:560px}
 .bm{all:unset;cursor:pointer;display:grid;justify-items:center;gap:6px;width:68px;color:var(--mute);font-size:11px}
 .bm i{font-style:normal;width:50px;height:50px;border-radius:50%;background:var(--card);border:1px solid var(--line);display:grid;place-items:center;font-size:18px;color:var(--ink);text-transform:uppercase}
 .bm:hover i{border-color:var(--ink)}.bm span{max-width:68px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Panels (Settings, Downloads) take the page area while open. */
+.panel{max-width:640px;margin:0 auto;padding:28px 24px 60px;user-select:text}
+.panel h2{font-weight:300;font-size:30px;letter-spacing:-.5px;display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.panel h3{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute);margin:26px 0 8px;font-weight:600}
+.row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 14px;background:var(--card);border:1px solid var(--line);border-radius:12px;margin-bottom:6px;min-height:50px}
+.row>div:first-child{min-width:0}.row small{display:block;color:var(--mute);margin-top:2px;overflow:hidden;text-overflow:ellipsis}
+.seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:2px;flex:none}
+.seg button{width:auto;height:26px;padding:0 10px;border-radius:7px;font-size:12px}
+.seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 2px #0002}
+.btn{width:auto;height:30px;padding:0 12px;border:1px solid var(--line);border-radius:9px;color:var(--ink);font-size:12px}
+.sw{width:36px;height:20px;border-radius:10px;background:var(--line);position:relative;padding:0}
+.sw::after{content:"";position:absolute;left:2px;top:2px;width:16px;height:16px;border-radius:50%;background:var(--card);transition:.15s}
+.sw.on{background:var(--ink)}.sw.on::after{left:18px}
+select,input.txt{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:6px 8px}
+input.txt{width:100%;margin-top:6px}
+.empty{color:var(--mute);text-align:center;padding:40px 0}
+.dl .state{font-size:11px;color:var(--mute)}.dl .acts{display:flex;gap:6px;flex:none}
+kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:4px;padding:1px 5px;color:var(--mute)}
+#toast{position:absolute;background:var(--ink);color:var(--bg);padding:7px 12px;border-radius:99px;font-size:12px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:5}
+#toast.on{opacity:1}
 </style>
-<div id=rail>
+
+<div id=tabsbar>
   <button id=new title="New tab (Ctrl+T)" aria-label="New tab"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
   <div id=tabs role=tablist aria-label="Tabs"></div>
 </div>
-<div id=top>
+<div id=addr>
   <button id=back title="Back (Alt+Left)" aria-label=Back disabled><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
   <button id=fwd title="Forward (Alt+Right)" aria-label=Forward disabled><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
   <button id=reload title="Reload (Ctrl+R)" aria-label=Reload disabled><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/></svg></button>
   <label id=pill>
     <svg id=lock viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=2><rect x=5 y=11 width=14 height=9 rx=2 /><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
     <input id=bar placeholder="Search or enter address" autocomplete=off spellcheck=false aria-label="Address">
-    <button id=shield title="Shield on for this site" aria-label="Toggle shield"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg><b id=cnt></b></button>
+    <button id=shield title="Shield on for this site" aria-label="Toggle shield"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg><b id=cnt class=badge></b></button>
   </label>
   <button id=pick title="Block an element" aria-label="Block an element" disabled><svg viewBox="0 0 24 24"><circle cx=6 cy=6 r=3 /><circle cx=6 cy=18 r=3 /><path d="M8.1 8.1L20 20M8.1 15.9L20 4"/></svg></button>
   <button id=star title="Bookmark this page (Ctrl+D)" aria-label="Bookmark" disabled><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg></button>
-  <button id=wipe title="Clear browsing data" aria-label="Clear data"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
+  <button id=dls title="Downloads (Ctrl+J)" aria-label="Downloads"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><b id=dlcnt class=badge></b></button>
+  <button id=gear title="Settings (Ctrl+,)" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx=12 cy=12 r=3 /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
 </div>
 <div id=load></div>
-<div id=home><h1>hush.</h1><p>nothing here but you.</p><div id=bms></div></div>
+<div id=page>
+  <div id=home><h1>hush.</h1><p>nothing here but you.</p><div id=bms></div></div>
+  <div id=panel class=panel hidden></div>
+</div>
 <div id=toast role=status></div>
+
 <script>
 const T=window.__TAURI__, inv=(c,a)=>T.core.invoke(c,a), $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // tabs: [{id, url}] — url comes from Rust 'tab-url' events, never from what was typed.
-let tabs=[], cur=null, allow=new Set(), counts={}, newPending=false, toastT;
+let tabs=[], cur=null, allow=new Set(), counts={}, newPending=false, toastT, state={settings:{ui:{}},bookmarks:[]};
+let panel=null, revealed=false, overBar=false, hideT=null, downloads=[];
 const tab=id=>tabs.find(t=>t.id==id), hostOf=u=>{try{return new URL(u).hostname}catch{return''}};
-const toast=m=>{const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),2200)};
 
+// ---------- preferences (stored in Rust as ui.<name>) ----------
+const DEF={tabs_pos:'left',tabs_mode:'auto',hide_delay:'3',bar_pos:'top',density:'normal',theme:'system',tab_style:'auto'};
+const pref=k=>state.settings.ui?.[k]??DEF[k];
+async function setPref(k,v){state.settings.ui[k]=String(v);layout(true);try{await inv('set_setting',{key:'ui.'+k,value:String(v)})}catch(e){toast(String(e))}if(panel=='settings')renderSettings()}
+
+// ---------- layout: places bars, tells Rust where the page goes ----------
+const EDGE=6;
+function layout(now){
+  const c=pref('density')=='compact', B=c?44:52, V=c?54:64, Hs=c?36:42;
+  const tp=pref('tabs_pos'), bp=pref('bar_pos'), vert=tp=='left'||tp=='right', auto=pref('tabs_mode')=='auto';
+  const shown=!auto||revealed||!tabs.length, full=vert?V:Hs, used=shown?full:EDGE, slide=full-used;
+  document.documentElement.dataset.theme=pref('theme')=='system'?'':pref('theme');
+  document.body.classList.toggle('compact',c);
+  const ins={top:0,right:0,bottom:0,left:0}, A=$('#addr'), S=$('#tabsbar'), P=$('#page'), L=$('#load');
+  A.className=bp; S.className=(vert?'v ':'h ')+tp+(shown?'':' hidden');
+  const px=o=>Object.entries(o).map(([k,v])=>`${k}:${typeof v=='number'?v+'px':v}`).join(';');
+  if(vert){
+    S.style.cssText=px({top:0,bottom:0,[tp]:0,width:full,transform:`translateX(${tp=='left'?-slide:slide}px)`});
+    ins[tp]=used; ins[bp]=B;
+    A.style.cssText=px({[bp]:0,height:B,left:tp=='left'?used:0,right:tp=='right'?used:0});
+  }else{
+    const stacked=tp==bp; // tab strip sits between the address bar and the page
+    ins[bp]+=B; ins[tp]+=used;
+    A.style.cssText=px({[bp]:0,height:B,left:0,right:0});
+    S.style.cssText=px({left:0,right:0,height:full,[tp]:stacked?B:0,transform:`translateY(${tp=='top'?-slide:slide}px)`});
+  }
+  P.style.cssText=px({top:ins.top,right:ins.right,bottom:ins.bottom,left:ins.left});
+  L.style.cssText=px({left:ins.left,right:ins.right,[bp=='top'?'top':'bottom']:B-1});
+  const t=$('#toast');t.style.cssText=px({right:ins.right+12,top:ins.top+8});
+  // Growing the page waits for the slide-out so it doesn't jump; shrinking happens at once.
+  clearTimeout(layout.t);
+  const send=()=>inv('set_layout',ins).catch(()=>{});
+  if(now||shown) send(); else layout.t=setTimeout(send,180);
+}
+function reveal(on){
+  if(pref('tabs_mode')!='auto')return;
+  clearTimeout(hideT);
+  if(on&&!revealed){revealed=true;layout()}
+  if(!on&&revealed){revealed=false;layout()}
+}
+function scheduleHide(){clearTimeout(hideT);if(pref('tabs_mode')!='auto')return;
+  hideT=setTimeout(()=>{if(!overBar)reveal(false)},Math.max(.5,+pref('hide_delay'))*1000)}
+$('#tabsbar').addEventListener('mouseenter',()=>{overBar=true;reveal(true)});
+$('#tabsbar').addEventListener('mouseleave',()=>{overBar=false;scheduleHide()});
+const peek=()=>{reveal(true);if(!overBar)scheduleHide()};   // briefly show the tabs after a tab action
+addEventListener('resize',()=>layout(true));
+
+// ---------- tabs ----------
 function draw(){
-  const box=$('#tabs');box.textContent='';
+  const box=$('#tabs');box.textContent='';const h_=pref('tabs_pos')=='top'||pref('tabs_pos')=='bottom';
   tabs.forEach((t,i)=>{const d=document.createElement('div');const h=hostOf(t.url).replace(/^www\./,'');
-    d.className='tab'+(t.id==cur?' on':'');d.textContent=h?h[0]:i+1;d.title=(h||'Loading…')+'\nMiddle/right-click to close';
+    d.className='tab'+(t.id==cur?' on':'');d.title=(h||'Loading…')+'\nMiddle-click to close';
+    if(h_){d.innerHTML='<span></span>';d.firstChild.textContent=h||'Loading…'}else d.textContent=h?h[0]:i+1;
     d.setAttribute('role','tab');d.setAttribute('aria-selected',t.id==cur);
     d.onclick=()=>select(t.id);d.onauxclick=e=>{e.preventDefault();closeTab(t.id)};d.oncontextmenu=e=>e.preventDefault();box.append(d)});
   const t=tab(cur), h=t?hostOf(t.url):'';
-  if(document.activeElement!==$('#bar')) $('#bar').value=t?t.url:'';
-  $('#home').style.display=tabs.length?'none':'grid';
-  for(const id of ['back','fwd','reload','pick','star']) $('#'+id).disabled=!t;
-  $('#lock').style.visibility=t&&t.url.startsWith('https:')?'visible':'hidden';
-  const off=allow.has(h);$('#shield').classList.toggle('off',off);$('#shield').disabled=!h;
+  if(document.activeElement!==$('#bar')) $('#bar').value=panel?'':t?t.url:'';
+  $('#home').style.display=!tabs.length&&!panel?'grid':'none';
+  $('#panel').hidden=!panel;
+  for(const id of ['back','fwd','reload','pick','star']) $('#'+id).disabled=!t||!!panel;
+  $('#lock').style.visibility=t&&!panel&&t.url.startsWith('https:')?'visible':'hidden';
+  const off=allow.has(h);$('#shield').classList.toggle('off',off);$('#shield').disabled=!h||!!panel;
   $('#shield').title=off?'Shield off for '+h:'Shield on'+(h?' for '+h:'');
-  const n=counts[cur]||0;$('#cnt').textContent=n>99?'99+':n;$('#cnt').style.display=n?'grid':'none';
+  const n=counts[cur]||0;$('#cnt').textContent=n>99?'99+':n;$('#cnt').style.display=n&&state.settings.counter!==false?'grid':'none';
+  const a=downloads.filter(d=>d.state=='started').length;$('#dlcnt').textContent=a;$('#dlcnt').style.display=a?'grid':'none';
 }
-async function openTab(v){const id=await inv('open_tab',{input:v});tabs.push({id,url:''});cur=id;draw()}
-function select(id){cur=id;inv('switch_tab',{label:id});draw()}
-async function closeTab(id){const next=await inv('close_tab',{label:id});tabs=tabs.filter(t=>t.id!=id);delete counts[id];cur=next??null;draw()}
-function go(v){v=v.trim();if(!v)return;if(newPending||!tabs.length){newPending=false;openTab(v)}else inv('navigate',{input:v});$('#bar').blur()}
+async function openTab(v){closePanel(true);const id=await inv('open_tab',{input:v});tabs.push({id,url:''});cur=id;draw();layout();peek()}
+function select(id){closePanel(true);cur=id;inv('switch_tab',{label:id});draw()}
+async function closeTab(id){const next=await inv('close_tab',{label:id});tabs=tabs.filter(t=>t.id!=id);delete counts[id];cur=next??null;draw();layout();if(tabs.length)peek()}
+function cycle(d){if(tabs.length<2)return;const i=tabs.findIndex(t=>t.id==cur);select(tabs[(i+d+tabs.length)%tabs.length].id);peek()}
+function go(v){v=v.trim();if(!v)return;if(newPending||!tabs.length){newPending=false;openTab(v)}else{closePanel(true);inv('navigate',{input:v})}$('#bar').blur()}
+function newTab(){newPending=true;$('#bar').value='';$('#bar').placeholder='New tab — search or enter address';$('#bar').focus()}
 
 $('#bar').addEventListener('keydown',e=>{if(e.key=='Enter')go(e.target.value);if(e.key=='Escape'){newPending=false;e.target.blur();draw()}});
 $('#bar').addEventListener('focus',e=>e.target.select());
-$('#bar').addEventListener('blur',()=>setTimeout(draw,0));
-$('#new').onclick=()=>{newPending=true;$('#bar').value='';$('#bar').focus();$('#bar').placeholder='New tab — search or enter address'};
-$('#bar').addEventListener('blur',()=>{if(!newPending)$('#bar').placeholder='Search or enter address'});
+$('#bar').addEventListener('blur',()=>setTimeout(()=>{if(!newPending)$('#bar').placeholder='Search or enter address';draw()},0));
+$('#new').onclick=newTab;
 $('#back').onclick=()=>inv('nav',{action:'back'});$('#fwd').onclick=()=>inv('nav',{action:'fwd'});$('#reload').onclick=()=>inv('nav',{action:'reload'});
 $('#shield').onclick=async e=>{e.preventDefault();const h=hostOf(tab(cur)?.url);if(!h)return;await inv('toggle_shield',{host:h});
   allow.has(h)?allow.delete(h):allow.add(h);draw();toast(allow.has(h)?'Shield off for '+h:'Shield on');inv('nav',{action:'reload'})};
 $('#pick').onclick=()=>{inv('start_picker');toast('Click an element to block it · Esc to cancel')};
 $('#star').onclick=async()=>{const t=tab(cur);if(!t)return;try{await inv('bookmark_add',{title:hostOf(t.url),url:t.url});toast('Bookmarked');loadState()}catch(e){toast(String(e))}};
-$('#wipe').onclick=()=>{if(confirm('Clear all cookies, cache and site data?')){inv('clear_data');toast('Browsing data cleared')}};
+$('#dls').onclick=()=>panel=='downloads'?closePanel():openPanel('downloads');
+$('#gear').onclick=()=>panel=='settings'?closePanel():openPanel('settings');
 
+// ---------- shortcuts (chrome focused: keydown; page focused: native 'shortcut' event from Rust) ----------
+function shortcut(k){
+  if(k=='t')newTab(); else if(k=='l'){closePanel();$('#bar').focus()} else if(k=='w'){cur&&closeTab(cur)}
+  else if(k=='d')$('#star').click(); else if(k=='j')$('#dls').click(); else if(k==',')$('#gear').click();
+  else if(k=='tab')cycle(1); else if(k=='shift+tab')cycle(-1);
+  else if(k=='b'){if(pref('tabs_mode')!='auto'){toast('Tab bar is pinned — change it in Settings');return}revealed?reveal(false):peek()}
+}
 addEventListener('keydown',e=>{const m=e.ctrlKey||e.metaKey,k=e.key.toLowerCase();
-  if(m&&k=='t'){e.preventDefault();$('#new').click()}
-  else if(m&&k=='l'){e.preventDefault();$('#bar').focus()}
-  else if(m&&k=='w'){e.preventDefault();cur&&closeTab(cur)}
+  if(m&&e.key=='Tab'){e.preventDefault();shortcut(e.shiftKey?'shift+tab':'tab')}
+  else if(m&&['t','l','w','d','j','b',','].includes(k)){e.preventDefault();shortcut(k)}
   else if(m&&k=='r'){e.preventDefault();cur&&inv('nav',{action:'reload'})}
-  else if(m&&k=='d'){e.preventDefault();$('#star').click()}
-  else if(m&&e.key=='Tab'&&tabs.length>1){e.preventDefault();const i=tabs.findIndex(t=>t.id==cur);select(tabs[(i+(e.shiftKey?-1:1)+tabs.length)%tabs.length].id)}
+  else if(e.key=='Escape'&&panel)closePanel();
   else if(e.altKey&&e.key=='ArrowLeft')inv('nav',{action:'back'});
   else if(e.altKey&&e.key=='ArrowRight')inv('nav',{action:'fwd'});});
+T.event.listen('shortcut',({payload:p})=>shortcut(p.key));
 
+// ---------- events from Rust ----------
 T.event.listen('tab-url',({payload:p})=>{const t=tab(p.tab);if(!t)return;t.url=p.url;
   if(p.tab==cur)$('#load').classList.toggle('on',p.state=='started');draw()});
 T.event.listen('blocked',({payload:p})=>{counts[p.tab]=p.count;if(p.tab==cur)draw()});
 T.event.listen('https-failed',({payload:p})=>{if(p.tab==cur){$('#load').classList.remove('on');toast(hostOf(p.url)+' has no secure version')}});
+T.event.listen('download',({payload:p})=>{
+  if(p.state=='started'){downloads.unshift({url:p.url,name:p.name||'download',path:p.path,state:'started'});toast('Downloading '+(p.name||'file')+'…')}
+  else{const d=downloads.find(d=>d.url==p.url&&d.state=='started');if(d){d.state=p.state;if(p.path)d.path=p.path}
+    toast(p.state=='done'?'Downloaded '+(d?.name||'file')+' · Ctrl+J':'Download failed')}
+  draw();if(panel=='downloads')renderDownloads()});
 
-async function loadState(){try{const s=await inv('get_state');allow=new Set(s.allow_sites);
+// ---------- panels ----------
+function openPanel(name){panel=name;inv('show_content',{visible:false});(name=='settings'?renderSettings:renderDownloads)();draw();$('#page').scrollTop=0}
+function closePanel(silent){if(!panel)return;panel=null;$('#panel').textContent='';inv('show_content',{visible:true});if(!silent)draw()}
+const closeBtn='<button class=btn data-close>Done</button>';
+function wire(root){root.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>closePanel())}
+
+function renderDownloads(){
+  const p=$('#panel');
+  p.innerHTML=`<h2>Downloads ${closeBtn}</h2>`+(downloads.length?downloads.map((d,i)=>`<div class="row dl"><div><b>${esc(d.name)}</b>
+    <small>${esc(hostOf(d.url))} · <span class=state>${d.state=='started'?'Downloading…':d.state=='done'?'Done':'Failed'}</span></small></div>
+    <div class=acts>${d.state=='done'?`<button class=btn data-open=${i}>Open</button><button class=btn data-show=${i}>Show in folder</button>`:''}</div></div>`).join('')
+    :'<div class=empty>Nothing downloaded yet this session.<br>Files are saved to your Downloads folder.</div>');
+  p.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>inv('download_open',{path:downloads[b.dataset.open].path}).catch(e=>toast(String(e))));
+  p.querySelectorAll('[data-show]').forEach(b=>b.onclick=()=>inv('download_reveal',{path:downloads[b.dataset.show].path}).catch(e=>toast(String(e))));
+  wire(p);
+}
+
+const seg=(k,opts)=>`<div class=seg>${opts.map(([v,l])=>`<button data-k=${k} data-v="${v}" class="${pref(k)==v?'on':''}">${l}</button>`).join('')}</div>`;
+const row=(title,sub,ctl)=>`<div class=row><div>${title}${sub?`<small>${sub}</small>`:''}</div>${ctl}</div>`;
+function renderSettings(){
+  const s=state.settings, p=$('#panel'), auto=pref('tabs_mode')=='auto';
+  p.innerHTML=`<h2>Settings ${closeBtn}</h2>
+  <h3>Layout</h3>
+  ${row('Tab bar position','',seg('tabs_pos',[['left','Left'],['right','Right'],['top','Top'],['bottom','Bottom']]))}
+  ${row('Tab bar','Auto-hide slides it away; move the mouse to that edge or press <kbd>Ctrl</kbd>+<kbd>B</kbd> to bring it back',seg('tabs_mode',[['auto','Auto-hide'],['pinned','Always shown']]))}
+  ${auto?row('Hide after','How long the tab bar stays after the mouse leaves',seg('hide_delay',[['1','1s'],['2','2s'],['3','3s'],['5','5s'],['10','10s']])):''}
+  ${row('Address bar','',seg('bar_pos',[['top','Top'],['bottom','Bottom']]))}
+  ${row('Density','',seg('density',[['normal','Comfortable'],['compact','Compact']]))}
+  <h3>Appearance</h3>
+  ${row('Theme','',seg('theme',[['system','System'],['light','Light'],['dark','Dark']]))}
+  <h3>Search</h3>
+  ${row('Search engine',s.search=='custom'?'Use %s where the search words go':'',`<select id=s-engine>${[['duckduckgo','DuckDuckGo'],['brave','Brave'],['startpage','Startpage'],['ecosia','Ecosia'],['custom','Custom…']]
+      .map(([v,l])=>`<option value=${v} ${s.search==v?'selected':''}>${l}</option>`).join('')}</select>`)}
+  ${s.search=='custom'?`<input class=txt id=s-custom placeholder="https://example.com/search?q=%s" value="${esc(s.custom_search)}">`:''}
+  <h3>Privacy</h3>
+  ${row('Blocked counter','Badge on the shield showing what was blocked on this page',`<button class="sw ${s.counter!==false?'on':''}" id=s-counter aria-label="Blocked counter"></button>`)}
+  ${row('Filter lists','Download the latest EasyList and EasyPrivacy',`<button class=btn id=s-lists>Update now</button>`)}
+  ${row('Browsing data','Cookies, cache and site storage for every site',`<button class=btn id=s-wipe>Clear…</button>`)}
+  ${row('Shield exceptions',allow.size?'':'Sites where you turned the shield off',allow.size?'':'<span class=state>None</span>')}
+  ${[...allow].map(h=>row(esc(h),'',`<button class=btn data-allow="${esc(h)}">Turn shield on</button>`)).join('')}
+  <h3>Your data</h3>
+  ${row('Export','Settings, bookmarks, filters and exceptions as JSON (copied to clipboard)',`<button class=btn id=s-export>Copy</button>`)}
+  ${row('Import','Paste an export below, then press Import',`<button class=btn id=s-import>Import</button>`)}
+  <textarea class=txt id=s-json rows=3 style="width:100%;font:12px ui-monospace,monospace" placeholder='{"settings":…}'></textarea>
+  <h3>Shortcuts</h3>
+  <div class=row style="display:block;line-height:2"><kbd>Ctrl</kbd>+<kbd>T</kbd> new tab · <kbd>Ctrl</kbd>+<kbd>W</kbd> close · <kbd>Ctrl</kbd>+<kbd>Tab</kbd> next tab ·
+   <kbd>Ctrl</kbd>+<kbd>L</kbd> address · <kbd>Ctrl</kbd>+<kbd>B</kbd> show/hide tabs · <kbd>Ctrl</kbd>+<kbd>D</kbd> bookmark · <kbd>Ctrl</kbd>+<kbd>J</kbd> downloads · <kbd>Ctrl</kbd>+<kbd>,</kbd> settings</div>`;
+  p.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>setPref(b.dataset.k,b.dataset.v));
+  $('#s-engine').onchange=async e=>{s.search=e.target.value;await inv('set_setting',{key:'search',value:s.search});renderSettings()};
+  const cs=$('#s-custom');if(cs)cs.onchange=async()=>{const v=cs.value.trim();if(!v.startsWith('https://')||!v.includes('%s')){toast('Must start with https:// and contain %s');return}
+    s.custom_search=v;await inv('set_setting',{key:'custom_search',value:v});toast('Saved')};
+  $('#s-counter').onclick=async()=>{s.counter=s.counter===false;await inv('set_setting',{key:'counter',value:String(s.counter)});renderSettings();draw()};
+  $('#s-lists').onclick=async e=>{e.target.textContent='Updating…';try{toast(await inv('update_lists'))}catch(err){toast(String(err))}renderSettings()};
+  $('#s-wipe').onclick=()=>{if(confirm('Clear all cookies, cache and site data?')){inv('clear_data');toast('Browsing data cleared')}};
+  p.querySelectorAll('[data-allow]').forEach(b=>b.onclick=async()=>{await inv('toggle_shield',{host:b.dataset.allow});allow.delete(b.dataset.allow);renderSettings();draw()});
+  $('#s-export').onclick=async()=>{try{await navigator.clipboard.writeText(await inv('export_data'));toast('Copied to clipboard')}catch(e){toast(String(e))}};
+  $('#s-import').onclick=async()=>{try{await inv('import_data',{json:$('#s-json').value});await loadState();renderSettings();toast('Imported')}catch(e){toast(String(e))}};
+  wire(p);
+}
+
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),2400)}
+
+async function loadState(){try{state=await inv('get_state');state.settings.ui=state.settings.ui||{};allow=new Set(state.allow_sites);
   const box=$('#bms');box.textContent='';
-  s.bookmarks.slice(0,12).forEach(b=>{const a=document.createElement('button');a.className='bm';const h=hostOf(b.url).replace(/^www\./,'');
+  state.bookmarks.slice(0,12).forEach(b=>{const a=document.createElement('button');a.className='bm';const h=hostOf(b.url).replace(/^www\./,'');
     a.innerHTML='<i></i><span></span>';a.querySelector('i').textContent=h[0]||'•';a.querySelector('span').textContent=b.title||h;a.title=b.url;
-    a.onclick=()=>openTab(b.url);box.append(a)});draw()}catch(e){console.error(e)}}
-loadState();draw();$('#bar').focus();
+    a.onclick=()=>openTab(b.url);box.append(a)});layout(true);draw()}catch(e){console.error(e)}}
+layout(true);draw();loadState();$('#bar').focus();
 </script>

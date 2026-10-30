@@ -52,3 +52,40 @@ pub fn install(wv: &tauri::Webview, blocker: Arc<Blocker>) {
         let _ = core.add_WebResourceRequested(&handler, &mut token);
     });
 }
+
+/// Browser shortcuts while a web page has focus. WebView2 sends keys to the page, not to the chrome UI, so we catch them
+/// natively (a page can't fake these) and forward them as a `shortcut` event. Keys we don't list go to the page as usual.
+pub fn install_shortcuts(wv: &tauri::Webview) {
+    use windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState;
+    let app = wv.app_handle().clone();
+    let _ = wv.with_webview(move |p| unsafe {
+        let controller = p.controller();
+        let handler = webview2_com::AcceleratorKeyPressedEventHandler::create(Box::new(move |_, args| {
+            let Some(args) = args else { return Ok(()) };
+            let mut kind = COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN;
+            args.KeyEventKind(&mut kind)?;
+            if kind != COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN { return Ok(()); }
+            let mut vk = 0u32;
+            args.VirtualKey(&mut vk)?;
+            let down = |k: i32| GetKeyState(k) < 0;
+            let (ctrl, shift) = (down(0x11), down(0x10));
+            if !ctrl { return Ok(()); }
+            let name = match vk {
+                0x54 => "t", 0x57 => "w", 0x4C => "l", 0x44 => "d", 0x42 => "b", 0x4A => "j", 0xBC => ",",
+                0x09 if shift => "shift+tab", 0x09 => "tab",
+                _ => return Ok(()),
+            };
+            args.SetHandled(true)?;
+            // Typing shortcuts (new tab, address bar) need the chrome webview focused; do it outside this callback.
+            let a = app.clone();
+            let focus = matches!(name, "t" | "l" | ",");
+            tauri::async_runtime::spawn(async move {
+                if focus { if let Some(c) = a.get_webview("chrome") { let _ = c.set_focus(); } }
+                let _ = a.emit_to("chrome", "shortcut", serde_json::json!({ "key": name }));
+            });
+            Ok(())
+        }));
+        let mut token = Default::default();
+        let _ = controller.add_AcceleratorKeyPressed(&handler, &mut token);
+    });
+}
