@@ -12,7 +12,19 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
       - run: sh tools/fetch-lists.sh
         shell: bash
-      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Test
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --manifest-path src-tauri/Cargo.toml 2>&1 | tee test.log
+      - name: Report errors as annotations
+        if: failure()
+        shell: bash
+        run: |
+          grep -nE -A6 "^error|panicked|FAILED" test.log | head -80 > err.txt || true
+          [ -s err.txt ] || tail -60 test.log > err.txt
+          msg=$(sed -e 's/%/%25/g' err.txt | awk '{printf "%s%%0A", $0}')
+          echo "::error title=Desktop build failed::${msg}"
   android:
     # Builds a debug APK and, on pushes to main, publishes it as a GitHub Release ("Hush test build N").
     runs-on: ubuntu-latest

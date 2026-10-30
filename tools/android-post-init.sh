@@ -25,11 +25,8 @@ if 'android:allowBackup' not in s:
 open(p,'w').write(s); print("manifest ok")
 PY
 # Libraries the plugin uses: androidx.webkit (private-tab profiles), SwipeRefreshLayout (pull to refresh).
-grep -q "androidx.webkit:webkit" "$A/build.gradle.kts" || cat >> "$A/build.gradle.kts" <<'DEPS'
-
-dependencies {
-    implementation("androidx.webkit:webkit:1.12.1")
-    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
-}
-DEPS
+# (Tauri's template already depends on androidx.webkit; add each library only if it's missing.)
+for dep in "androidx.webkit:webkit:1.12.1" "androidx.swiperefreshlayout:swiperefreshlayout:1.1.0"; do
+  grep -q "${dep%:*}" "$A/build.gradle.kts" || printf '\ndependencies {\n    implementation("%s")\n}\n' "$dep" >> "$A/build.gradle.kts"
+done
 echo "Android plugin installed. Next: cd src-tauri && cargo tauri android build --debug --apk --target aarch64"

@@ -71,14 +71,16 @@ pub fn install_shortcuts(wv: &tauri::Webview) {
             let (ctrl, shift) = (down(0x11), down(0x10));
             if !ctrl { return Ok(()); }
             let name = match vk {
+                0x4E if shift => "shift+n",
                 0x54 => "t", 0x57 => "w", 0x4C => "l", 0x44 => "d", 0x42 => "b", 0x4A => "j", 0xBC => ",",
+                0x4B => "k", 0x46 => "f", 0x45 => "e", 0x48 => "h", 0xDC => "\\",
                 0x09 if shift => "shift+tab", 0x09 => "tab",
                 _ => return Ok(()),
             };
             args.SetHandled(true)?;
             // Typing shortcuts (new tab, address bar) need the chrome webview focused; do it outside this callback.
             let a = app.clone();
-            let focus = matches!(name, "t" | "l" | ",");
+            let focus = matches!(name, "t" | "l" | "," | "k" | "f" | "h" | "shift+n");
             tauri::async_runtime::spawn(async move {
                 if focus { if let Some(c) = a.get_webview("chrome") { let _ = c.set_focus(); } }
                 let _ = a.emit_to("chrome", "shortcut", serde_json::json!({ "key": name }));

@@ -70,12 +70,30 @@ select,input.txt{font:inherit;color:var(--ink);background:var(--bg);border:1px s
 input.txt{width:100%;margin-top:6px}
 .empty{color:var(--mute);text-align:center;padding:40px 0}
 .dl .state{font-size:11px;color:var(--mute)}.dl .acts{display:flex;gap:6px;flex:none}
+.tab.priv{border-style:dashed}.tab.split{box-shadow:inset 0 -3px 0 var(--mute)}
+.tab.drag{opacity:.4}.tab.over{transform:scale(1.08)}
+#ws{width:38px;height:24px;border-radius:7px;font-size:11px;font-weight:700;color:var(--mute);border:1px solid var(--line)}
+#tabsbar.h #ws{width:auto;padding:0 8px}
+#home .stats{color:var(--mute);font-size:12px;margin-top:-6px;font-variant-numeric:tabular-nums}
+#home .stats b{color:var(--ink);font-weight:600}
+#find{display:none;flex:1;gap:4px;align-items:center}#pill.finding #bar,#pill.finding #shield{display:none}#pill.finding #find{display:flex}
+#findq{all:unset;flex:1;font-size:13.5px;user-select:text}#findn{color:var(--mute);font-size:12px}
+.pal{max-width:620px}.pal input#palq{width:100%;font:inherit;font-size:17px;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);outline:none}
+.res{margin-top:10px;display:grid;gap:4px}
+.res button{all:unset;display:flex;gap:10px;align-items:center;padding:9px 12px;border-radius:10px;cursor:pointer;min-width:0}
+.res button.sel,.res button:hover{background:var(--card)}
+.res i{font-style:normal;width:22px;height:22px;border-radius:6px;background:var(--card);border:1px solid var(--line);display:grid;place-items:center;font-size:11px;font-weight:700;flex:none;text-transform:uppercase}
+.res span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.res small{color:var(--mute);margin-left:auto;flex:none;font-size:11px}
+.qr{width:200px;height:200px;border-radius:12px;overflow:hidden;margin:0 auto;border:1px solid var(--line)}.qr svg{width:100%;height:100%;display:block}
+.chips{display:flex;gap:6px;flex-wrap:wrap}.chips button{width:auto;height:28px;padding:0 12px;border:1px solid var(--line);border-radius:99px;font-size:12px;color:var(--ink)}
+.row a{color:inherit}
 kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:4px;padding:1px 5px;color:var(--mute)}
 #toast{position:absolute;background:var(--ink);color:var(--bg);padding:7px 12px;border-radius:99px;font-size:12px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:5}
 #toast.on{opacity:1}
 </style>
 
 <div id=tabsbar>
+  <button id=ws title="Workspace">P</button>
   <button id=new title="New tab (Ctrl+T)" aria-label="New tab"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
   <div id=tabs role=tablist aria-label="Tabs"></div>
 </div>
@@ -86,8 +104,12 @@ kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:
   <label id=pill>
     <svg id=lock viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=2><rect x=5 y=11 width=14 height=9 rx=2 /><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
     <input id=bar placeholder="Search or enter address" autocomplete=off spellcheck=false aria-label="Address">
+    <span id=find><input id=findq placeholder="Find in page — Enter: next · Shift+Enter: previous" aria-label="Find in page"><span id=findn></span>
+      <button id=findp title="Previous (Shift+Enter)" aria-label="Previous match"><svg viewBox="0 0 24 24"><path d="M18 15l-6-6-6 6"/></svg></button>
+      <button id=findx title="Close (Esc)" aria-label="Close find"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>
     <button id=shield title="Shield on for this site" aria-label="Toggle shield"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg><b id=cnt class=badge></b></button>
   </label>
+  <button id=read title="Reader view (Ctrl+E)" aria-label="Reader view" disabled><svg viewBox="0 0 24 24"><path d="M4 5h6a2 2 0 0 1 2 2v12a2 2 0 0 0-2-2H4zM20 5h-6a2 2 0 0 0-2 2v12a2 2 0 0 1 2-2h6z"/></svg></button>
   <button id=pick title="Block an element" aria-label="Block an element" disabled><svg viewBox="0 0 24 24"><circle cx=6 cy=6 r=3 /><circle cx=6 cy=18 r=3 /><path d="M8.1 8.1L20 20M8.1 15.9L20 4"/></svg></button>
   <button id=star title="Bookmark this page (Ctrl+D)" aria-label="Bookmark" disabled><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg></button>
   <button id=dls title="Downloads (Ctrl+J)" aria-label="Downloads"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><b id=dlcnt class=badge></b></button>
@@ -95,10 +117,11 @@ kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:
 </div>
 <div id=load></div>
 <div id=page>
-  <div id=home><h1><svg class="wordmark" viewBox="-30 -30 1180 460" role="img" aria-label="hush."><g fill="none" stroke="currentColor" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V400M0 400V260c0-70 42-110 100-110s100 40 100 110v140"/><path transform="translate(290 0)" d="M0 150v140c0 70 42 110 100 110s100-40 100-110V150M200 150v250"/><path transform="translate(580 0)" d="M152 190c-18-26-44-40-76-40-44 0-72 24-72 58 0 74 152 42 152 124 0 42-34 68-82 68-36 0-66-14-84-40"/><path transform="translate(820 0)" d="M0 0V400M0 400V260c0-70 42-110 100-110s100 40 100 110v140"/></g><circle cx="1112" cy="393" r="30" fill="currentColor"/></svg></h1><p>nothing here but you.</p><div id=bms></div></div>
+  <div id=home><h1><svg class="wordmark" viewBox="-30 -30 1180 460" role="img" aria-label="hush."><g fill="none" stroke="currentColor" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V400M0 400V260c0-70 42-110 100-110s100 40 100 110v140"/><path transform="translate(290 0)" d="M0 150v140c0 70 42 110 100 110s100-40 100-110V150M200 150v250"/><path transform="translate(580 0)" d="M152 190c-18-26-44-40-76-40-44 0-72 24-72 58 0 74 152 42 152 124 0 42-34 68-82 68-36 0-66-14-84-40"/><path transform="translate(820 0)" d="M0 0V400M0 400V260c0-70 42-110 100-110s100 40 100 110v140"/></g><circle cx="1112" cy="393" r="30" fill="currentColor"/></svg></h1><p>nothing here but you.</p><div class=stats id=stats></div><div id=bms></div></div>
   <div id=panel class=panel hidden></div>
 </div>
 <div id=toast role=status></div>
+<script src="qr.js"></script>
 
 <script>
 const T=window.__TAURI__, inv=(c,a)=>T.core.invoke(c,a), $=s=>document.querySelector(s);
@@ -109,16 +132,17 @@ let panel=null, revealed=false, overBar=false, hideT=null, downloads=[];
 const tab=id=>tabs.find(t=>t.id==id), hostOf=u=>{try{return new URL(u).hostname}catch{return''}};
 
 // ---------- preferences (stored in Rust as ui.<name>) ----------
-const DEF={tabs_pos:'left',tabs_mode:'auto',hide_delay:'3',bar_pos:'top',density:'normal',theme:'system',tab_style:'auto'};
+const DEF={tabs_pos:'left',tabs_mode:'auto',hide_delay:'3',bar_pos:'top',density:'normal',theme:'system',tab_style:'auto',
+  force_dark:'false',history:'off',restore:'off',workspaces:'Personal',ws:'Personal'};
 const pref=k=>state.settings.ui?.[k]??DEF[k];
-async function setPref(k,v){state.settings.ui[k]=String(v);layout(true);try{await inv('set_setting',{key:'ui.'+k,value:String(v)})}catch(e){toast(String(e))}if(panel=='settings')renderSettings()}
+async function setPref(k,v){state.settings.ui[k]=String(v);layout(true);try{await inv('set_setting',{key:'ui.'+k,value:String(v)})}catch(e){toast(String(e))}}
 
 // ---------- layout: places bars, tells Rust where the page goes ----------
 const EDGE=6;
 function layout(now){
   const c=pref('density')=='compact', B=c?44:52, V=c?54:64, Hs=c?36:42;
   const tp=pref('tabs_pos'), bp=pref('bar_pos'), vert=tp=='left'||tp=='right', auto=pref('tabs_mode')=='auto';
-  const shown=!auto||revealed||!tabs.length, full=vert?V:Hs, used=shown?full:EDGE, slide=full-used;
+  const shown=!auto||revealed||!tabs.some(t=>t.ws==(typeof curWs=='function'?curWs():t.ws)), full=vert?V:Hs, used=shown?full:EDGE, slide=full-used;
   document.documentElement.dataset.theme=pref('theme')=='system'?'':pref('theme');
   document.body.classList.toggle('compact',c);
   const ins={top:0,right:0,bottom:0,left:0}, A=$('#addr'), S=$('#tabsbar'), P=$('#page'), L=$('#load');
@@ -155,54 +179,120 @@ $('#tabsbar').addEventListener('mouseleave',()=>{overBar=false;scheduleHide()});
 const peek=()=>{reveal(true);if(!overBar)scheduleHide()};   // briefly show the tabs after a tab action
 addEventListener('resize',()=>layout(true));
 
-// ---------- tabs ----------
-function draw(){
-  const box=$('#tabs');box.textContent='';const h_=pref('tabs_pos')=='top'||pref('tabs_pos')=='bottom';
-  tabs.forEach((t,i)=>{const d=document.createElement('div');const h=hostOf(t.url).replace(/^www\./,'');
-    d.className='tab'+(t.id==cur?' on':'');d.title=(h||'Loading…')+'\nMiddle-click to close';
-    if(h_){d.innerHTML='<span></span>';d.firstChild.textContent=h||'Loading…'}else d.textContent=h?h[0]:i+1;
-    d.setAttribute('role','tab');d.setAttribute('aria-selected',t.id==cur);
-    d.onclick=()=>select(t.id);d.onauxclick=e=>{e.preventDefault();closeTab(t.id)};d.oncontextmenu=e=>e.preventDefault();box.append(d)});
-  const t=tab(cur), h=t?hostOf(t.url):'';
-  if(document.activeElement!==$('#bar')) $('#bar').value=panel?'':t?t.url:'';
-  $('#home').style.display=!tabs.length&&!panel?'grid':'none';
-  $('#panel').hidden=!panel;
-  for(const id of ['back','fwd','reload','pick','star']) $('#'+id).disabled=!t||!!panel;
-  $('#lock').style.visibility=t&&!panel&&t.url.startsWith('https:')?'visible':'hidden';
-  const off=allow.has(h);$('#shield').classList.toggle('off',off);$('#shield').disabled=!h||!!panel;
-  $('#shield').title=off?'Shield off for '+h:'Shield on'+(h?' for '+h:'');
-  const n=counts[cur]||0;$('#cnt').textContent=n>99?'99+':n;$('#cnt').style.display=n&&state.settings.counter!==false?'grid':'none';
-  const a=downloads.filter(d=>d.state=='started').length;$('#dlcnt').textContent=a;$('#dlcnt').style.display=a?'grid':'none';
-}
-async function openTab(v){closePanel(true);const id=await inv('open_tab',{input:v});tabs.push({id,url:''});cur=id;draw();layout();peek()}
-function select(id){closePanel(true);cur=id;inv('switch_tab',{label:id});draw()}
-async function closeTab(id){const next=await inv('close_tab',{label:id});tabs=tabs.filter(t=>t.id!=id);delete counts[id];cur=next??null;draw();layout();if(tabs.length)peek()}
-function cycle(d){if(tabs.length<2)return;const i=tabs.findIndex(t=>t.id==cur);select(tabs[(i+d+tabs.length)%tabs.length].id);peek()}
-function go(v){v=v.trim();if(!v)return;if(newPending||!tabs.length){newPending=false;openTab(v)}else{closePanel(true);inv('navigate',{input:v})}$('#bar').blur()}
-function newTab(){newPending=true;$('#bar').value='';$('#bar').placeholder='New tab — search or enter address';$('#bar').focus()}
+// ---------- workspaces ----------
+const wsList=()=>pref('workspaces').split('|').filter(Boolean);
+const curWs=()=>wsList().includes(pref('ws'))?pref('ws'):wsList()[0];
+const inWs=()=>tabs.filter(t=>t.ws==curWs());
+async function switchWs(name){await setPref('ws',name);const last=inWs().at(-1);if(last)select(last.id);else{cur=null;draw();sync()}
+  $('#ws').textContent=name[0].toUpperCase();toast('Workspace: '+name);peek()}
+async function addWs(name){name=name.trim().replace(/\|/g,'').slice(0,24);if(!name||wsList().includes(name))return;
+  await setPref('workspaces',[...wsList(),name].join('|'));await switchWs(name)}
+async function removeWs(name){if(wsList().length<2)return toast('Keep at least one workspace');
+  for(const t of tabs.filter(t=>t.ws==name))await closeTab(t.id,true);
+  await setPref('workspaces',wsList().filter(w=>w!=name).join('|'));if(pref('ws')==name)await switchWs(wsList()[0])}
 
-$('#bar').addEventListener('keydown',e=>{if(e.key=='Enter')go(e.target.value);if(e.key=='Escape'){newPending=false;e.target.blur();draw()}});
+// ---------- tabs ----------
+let split=null, findOn=false, statsT=null;
+function sync(){const t=tab(cur);inv('show_content',{visible:!panel&&!!t&&t.ws==curWs()}).catch(()=>{})}
+function draw(){
+  const box=$('#tabs');box.textContent='';const horiz=pref('tabs_pos')=='top'||pref('tabs_pos')=='bottom';
+  inWs().forEach((t,i)=>{const d=document.createElement('div');const h=hostOf(t.url).replace(/^www\./,'');
+    d.className='tab'+(t.id==cur?' on':'')+(t.priv?' priv':'')+(t.id==split?' split':'');
+    d.title=(t.priv?'Private · ':'')+(h||'Loading…')+'\nShift-click: split view · Middle-click: close · Drag: reorder';
+    if(horiz){d.innerHTML='<span></span>';d.firstChild.textContent=(t.priv?'◌ ':'')+(h||'Loading…')}else d.textContent=t.priv?'◌':(h?h[0]:i+1);
+    d.setAttribute('role','tab');d.setAttribute('aria-selected',t.id==cur);d.draggable=true;
+    d.onclick=e=>e.shiftKey?toggleSplit(t.id):select(t.id);d.onauxclick=e=>{e.preventDefault();if(e.button==1)closeTab(t.id)};
+    d.oncontextmenu=e=>{e.preventDefault();toggleSplit(t.id)};
+    d.ondragstart=e=>{e.dataTransfer.setData('text/hush-tab',t.id);d.classList.add('drag')};d.ondragend=()=>d.classList.remove('drag');
+    d.ondragover=e=>{e.preventDefault();d.classList.add('over')};d.ondragleave=()=>d.classList.remove('over');
+    d.ondrop=e=>{e.preventDefault();d.classList.remove('over');const from=e.dataTransfer.getData('text/hush-tab');if(!from||from==t.id)return;
+      const a=tabs.findIndex(x=>x.id==from),moved=tabs.splice(a,1)[0];tabs.splice(tabs.findIndex(x=>x.id==t.id),0,moved);draw();saveSession()};
+    box.append(d)});
+  $('#ws').textContent=curWs()[0].toUpperCase();$('#ws').title='Workspace: '+curWs()+' — click to switch';
+  const t=tab(cur), live=t&&t.ws==curWs(), h=live?hostOf(t.url):'';
+  if(document.activeElement!==$('#bar')) $('#bar').value=panel||!live?'':t.url;
+  $('#home').style.display=!live&&!panel?'grid':'none';
+  $('#panel').hidden=!panel;
+  for(const id of ['back','fwd','reload','pick','star','read']) $('#'+id).disabled=!live||!!panel;
+  $('#lock').style.visibility=live&&!panel&&t.url.startsWith('https:')?'visible':'hidden';
+  const off=allow.has(h);$('#shield').classList.toggle('off',off);$('#shield').disabled=!h||!!panel;
+  $('#shield').title=(off?'Shield off':'Shield on')+(h?' for '+h:'')+' — click for site settings';
+  const n=counts[cur]||0;$('#cnt').textContent=n>99?'99+':n;$('#cnt').style.display=n&&live&&state.settings.counter!==false?'grid':'none';
+  const a=downloads.filter(d=>d.state=='started').length;$('#dlcnt').textContent=a;$('#dlcnt').style.display=a?'grid':'none';
+  if($('#home').style.display!='none')loadStats();
+}
+async function openTab(v,o={}){closePanel(true);newPending=false;
+  const id=await inv('open_tab',{input:v,private:!!o.priv});tabs.push({id,url:'',priv:!!o.priv,ws:o.ws||curWs()});
+  if(!o.background){cur=id}draw();layout();sync();if(!o.quiet)peek();return id}
+function select(id){closePanel(true);const t=tab(id);if(!t)return;if(t.ws!=curWs()){state.settings.ui.ws=t.ws;inv('set_setting',{key:'ui.ws',value:t.ws})}
+  cur=id;if(split==id){split=null;inv('set_split',{label:null})}inv('switch_tab',{label:id});draw();sync()}
+async function closeTab(id,quiet){const next=await inv('close_tab',{label:id});tabs=tabs.filter(t=>t.id!=id);delete counts[id];if(split==id)split=null;
+  const t=tab(next);cur=t&&t.ws==curWs()?next:(inWs().at(-1)?.id??null);if(cur&&cur!=next)inv('switch_tab',{label:cur});
+  draw();layout();sync();saveSession();if(!quiet&&tabs.length)peek()}
+function cycle(d){const w=inWs();if(w.length<2)return;const i=w.findIndex(t=>t.id==cur);select(w[(i+d+w.length)%w.length].id);peek()}
+function toggleSplit(id){if(id==cur)return toast('Pick a different tab to split with');
+  split=split==id?null:id;inv('set_split',{label:split});toast(split?'Split view — shift-click the tab again to close':'Split view closed');draw()}
+function go(v){v=v.trim();if(!v)return;closePanel(true);if(newPending||!tab(cur)||tab(cur).ws!=curWs()){openTab(v,{priv:newPending=='priv'})}else inv('navigate',{input:v});newPending=false;$('#bar').blur()}
+function newTab(priv){newPending=priv?'priv':true;$('#bar').value='';$('#bar').placeholder=priv?'New private tab — nothing is saved':'New tab — search or enter address';$('#bar').focus()}
+let saveT;function saveSession(){if(pref('restore')!='on')return;clearTimeout(saveT);saveT=setTimeout(()=>
+  inv('session_save',{tabs:tabs.filter(t=>!t.priv&&t.url.startsWith('https://')).map(t=>({url:t.url,ws:t.ws}))}).catch(()=>{}),800)}
+
+// ---------- address bar + suggestions ----------
+let sugSel=0, sugItems=[];
+$('#bar').addEventListener('keydown',e=>{
+  if(panel=='suggest'&&(e.key=='ArrowDown'||e.key=='ArrowUp')){e.preventDefault();sugSel=(sugSel+(e.key=='ArrowDown'?1:-1)+sugItems.length)%sugItems.length;renderSuggest(true);return}
+  if(e.key=='Enter'){const it=panel=='suggest'&&sugItems[sugSel];it?runItem(it):go(e.target.value)}
+  if(e.key=='Escape'){newPending=false;closePanel();e.target.blur();draw()}});
+$('#bar').addEventListener('input',e=>{const v=e.target.value.trim();if(!v){if(panel=='suggest')closePanel();return}openPanel('suggest')});
 $('#bar').addEventListener('focus',e=>e.target.select());
-$('#bar').addEventListener('blur',()=>setTimeout(()=>{if(!newPending)$('#bar').placeholder='Search or enter address';draw()},0));
-$('#new').onclick=newTab;
+$('#bar').addEventListener('blur',()=>setTimeout(()=>{if(!newPending)$('#bar').placeholder='Search or enter address';if(panel=='suggest'&&document.activeElement!==$('#bar'))closePanel();draw()},150));
+async function renderSuggest(keep){
+  const q=$('#bar').value.trim();if(!q)return;
+  if(!keep){const looksUrl=/^\S+\.\S+$/.test(q)||/^https?:/.test(q);
+    sugItems=[{kind:'go',title:looksUrl?'Go to '+q:'Search for “'+q+'”',url:q,icon:looksUrl?'→':'⌕'}];
+    const lq=q.toLowerCase();tabs.filter(t=>t.url.toLowerCase().includes(lq)).slice(0,3).forEach(t=>sugItems.push({kind:'tab',title:hostOf(t.url),url:t.url,id:t.id,icon:'⇥',note:'Switch to tab'}));
+    try{(await inv('suggest',{q})).forEach(x=>sugItems.push({kind:'url',title:x.title||hostOf(x.url),url:x.url,icon:x.kind=='bookmark'?'★':'↺',note:x.kind=='bookmark'?'Bookmark':'History'}))}catch(e){}
+    sugSel=0;if($('#bar').value.trim()!==q||panel!='suggest')return}
+  $('#panel').innerHTML=`<div class=res>${sugItems.map((x,i)=>`<button data-i=${i} class="${i==sugSel?'sel':''}"><i>${esc(x.icon||'•')}</i><span>${esc(x.title)}</span><small>${esc(x.note||'')}</small></button>`).join('')}</div>`;
+  $('#panel').querySelectorAll('[data-i]').forEach(b=>b.onmousedown=e=>{e.preventDefault();runItem(sugItems[b.dataset.i])});
+}
+function runItem(x){if(x.kind=='go')go(x.url);else if(x.kind=='tab')select(x.id);else if(x.kind=='url')go(x.url);else if(x.run)x.run()}
+
+// ---------- buttons ----------
+$('#new').onclick=()=>newTab(false);$('#new').oncontextmenu=e=>{e.preventDefault();newTab(true)};$('#new').title='New tab (Ctrl+T) · Right-click: private tab (Ctrl+Shift+N)';
+$('#ws').onclick=()=>openPanel('ws');
 $('#back').onclick=()=>inv('nav',{action:'back'});$('#fwd').onclick=()=>inv('nav',{action:'fwd'});$('#reload').onclick=()=>inv('nav',{action:'reload'});
-$('#shield').onclick=async e=>{e.preventDefault();const h=hostOf(tab(cur)?.url);if(!h)return;await inv('toggle_shield',{host:h});
-  allow.has(h)?allow.delete(h):allow.add(h);draw();toast(allow.has(h)?'Shield off for '+h:'Shield on');inv('nav',{action:'reload'})};
+$('#shield').onclick=e=>{e.preventDefault();if(hostOf(tab(cur)?.url))panel=='site'?closePanel():openPanel('site')};
+$('#read').onclick=()=>inv('page_action',{action:'reader'});
 $('#pick').onclick=()=>{inv('start_picker');toast('Click an element to block it · Esc to cancel')};
 $('#star').onclick=async()=>{const t=tab(cur);if(!t)return;try{await inv('bookmark_add',{title:hostOf(t.url),url:t.url});toast('Bookmarked');loadState()}catch(e){toast(String(e))}};
 $('#dls').onclick=()=>panel=='downloads'?closePanel():openPanel('downloads');
 $('#gear').onclick=()=>panel=='settings'?closePanel():openPanel('settings');
+// Mouse wheel / two-finger swipe over the tab bar flips through tabs.
+let wheelAcc=0,wheelT;$('#tabsbar').addEventListener('wheel',e=>{if(e.target.closest('#tabs')&&$('#tabs').scrollHeight>$('#tabs').clientHeight+4)return;
+  e.preventDefault();wheelAcc+=Math.abs(e.deltaX)>Math.abs(e.deltaY)?e.deltaX:e.deltaY;clearTimeout(wheelT);wheelT=setTimeout(()=>wheelAcc=0,200);
+  if(Math.abs(wheelAcc)>60){cycle(wheelAcc>0?1:-1);wheelAcc=0}},{passive:false});
+
+// ---------- find in page ----------
+function findMode(on){findOn=on;$('#pill').classList.toggle('finding',on);if(on){$('#findq').value='';$('#findn').textContent='';$('#findq').focus()}else{inv('page_action',{action:'find-clear'}).catch(()=>{});draw()}}
+$('#findq').addEventListener('keydown',e=>{if(e.key=='Escape'){e.preventDefault();findMode(false)}
+  else if(e.key=='Enter'){const q=e.target.value;if(q)inv('page_action',{action:e.shiftKey?'find-back':'find',arg:q});$('#findn').textContent=e.shiftKey?'↑':'↓'}});
+$('#findp').onclick=()=>{const q=$('#findq').value;if(q)inv('page_action',{action:'find-back',arg:q})};$('#findx').onclick=()=>findMode(false);
 
 // ---------- shortcuts (chrome focused: keydown; page focused: native 'shortcut' event from Rust) ----------
 function shortcut(k){
-  if(k=='t')newTab(); else if(k=='l'){closePanel();$('#bar').focus()} else if(k=='w'){cur&&closeTab(cur)}
+  if(k=='t')newTab(false); else if(k=='shift+n')newTab(true); else if(k=='l'){closePanel();$('#bar').focus()} else if(k=='w'){cur&&closeTab(cur)}
   else if(k=='d')$('#star').click(); else if(k=='j')$('#dls').click(); else if(k==',')$('#gear').click();
+  else if(k=='k')panel=='pal'?closePanel():openPanel('pal'); else if(k=='h')panel=='history'?closePanel():openPanel('history');
+  else if(k=='f'){if(tab(cur))findMode(true)} else if(k=='e'){if(tab(cur))inv('page_action',{action:'reader'})}
+  else if(k=='\\'){const o=inWs().filter(t=>t.id!=cur).at(-1);if(split)toggleSplit(split);else if(o)toggleSplit(o.id)}
   else if(k=='tab')cycle(1); else if(k=='shift+tab')cycle(-1);
   else if(k=='b'){if(pref('tabs_mode')!='auto'){toast('Tab bar is pinned — change it in Settings');return}revealed?reveal(false):peek()}
 }
 addEventListener('keydown',e=>{const m=e.ctrlKey||e.metaKey,k=e.key.toLowerCase();
   if(m&&e.key=='Tab'){e.preventDefault();shortcut(e.shiftKey?'shift+tab':'tab')}
-  else if(m&&['t','l','w','d','j','b',','].includes(k)){e.preventDefault();shortcut(k)}
+  else if(m&&e.shiftKey&&k=='n'){e.preventDefault();shortcut('shift+n')}
+  else if(m&&['t','l','w','d','j','b',',','k','h','f','e','\\'].includes(k)){e.preventDefault();shortcut(k)}
   else if(m&&k=='r'){e.preventDefault();cur&&inv('nav',{action:'reload'})}
   else if(e.key=='Escape'&&panel)closePanel();
   else if(e.altKey&&e.key=='ArrowLeft')inv('nav',{action:'back'});
@@ -211,6 +301,7 @@ T.event.listen('shortcut',({payload:p})=>shortcut(p.key));
 
 // ---------- events from Rust ----------
 T.event.listen('tab-url',({payload:p})=>{const t=tab(p.tab);if(!t)return;t.url=p.url;
+  if(p.state=='finished'){if(!t.priv)inv('history_add',{url:p.url,title:hostOf(p.url).replace(/^www\./,'')}).catch(()=>{});saveSession()}
   if(p.tab==cur)$('#load').classList.toggle('on',p.state=='started');draw()});
 T.event.listen('blocked',({payload:p})=>{counts[p.tab]=p.count;if(p.tab==cur)draw()});
 T.event.listen('https-failed',({payload:p})=>{if(p.tab==cur){$('#load').classList.remove('on');toast(hostOf(p.url)+' has no secure version')}});
@@ -221,8 +312,12 @@ T.event.listen('download',({payload:p})=>{
   draw();if(panel=='downloads')renderDownloads()});
 
 // ---------- panels ----------
-function openPanel(name){panel=name;inv('show_content',{visible:false});(name=='settings'?renderSettings:renderDownloads)();draw();$('#page').scrollTop=0}
-function closePanel(silent){if(!panel)return;panel=null;$('#panel').textContent='';inv('show_content',{visible:true});if(!silent)draw()}
+const RENDER={settings:()=>renderSettings(),downloads:()=>renderDownloads(),suggest:()=>renderSuggest(),pal:()=>renderPalette(),
+  history:()=>renderHistory(),site:()=>renderSite(),ws:()=>renderWs()};
+function openPanel(name){const was=panel;panel=name;sync();
+  if(name!='suggest')$('#panel').classList.toggle('pal',name=='pal'||name=='ws');else $('#panel').classList.add('pal');
+  $('#panel').hidden=false;$('#home').style.display='none';RENDER[name]();draw();if(was!=name)$('#page').scrollTop=0}
+function closePanel(silent){if(!panel)return;panel=null;$('#panel').textContent='';$('#panel').classList.remove('pal');sync();if(!silent)draw()}
 const closeBtn='<button class=btn data-close>Done</button>';
 function wire(root){root.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>closePanel())}
 
@@ -237,8 +332,80 @@ function renderDownloads(){
   wire(p);
 }
 
+// Command palette (Ctrl+K): actions, tabs, workspaces, bookmarks, history — type to filter, Enter to run.
+const ACTIONS=()=>[
+  ['New tab','Ctrl+T',()=>newTab(false)],['New private tab','Ctrl+Shift+N',()=>newTab(true)],
+  ['Find in page','Ctrl+F',()=>{closePanel();tab(cur)&&findMode(true)}],['Reader view','Ctrl+E',()=>{closePanel();tab(cur)&&inv('page_action',{action:'reader'})}],
+  ['Split view with last tab','Ctrl+\\',()=>{closePanel();shortcut('\\')}],['Site settings & QR code','',()=>tab(cur)&&openPanel('site')],
+  ['Toggle dark mode for websites','',async()=>{await setPref('force_dark',pref('force_dark')=='true'?'false':'true');applyDarkNow();closePanel()}],
+  ['History','Ctrl+H',()=>openPanel('history')],['Downloads','Ctrl+J',()=>openPanel('downloads')],['Settings','Ctrl+,',()=>openPanel('settings')],
+  ['New workspace…','',()=>openPanel('ws')],['Close tab','Ctrl+W',()=>{closePanel();cur&&closeTab(cur)}],['Clear browsing data','',()=>{closePanel();$('#s-wipe')?.click()||wipe()}],
+  ...wsList().filter(w=>w!=curWs()).map(w=>['Switch to workspace: '+w,'',()=>{closePanel();switchWs(w)}]),
+];
+let palSel=0,palItems=[];
+function renderPalette(){
+  const p=$('#panel');p.innerHTML=`<input id=palq placeholder="Type a command, tab, or site…" autocomplete=off spellcheck=false><div class=res id=palr></div>`;
+  const q=$('#palq');q.focus();q.oninput=()=>{palSel=0;fillPalette(q.value)};
+  q.onkeydown=e=>{if(e.key=='ArrowDown'||e.key=='ArrowUp'){e.preventDefault();palSel=(palSel+(e.key=='ArrowDown'?1:-1)+palItems.length)%palItems.length;paintPalette()}
+    else if(e.key=='Enter'&&palItems[palSel]){e.preventDefault();runItem(palItems[palSel])}else if(e.key=='Escape')closePanel()};
+  fillPalette('');
+}
+async function fillPalette(q){const lq=q.toLowerCase().trim(),m=s=>!lq||s.toLowerCase().includes(lq);
+  let items=ACTIONS().filter(a=>m(a[0])).map(a=>({kind:'run',title:a[0],note:a[1],icon:'›',run:a[2]}));
+  tabs.filter(t=>m(t.url)).forEach(t=>items.push({kind:'tab',id:t.id,title:hostOf(t.url)||'New tab',note:(t.ws!=curWs()?t.ws+' · ':'')+'Tab',icon:'⇥'}));
+  if(lq){try{(await inv('suggest',{q:lq})).forEach(x=>items.push({kind:'url',url:x.url,title:x.title||hostOf(x.url),note:x.kind=='bookmark'?'Bookmark':'History',icon:x.kind=='bookmark'?'★':'↺'}))}catch(e){}
+    items.push({kind:'go',url:q,title:(/^\S+\.\S+$/.test(q)?'Go to ':'Search for ')+q,icon:'→'})}
+  if(($('#palq')?.value||'').toLowerCase().trim()!==lq)return;palItems=items.slice(0,14);paintPalette()}
+function paintPalette(){const r=$('#palr');if(!r)return;
+  r.innerHTML=palItems.map((x,i)=>`<button data-i=${i} class="${i==palSel?'sel':''}"><i>${esc(x.icon)}</i><span>${esc(x.title)}</span><small>${esc(x.note||'')}</small></button>`).join('');
+  r.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>runItem(palItems[b.dataset.i]))}
+
+function renderWs(){const p=$('#panel');
+  p.innerHTML=`<h2>Workspaces ${closeBtn}</h2><p style="color:var(--mute);margin:-8px 0 14px">Separate sets of tabs — like “Work” and “Personal”.</p>
+  ${wsList().map(w=>`<div class=row><div><b>${esc(w)}</b><small>${tabs.filter(t=>t.ws==w).length} tabs${w==curWs()?' · current':''}</small></div>
+    <div class=acts style="display:flex;gap:6px">${w!=curWs()?`<button class=btn data-go="${esc(w)}">Switch</button>`:''}${wsList().length>1?`<button class=btn data-rm="${esc(w)}">Remove</button>`:''}</div></div>`).join('')}
+  <div class=row><input class=txt id=wsname placeholder="New workspace name" style="margin:0"><button class=btn id=wsadd>Add</button></div>`;
+  p.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{closePanel();switchWs(b.dataset.go)});
+  p.querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{if(confirm('Remove “'+b.dataset.rm+'” and close its tabs?')){await removeWs(b.dataset.rm);renderWs()}});
+  $('#wsadd').onclick=async()=>{await addWs($('#wsname').value);closePanel()};$('#wsname').onkeydown=e=>{if(e.key=='Enter')$('#wsadd').click()};wire(p)}
+
+async function renderHistory(){const p=$('#panel'),on=pref('history')=='on';
+  const list=on?await inv('history_list',{limit:300}).catch(()=>[]):[];
+  p.innerHTML=`<h2>History ${closeBtn}</h2>
+  ${row('Remember history','Off by default. Kept only on this computer; private tabs are never recorded.',`<button class="sw ${on?'on':''}" id=h-on></button>`)}
+  ${on?`<input class=txt id=h-q placeholder="Search history" style="margin:6px 0 10px"><div id=h-list></div><div style="margin-top:14px"><button class=btn id=h-clear>Clear all history</button></div>`:''}`;
+  const paint=q=>{const box=$('#h-list');if(!box)return;const lq=(q||'').toLowerCase();let day='';
+    box.innerHTML=list.filter(h=>!lq||(h.url+h.title).toLowerCase().includes(lq)).slice(0,200).map(h=>{const d=new Date(h.t*1000).toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'});
+      const hd=d!=day?`<h3>${esc(day=d)}</h3>`:'';return hd+`<div class=row style="cursor:pointer" data-u="${esc(h.url)}"><div><b>${esc(h.title||hostOf(h.url))}</b><small>${esc(h.url)}</small></div><small>${new Date(h.t*1000).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})}</small></div>`}).join('')||'<div class=empty>Nothing yet.</div>';
+    box.querySelectorAll('[data-u]').forEach(r=>r.onclick=()=>go(r.dataset.u))};
+  paint('');if($('#h-q'))$('#h-q').oninput=e=>paint(e.target.value);
+  $('#h-on').onclick=async()=>{await setPref('history',on?'off':'on');renderHistory()};
+  if($('#h-clear'))$('#h-clear').onclick=async()=>{if(confirm('Clear all history?')){await inv('history_clear');renderHistory()}};wire(p)}
+
+function siteDark(h){const v=state.site_dark?.[h];return v===true?'on':v===false?'off':'auto'}
+function applyDarkNow(){const t=tab(cur);if(!t)return;const h=hostOf(t.url),sd=siteDark(h),on=sd=='auto'?pref('force_dark')=='true':sd=='on';
+  inv('page_action',{action:on?'dark-on':'dark-off'}).catch(()=>{})}
+function renderSite(){const t=tab(cur),p=$('#panel');if(!t)return closePanel();const h=hostOf(t.url),off=allow.has(h),sd=siteDark(h);
+  p.innerHTML=`<h2>${esc(h.replace(/^www\./,''))} ${closeBtn}</h2>
+  ${row('Shield',off?'Off — ads and trackers are allowed here':`On — ${counts[cur]||0} blocked on this page`,`<button class="sw ${off?'':'on'}" id=st-shield></button>`)}
+  ${row('Dark mode on this site','Auto follows your setting in Settings',`<div class=seg>${[['auto','Auto'],['on','On'],['off','Off']].map(([v,l])=>`<button data-d=${v} class="${sd==v?'on':''}">${l}</button>`).join('')}</div>`)}
+  ${t.priv?row('Private tab','Nothing from this tab is saved',''):''}
+  <h3>Page</h3>
+  <div class=chips><button id=st-read>Reader view</button><button id=st-find>Find in page</button><button id=st-pick>Block an element</button>
+   <button id=st-copy>Copy link</button><button id=st-split>${split?'Close split view':'Split with another tab'}</button></div>
+  <h3>Open on your phone</h3><div class=qr>${(()=>{try{return hushQR.svg(t.url)}catch(e){return ''}})()}</div>
+  <p style="color:var(--mute);text-align:center;font-size:12px;margin-top:8px">Scan with your phone’s camera</p>`;
+  $('#st-shield').onclick=async()=>{await inv('toggle_shield',{host:h});off?allow.delete(h):allow.add(h);inv('nav',{action:'reload'});renderSite();draw()};
+  p.querySelectorAll('[data-d]').forEach(b=>b.onclick=async()=>{const v=b.dataset.d;await inv('site_dark',{host:h,value:v=='auto'?null:v=='on'});
+    state.site_dark=state.site_dark||{};if(v=='auto')delete state.site_dark[h];else state.site_dark[h]=v=='on';applyDarkNow();renderSite()});
+  $('#st-read').onclick=()=>{closePanel();inv('page_action',{action:'reader'})};$('#st-find').onclick=()=>{closePanel();findMode(true)};
+  $('#st-pick').onclick=()=>{closePanel();$('#pick').click()};$('#st-copy').onclick=async()=>{try{await navigator.clipboard.writeText(t.url);toast('Link copied')}catch(e){toast('Couldn’t copy')}};
+  $('#st-split').onclick=()=>{closePanel();shortcut('\\')};wire(p)}
+
 const seg=(k,opts)=>`<div class=seg>${opts.map(([v,l])=>`<button data-k=${k} data-v="${v}" class="${pref(k)==v?'on':''}">${l}</button>`).join('')}</div>`;
 const row=(title,sub,ctl)=>`<div class=row><div>${title}${sub?`<small>${sub}</small>`:''}</div>${ctl}</div>`;
+const sw=(k,on)=>`<button class="sw ${on?'on':''}" data-sw=${k}></button>`;
+function wipe(){if(confirm('Clear all cookies, cache and site data?')){inv('clear_data');toast('Browsing data cleared')}}
 function renderSettings(){
   const s=state.settings, p=$('#panel'), auto=pref('tabs_mode')=='auto';
   p.innerHTML=`<h2>Settings ${closeBtn}</h2>
@@ -250,13 +417,18 @@ function renderSettings(){
   ${row('Density','',seg('density',[['normal','Comfortable'],['compact','Compact']]))}
   <h3>Appearance</h3>
   ${row('Theme','',seg('theme',[['system','System'],['light','Light'],['dark','Dark']]))}
+  ${row('Dark mode for websites','Darkens light sites. Change it per site from the shield.',sw('force_dark',pref('force_dark')=='true'))}
+  <h3>Tabs & history</h3>
+  ${row('Reopen tabs on start','Restores your tabs and workspaces next time (private tabs never)',sw('restore',pref('restore')=='on'))}
+  ${row('Remember history','Off by default · kept only on this computer · <a href="#" id=s-hist>open history</a>',sw('history',pref('history')=='on'))}
+  ${row('Workspaces',esc(wsList().join(' · ')),'<button class=btn id=s-ws>Manage</button>')}
   <h3>Search</h3>
   ${row('Search engine',s.search=='custom'?'Use %s where the search words go':'',`<select id=s-engine>${[['duckduckgo','DuckDuckGo'],['brave','Brave'],['startpage','Startpage'],['ecosia','Ecosia'],['custom','Custom…']]
       .map(([v,l])=>`<option value=${v} ${s.search==v?'selected':''}>${l}</option>`).join('')}</select>`)}
   ${s.search=='custom'?`<input class=txt id=s-custom placeholder="https://example.com/search?q=%s" value="${esc(s.custom_search)}">`:''}
   <h3>Privacy</h3>
   ${row('Blocked counter','Badge on the shield showing what was blocked on this page',`<button class="sw ${s.counter!==false?'on':''}" id=s-counter aria-label="Blocked counter"></button>`)}
-  ${row('Filter lists','Download the latest EasyList and EasyPrivacy',`<button class=btn id=s-lists>Update now</button>`)}
+  ${row('Filter lists','Ads, trackers and cookie banners — download the latest',`<button class=btn id=s-lists>Update now</button>`)}
   ${row('Browsing data','Cookies, cache and site storage for every site',`<button class=btn id=s-wipe>Clear…</button>`)}
   ${row('Shield exceptions',allow.size?'':'Sites where you turned the shield off',allow.size?'':'<span class=state>None</span>')}
   ${[...allow].map(h=>row(esc(h),'',`<button class=btn data-allow="${esc(h)}">Turn shield on</button>`)).join('')}
@@ -264,16 +436,21 @@ function renderSettings(){
   ${row('Export','Settings, bookmarks, filters and exceptions as JSON (copied to clipboard)',`<button class=btn id=s-export>Copy</button>`)}
   ${row('Import','Paste an export below, then press Import',`<button class=btn id=s-import>Import</button>`)}
   <textarea class=txt id=s-json rows=3 style="width:100%;font:12px ui-monospace,monospace" placeholder='{"settings":…}'></textarea>
-  <h3>Shortcuts</h3>
-  <div class=row style="display:block;line-height:2"><kbd>Ctrl</kbd>+<kbd>T</kbd> new tab · <kbd>Ctrl</kbd>+<kbd>W</kbd> close · <kbd>Ctrl</kbd>+<kbd>Tab</kbd> next tab ·
-   <kbd>Ctrl</kbd>+<kbd>L</kbd> address · <kbd>Ctrl</kbd>+<kbd>B</kbd> show/hide tabs · <kbd>Ctrl</kbd>+<kbd>D</kbd> bookmark · <kbd>Ctrl</kbd>+<kbd>J</kbd> downloads · <kbd>Ctrl</kbd>+<kbd>,</kbd> settings</div>`;
-  p.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>setPref(b.dataset.k,b.dataset.v));
+  <h3>Shortcuts & gestures</h3>
+  <div class=row style="display:block;line-height:2.1"><kbd>Ctrl</kbd>+<kbd>K</kbd> command bar · <kbd>Ctrl</kbd>+<kbd>T</kbd> new tab · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd> private tab · <kbd>Ctrl</kbd>+<kbd>W</kbd> close ·
+   <kbd>Ctrl</kbd>+<kbd>Tab</kbd> next tab · <kbd>Ctrl</kbd>+<kbd>L</kbd> address · <kbd>Ctrl</kbd>+<kbd>F</kbd> find · <kbd>Ctrl</kbd>+<kbd>E</kbd> reader ·
+   <kbd>Ctrl</kbd>+<kbd>\\</kbd> split view · <kbd>Ctrl</kbd>+<kbd>B</kbd> show/hide tabs · <kbd>Ctrl</kbd>+<kbd>D</kbd> bookmark · <kbd>Ctrl</kbd>+<kbd>H</kbd> history · <kbd>Ctrl</kbd>+<kbd>J</kbd> downloads · <kbd>Ctrl</kbd>+<kbd>,</kbd> settings<br>
+   Scroll or two-finger swipe over the tab bar to flip tabs · drag tabs to reorder · shift-click or right-click a tab to split · middle-click to close · right-click ＋ for a private tab</div>`;
+  p.querySelectorAll('.seg button').forEach(b=>b.onclick=async()=>{await setPref(b.dataset.k,b.dataset.v);draw();renderSettings()});
+  p.querySelectorAll('[data-sw]').forEach(b=>b.onclick=async()=>{const k=b.dataset.sw,on=b.classList.contains('on');
+    await setPref(k,k=='force_dark'?String(!on):(on?'off':'on'));if(k=='force_dark')applyDarkNow();if(k=='restore')saveSession();renderSettings()});
+  $('#s-hist').onclick=e=>{e.preventDefault();openPanel('history')};$('#s-ws').onclick=()=>openPanel('ws');
   $('#s-engine').onchange=async e=>{s.search=e.target.value;await inv('set_setting',{key:'search',value:s.search});renderSettings()};
   const cs=$('#s-custom');if(cs)cs.onchange=async()=>{const v=cs.value.trim();if(!v.startsWith('https://')||!v.includes('%s')){toast('Must start with https:// and contain %s');return}
     s.custom_search=v;await inv('set_setting',{key:'custom_search',value:v});toast('Saved')};
   $('#s-counter').onclick=async()=>{s.counter=s.counter===false;await inv('set_setting',{key:'counter',value:String(s.counter)});renderSettings();draw()};
   $('#s-lists').onclick=async e=>{e.target.textContent='Updating…';try{toast(await inv('update_lists'))}catch(err){toast(String(err))}renderSettings()};
-  $('#s-wipe').onclick=()=>{if(confirm('Clear all cookies, cache and site data?')){inv('clear_data');toast('Browsing data cleared')}};
+  $('#s-wipe').onclick=wipe;
   p.querySelectorAll('[data-allow]').forEach(b=>b.onclick=async()=>{await inv('toggle_shield',{host:b.dataset.allow});allow.delete(b.dataset.allow);renderSettings();draw()});
   $('#s-export').onclick=async()=>{try{await navigator.clipboard.writeText(await inv('export_data'));toast('Copied to clipboard')}catch(e){toast(String(e))}};
   $('#s-import').onclick=async()=>{try{await inv('import_data',{json:$('#s-json').value});await loadState();renderSettings();toast('Imported')}catch(e){toast(String(e))}};
@@ -281,11 +458,19 @@ function renderSettings(){
 }
 
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),2400)}
+const fmt=n=>n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e4?Math.round(n/1e3)+'k':n.toLocaleString();
+async function loadStats(){clearTimeout(statsT);try{const s=await inv('get_stats');
+  $('#stats').innerHTML=s.total?`<b>${fmt(s.week)}</b> ads & trackers blocked this week · <b>${fmt(s.total)}</b> all time`:'Ads, trackers and cookie banners are blocked automatically.'}catch(e){}
+  statsT=setTimeout(()=>{if($('#home').style.display!='none')loadStats()},15000)}
 
-async function loadState(){try{state=await inv('get_state');state.settings.ui=state.settings.ui||{};allow=new Set(state.allow_sites);
+async function loadState(first){try{state=await inv('get_state');state.settings.ui=state.settings.ui||{};allow=new Set(state.allow_sites);
   const box=$('#bms');box.textContent='';
   state.bookmarks.slice(0,12).forEach(b=>{const a=document.createElement('button');a.className='bm';const h=hostOf(b.url).replace(/^www\./,'');
-    a.innerHTML='<i></i><span></span>';a.querySelector('i').textContent=h[0]||'•';a.querySelector('span').textContent=b.title||h;a.title=b.url;
-    a.onclick=()=>openTab(b.url);box.append(a)});layout(true);draw()}catch(e){console.error(e)}}
-layout(true);draw();loadState();$('#bar').focus();
+    a.innerHTML='<i></i><span></span>';a.querySelector('i').textContent=h[0]||'•';a.querySelector('span').textContent=b.title||h;a.title=b.url+'\nRight-click to remove';
+    a.onclick=()=>openTab(b.url);a.oncontextmenu=async e=>{e.preventDefault();if(confirm('Remove bookmark '+(b.title||h)+'?')){await inv('bookmark_remove',{url:b.url});loadState()}};box.append(a)});
+  layout(true);draw();
+  if(first&&pref('restore')=='on'&&state.session?.length&&!tabs.length){for(const t of state.session)await openTab(t.url,{ws:wsList().includes(t.ws)?t.ws:curWs(),quiet:true,background:true});
+    const last=inWs().at(-1);if(last)select(last.id);toast('Restored '+state.session.length+' tabs')}
+}catch(e){console.error(e)}}
+layout(true);draw();loadState(true);$('#bar').focus();
 </script>
