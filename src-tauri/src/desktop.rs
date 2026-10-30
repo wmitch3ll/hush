@@ -133,10 +133,11 @@ fn raise_float(app: &AppHandle) {
 /// Float `tab` (it must be a tab that isn't the one being shown).
 #[tauri::command]
 pub async fn float_tab(app: AppHandle, tab: String, x: Option<f64>, y: Option<f64>, w: Option<f64>) -> Result<(), String> {
+    let width = w;
     let w = app.get_webview(&tab).ok_or("no tab")?;
     if let Some(old) = float_label().filter(|l| *l != tab) { unfloat(&app, &old, false); }
     let ok = |v: Option<f64>, d: f64| v.filter(|v| v.is_finite() && v.abs() < 20000.0).unwrap_or(d);
-    *FLOAT.lock() = Some(Float { label: tab, x: ok(x, -16.0), y: ok(y, -16.0), w: ok(w, 400.0), start: (0.0, 0.0, 0.0), drag: -1 });
+    *FLOAT.lock() = Some(Float { label: tab, x: ok(x, -16.0), y: ok(y, -16.0), w: ok(width, 400.0), start: (0.0, 0.0, 0.0), drag: -1 });
     let _ = w.eval(&format!("{};__hushFloat(true);", include_str!("float.js")));
     let _ = w.show();
     if let Some(win) = app.get_window("main") { relayout(&win); }
