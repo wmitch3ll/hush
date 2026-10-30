@@ -1,9 +1,13 @@
-# CI: desktop compile + tests on 3 OSes; Android APK; Windows installers; on main, one GitHub Release with all of them.
+# CI: desktop compile + tests on Linux and Windows (Mac skipped: 10x minutes, no Mac build yet); Android APK; Windows installers; on main, one GitHub Release with all of them.
 name: ci
-on: [push, pull_request]
+# Only main builds (each push = one release). Other branches can still be built by hand from the Actions tab.
+on:
+  push: { branches: [main] }
+  workflow_dispatch:
+concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: true }
 jobs:
   desktop:
-    strategy: { matrix: { os: [ubuntu-22.04, windows-latest, macos-latest] }, fail-fast: false }
+    strategy: { matrix: { os: [ubuntu-22.04, windows-latest] }, fail-fast: false }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
