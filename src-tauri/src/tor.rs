@@ -41,7 +41,7 @@ async fn start(app: &AppHandle) -> Result<u16, String> {
     let client = TorClient::create_bootstrapped(cfg).await.map_err(|e| format!("Couldn’t reach Tor: {e}"))?;
     let listener = TcpListener::bind("127.0.0.1:0").await.map_err(|e| e.to_string())?;
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
-    { let mut t = TOR.lock(); t.client = Some(Arc::new(client)); t.port = port; t.iso = Some(IsolationToken::new()); }
+    { let mut t = TOR.lock(); t.client = Some(client); t.port = port; t.iso = Some(IsolationToken::new()); }
     tauri::async_runtime::spawn(async move {
         while let Ok((sock, peer)) = listener.accept().await {
             if !peer.ip().is_loopback() { continue; }
