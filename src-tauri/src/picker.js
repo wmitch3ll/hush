@@ -7,9 +7,10 @@
   css(box, `position:fixed;z-index:${z};pointer-events:none;border:2px solid #fff;outline:2px solid #000;background:#0003;display:none`);
   const bar = document.createElement("div");
   css(bar, `position:fixed;z-index:${z};left:50%;bottom:20px;transform:translateX(-50%);background:#111;color:#fff;font:14px system-ui;padding:10px 14px;border-radius:12px;display:flex;gap:10px;align-items:center`);
-  const msg = document.createElement("span"); msg.textContent = "Tap an element to block";
+  const watch = window.__hushPickMode === "watch"; window.__hushPickMode = "";
+  const msg = document.createElement("span"); msg.textContent = watch ? "Tap the price or text to watch" : "Tap an element to block";
   const mk = t => { const b = document.createElement("button"); b.textContent = t; css(b, "all:unset;cursor:pointer;padding:6px 12px;border-radius:8px;background:#fff;color:#111;font:600 13px system-ui"); return b; };
-  const ok = mk("Block"), no = mk("Cancel"); ok.style.display = "none";
+  const ok = mk(watch ? "Watch" : "Block"), no = mk("Cancel"); ok.style.display = "none";
   bar.append(msg, ok, no); document.documentElement.append(box, bar);
   let target = null;
   const sel = el => {
@@ -36,7 +37,10 @@
   document.addEventListener("click", pick, true);
   no.onclick = off;
   ok.onclick = () => {
-    if (!target) return; const s = sel(target); target.style.display = "none"; off();
+    if (!target) return; const s = sel(target);
+    if (watch) { const t = (target.innerText || "").trim().replace(/\s+/g, " ").slice(0, 300); off();
+      location.href = "hush-pick://watch?host=" + encodeURIComponent(location.hostname) + "&sel=" + encodeURIComponent(s) + "&text=" + encodeURIComponent(t); return; }
+    target.style.display = "none"; off();
     location.href = "hush-pick://add?host=" + encodeURIComponent(location.hostname) + "&sel=" + encodeURIComponent(s);
   };
 })();

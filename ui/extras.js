@@ -15,7 +15,7 @@ window.HushX = function (A) {
 .hx-home{position:relative;min-height:100%;width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:40px 16px;background-size:cover;background-position:center}
 .hx-home.walled{color:#fff;text-shadow:0 1px 8px #0006}.hx-home.walled .hx-mute{color:#ffffffcc}
 .hx-clock{font:200 64px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:-2px;font-variant-numeric:tabular-nums}.hx-date{font-size:13px;opacity:.75;margin-top:-10px}
-.hx-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:12px;width:min(640px,100%)}
+.hx-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(84px,96px));justify-content:center;gap:12px;width:min(640px,100%)}
 .hx-tile{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 4px;border-radius:14px;cursor:pointer;min-width:0;touch-action:none}
 .hx-tile:hover{background:#8881}.hx-tile i{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font:600 18px system-ui;font-style:normal;background:var(--card);color:var(--ink);border:1px solid var(--line);background-size:60%;background-position:center;background-repeat:no-repeat}
 .hx-tile span{font-size:11.5px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -41,7 +41,7 @@ window.HushX = function (A) {
   if (!document.getElementById('hx-css')) { const s = document.createElement('style'); s.id = 'hx-css'; s.textContent = css; document.head.append(s); }
 
   let editing = false, customizing = false, clockT;
-  function wallStyle() {
+  let wallStyle = function () {
     const w = A.pref('sp_bg') || 'none';
     if (w === 'image') { const img = LS.get('wall', ''); return img ? `url("${img}")` : ''; }
     if (/^#[0-9a-f]{6}$/i.test(w)) return w;
@@ -207,5 +207,103 @@ window.HushX = function (A) {
     return close;
   }
 
-  return { home, boost, archiveSweep, archivePanel, markup, host, esc };
+  // ---------------------------------------------------------------- actions, gestures, quick wheel
+  // A.act(id) runs an action on the current platform; ids are shared with tools.js (the in-page wheel).
+  const ACTIONS = { none: 'Do nothing', back: 'Back', forward: 'Forward', reload: 'Reload', newtab: 'New tab', closetab: 'Close tab', reopen: 'Reopen closed tab',
+    nexttab: 'Next tab', prevtab: 'Previous tab', top: 'Scroll to top', bottom: 'Scroll to bottom', find: 'Find in page', reader: 'Reader view', listen: 'Listen to page',
+    screenshot: 'Screenshot', tor: A.mobile ? 'Tor mode on/off' : 'Open in Tor tab', newid: 'New Tor identity', bookmark: 'Bookmark page', copylink: 'Copy link', dark: 'Dark mode on/off',
+    alltabs: 'All tabs', home: 'Start page', private: 'New private tab', mute: 'Mute tab', boosts: 'Boosts', destruct: 'Self-destruct tab…' };
+  const SLOTS = A.mobile
+    ? [['TL', 'Two fingers ←', 'nexttab'], ['TR', 'Two fingers →', 'prevtab'], ['TD', 'Two fingers ↓', 'reload'], ['TU', 'Two fingers ↑', 'alltabs']]
+    : [['L', 'Right-drag ←', 'back'], ['R', 'Right-drag →', 'forward'], ['D', 'Right-drag ↓', 'closetab'], ['U', 'Right-drag ↑', 'newtab'],
+       ['DR', 'Right-drag ↓ then →  (L shape)', 'reopen'], ['UD', 'Right-drag ↑ then ↓', 'reload'], ['RL', 'Right-drag → then ←', 'top'], ['LR', 'Right-drag ← then →', 'bottom'],
+       ['TL', 'Touchscreen: two fingers ←', 'back'], ['TR', 'Touchscreen: two fingers →', 'forward']];
+  const slotPref = g => 'g_' + g.toLowerCase();
+  function gesture(ev) {
+    const id = ev.action || (() => { const sl = SLOTS.find(x => x[0] === ev.g); return sl ? (A.pref(slotPref(sl[0])) || sl[2]) : null; })();
+    if (id && id !== 'none' && ACTIONS[id]) { A.toast(ACTIONS[id]); A.act(id); }
+  }
+  const WHEEL_DEF = 'back,forward,reload,newtab,closetab,screenshot';
+  function gesturePanel(el) {
+    const wheel = (A.pref('wheel') || WHEEL_DEF).split(',').filter(Boolean), opts = sel => Object.entries(ACTIONS).map(([k, l]) => `<option value=${k} ${k === sel ? 'selected' : ''}>${esc(l)}</option>`).join('');
+    el.innerHTML = `<div class=hx-lbl>Gestures</div><div class=hx-seg><button class="hx-b ${A.pref('gestures') !== 'off' ? 'on' : ''}" data-gon>${A.pref('gestures') !== 'off' ? 'On' : 'Off'}</button></div>
+      <p style="color:var(--mute);font-size:12px;margin:6px 0">${A.mobile ? 'Swipe on a page with two fingers. Two-finger touch-and-hold opens your quick wheel.' : 'Hold the right mouse button on a page and draw. A quick right-click still opens the normal menu; right-click and hold opens your quick wheel.'}</p>
+      <div class=hx-list>${SLOTS.map(([g, l, d]) => `<div class=hx-item><div><b>${esc(l)}</b></div><select class=hx-in style="flex:none;width:170px" data-slot="${g}">${opts(A.pref(slotPref(g)) || d)}</select></div>`).join('')}</div>
+      <div class=hx-lbl>Quick wheel · up to 8, in order clockwise from the top</div>
+      <div class=hx-list>${[0, 1, 2, 3, 4, 5, 6, 7].map(i => `<div class=hx-item><div><b>${i + 1}</b></div><select class=hx-in style="flex:none;width:170px" data-w=${i}>${opts(wheel[i] || 'none')}</select></div>`).join('')}</div>
+      <small style="color:var(--mute);display:block;margin-top:8px">Changes apply to pages you open or reload after this.</small>`;
+    el.querySelector('[data-gon]').onclick = async () => { await A.setPref('gestures', A.pref('gestures') !== 'off' ? 'off' : 'on'); gesturePanel(el); };
+    el.querySelectorAll('[data-slot]').forEach(x => x.onchange = () => A.setPref(slotPref(x.dataset.slot), x.value));
+    el.querySelectorAll('[data-w]').forEach(x => x.onchange = () => A.setPref('wheel', [...el.querySelectorAll('[data-w]')].map(y => y.value).filter(v => v !== 'none').join(',')));
+  }
+
+  // ---------------------------------------------------------------- looks (themes)
+  const LOOKS = {
+    default: null,
+    midnight: { bg: '#0b1020', card: '#131a2e', line: '#222b45', ink: '#e7ebf7', mute: '#8590b0', acc: '#7aa2ff', dark: true, wall: 'linear-gradient(160deg,#0b1020,#24305a)' },
+    paper: { bg: '#f4efe6', card: '#fbf8f2', line: '#e3dacb', ink: '#2b2620', mute: '#8b8172', acc: '#9a4f2c', dark: false, wall: 'linear-gradient(160deg,#f4efe6,#e2d3b8)' },
+    neon: { bg: '#0a0a0f', card: '#14141d', line: '#262638', ink: '#f2f2ff', mute: '#8a8aa8', acc: '#ff3df2', dark: true, wall: 'linear-gradient(160deg,#120022,#002a3a)' },
+    forest: { bg: '#101612', card: '#18211b', line: '#26332a', ink: '#e4efe6', mute: '#83998a', acc: '#6fcf8c', dark: true, wall: 'linear-gradient(160deg,#0f1a12,#3a5a3f)' },
+    ocean: { bg: '#eef5f8', card: '#ffffff', line: '#d5e5ec', ink: '#0f2a36', mute: '#6b8794', acc: '#0b84a5', dark: false, wall: 'linear-gradient(160deg,#dff0f6,#7fbcd2)' } };
+  function applyLook() {
+    const L = LOOKS[A.pref('look')] || null, r = document.documentElement.style;
+    for (const k of ['bg', 'card', 'line', 'ink', 'mute', 'acc']) { if (L) r.setProperty('--' + k, L[k]); else r.removeProperty('--' + k); }
+    if (L) { r.setProperty('--glow', L.acc + '33'); r.colorScheme = L.dark ? 'dark' : 'light'; document.documentElement.dataset.theme = L.dark ? 'dark' : 'light'; }
+    else { r.removeProperty('--glow'); r.colorScheme = ''; }
+    return !!L;
+  }
+  function lookPicker(el, after) {
+    const cur = A.pref('look') || 'default';
+    el.innerHTML = `<div class=hx-row style="justify-content:flex-start">${Object.entries(LOOKS).map(([k, L]) => `<button class="hx-b ${cur === k ? 'on' : ''}" data-look=${k} style="${L ? `background:${L.bg};color:${L.ink};border-color:${L.acc}` : ''}">${k[0].toUpperCase() + k.slice(1)}</button>`).join('')}</div>`;
+    el.querySelectorAll('[data-look]').forEach(b => b.onclick = async () => { await A.setPref('look', b.dataset.look);
+      const L = LOOKS[b.dataset.look]; if (L && (!A.pref('sp_bg') || A.pref('sp_bg') === 'none' || A.pref('sp_bg').startsWith('look:'))) await A.setPref('sp_bg', 'look:' + b.dataset.look);
+      if (!L && (A.pref('sp_bg') || '').startsWith('look:')) await A.setPref('sp_bg', 'none');
+      applyLook(); lookPicker(el, after); after && after(); });
+  }
+  const _wall = wallStyle;
+  wallStyle = () => { const w = A.pref('sp_bg') || ''; if (w.startsWith('look:')) { const L = LOOKS[w.slice(5)]; return L ? L.wall : ''; } return _wall(); };
+
+  // ---------------------------------------------------------------- self-destruct tabs
+  const destructLabel = t => { if (!t.destruct) return ''; const m = Math.max(0, Math.ceil((t.destruct - Date.now()) / 60000)); return m >= 60 ? Math.round(m / 60) + ' h' : m + ' min'; };
+  function destructSweep(tabs, close) { const now = Date.now(); for (const t of tabs) if (t.destruct && t.destruct <= now) { t.destruct = 0; close(t.id); } }
+  const DESTRUCT = [['5 minutes', 5], ['15 minutes', 15], ['1 hour', 60], ['Never', 0]];
+
+  // ---------------------------------------------------------------- change watch
+  const watches = () => LS.get('watch', []);
+  function watchAdd(w) { const list = watches().filter(x => !(x.url === w.url && x.sel === w.sel)); list.unshift({ ...w, last: w.text, at: Date.now(), changed: false }); LS.set('watch', list.slice(0, 40)); }
+  let watching = false;
+  async function watchSweep(force) {
+    if (watching) return; watching = true; const list = watches(); let n = 0;
+    for (const w of list) { if (!force && Date.now() - (w.checked || 0) < 30 * 60e3) continue;
+      try { const now = await A.inv('watch_check', { url: w.url, sel: w.sel }); w.checked = Date.now();
+        if (now == null) w.missing = true;
+        else { w.missing = false; if (now !== w.last) { w.prev = w.last; w.last = now; w.changed = true; w.at = Date.now(); n++; A.toast('Changed on ' + host(w.url) + ': ' + now.slice(0, 60)); } } } catch (e) { w.err = String(e); } }
+    LS.set('watch', list); watching = false; return n; }
+  const watchCount = () => watches().filter(w => w.changed).length;
+  function watchPanel(el, open) {
+    const draw = () => { const list = watches();
+      el.innerHTML = `<p style="color:var(--mute);font-size:12px;margin:0 0 10px">Hush checks these every 30 minutes while it’s open and tells you when they change. Pages that build their content with scripts may not be readable — those show “not found”.</p>
+        <div class=hx-row style="justify-content:flex-start;margin-bottom:10px"><button class=hx-b data-add>Watch something on this page…</button><button class=hx-b data-now>Check now</button></div>
+        <div class=hx-list>${list.map((w, i) => `<div class=hx-item style="${w.changed ? 'border-color:var(--acc)' : ''}"><div><b>${esc(w.last || '—')}</b><small>${esc(host(w.url))}${w.changed ? ` · changed${w.prev ? ' from “' + esc(w.prev.slice(0, 40)) + '”' : ''} · ${ago(w.at)}` : w.missing ? ' · not found on the page' : ' · no change'}</small></div>
+          <button class=hx-b data-open=${i}>Open</button><button class=hx-b data-rm=${i} aria-label=Remove>✕</button></div>`).join('') || '<small style="color:var(--mute)">Nothing watched yet. Open a product page, then tap “Watch something on this page” and tap the price.</small>'}</div>`;
+      el.querySelector('[data-add]').onclick = () => A.watchPick();
+      el.querySelector('[data-now]').onclick = async () => { A.toast('Checking…'); const n = await watchSweep(true); A.toast(n ? n + ' changed' : 'No changes'); draw(); };
+      el.querySelectorAll('[data-open]').forEach(b => b.onclick = () => { const l = watches(); l[b.dataset.open].changed = false; LS.set('watch', l); open(l[b.dataset.open].url); });
+      el.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { const l = watches(); l.splice(+b.dataset.rm, 1); LS.set('watch', l); draw(); }); };
+    draw(); }
+
+  // ---------------------------------------------------------------- sync by QR (desktop -> phone)
+  function syncLink(tabs, maxLen = 2300) {
+    const st = A.state(), bms = (st.bookmarks || []).filter(b => /^https?:/.test(b.url)), ui = st.settings.ui || {};
+    const keep = ['color', 'look', 'theme', 'search', 'force_dark', 'fp', 'clean_links', 'video_bar', 'gestures', 'wheel', 'archive', 'sp_bg', 'sp_clock', 'sp_notes', 'bangs'].filter(k => ui[k] != null && !(k === 'sp_bg' && ui[k] === 'image'));
+    const s = Object.fromEntries(keep.map(k => [k, ui[k]])); if (st.settings.search) s.search = st.settings.search;
+    const t = tabs.filter(x => !x.priv && /^https:/.test(x.url)).map(x => x.url);
+    const enc = o => 'hush://import#' + btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    let nb = bms.length, nt = t.length, link = enc({ v: 2, s, t, b: bms.map(b => [b.title.slice(0, 40), b.url, b.folder || '']) });
+    while (link.length > maxLen && (nt > 0 || nb > 0)) { if (nt > nb / 2 && nt > 0) nt--; else nb--; link = enc({ v: 2, s, t: t.slice(0, nt), b: bms.slice(0, nb).map(b => [b.title.slice(0, 40), b.url, b.folder || '']) }); }
+    return { link, tabs: nt, totalTabs: t.length, bookmarks: nb, totalBookmarks: bms.length, settings: Object.keys(s).length };
+  }
+
+  return { home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
+    destructSweep, destructLabel, DESTRUCT, watchAdd, watchSweep, watchPanel, watchCount, syncLink, LS };
 };

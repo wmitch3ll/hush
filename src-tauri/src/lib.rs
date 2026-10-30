@@ -9,6 +9,21 @@ mod store;
 #[cfg(target_os = "android")] mod android_jni;
 #[cfg(target_os = "ios")] mod ios_ffi;
 #[cfg(mobile)] mod tabs_plugin;
+mod tor;
+
+/// Change watch: fetch a page and read the text of one element (CSS selector). None = not found.
+#[tauri::command]
+async fn watch_check(url: String, sel: String) -> Result<Option<String>, String> {
+    if !url.starts_with("https://") { return Err("https only".into()); }
+    tauri::async_runtime::spawn_blocking(move || {
+        let body = ureq::get(&url).set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36")
+            .timeout(std::time::Duration::from_secs(20)).call().map_err(|e| e.to_string())?
+            .into_string().map_err(|e| e.to_string())?;
+        let doc = scraper::Html::parse_document(&body);
+        let s = scraper::Selector::parse(&sel).map_err(|_| "bad selector".to_string())?;
+        Ok(doc.select(&s).next().map(|e| e.text().collect::<Vec<_>>().join(" ").split_whitespace().collect::<Vec<_>>().join(" ").chars().take(300).collect()))
+    }).await.map_err(|e| e.to_string())?
+}
 
 use blocker::Blocker;
 use parking_lot::Mutex;
@@ -60,14 +75,17 @@ pub fn scriptlets_init_js() -> String {
         let fp_off: Vec<&String> = p.fp_off.iter().chain(off.iter()).collect();
         format!("const __HUSH_FP={};\n{}\n", json!({ "secret": *FP_SECRET, "off": fp_off }), FARBLE_JS)
     } else { String::new() };
-    format!("{fp}window.__hushOff={};\n{}", serde_json::to_string(&off).unwrap_or("[]".into()), SCRIPTLETS_JS)
+    let tools = format!("{{const __HUSH_TOOLS={};\n{}\n}}\n", json!({ "clean": p.clean, "video": p.video, "gestures": p.gestures, "wheel": p.wheel }), include_str!("tools.js"));
+    format!("{fp}{tools}window.__hushOff={};\n{}", serde_json::to_string(&off).unwrap_or("[]".into()), SCRIPTLETS_JS)
 }
 /// What every page gets when it starts loading; readable from JNI threads without the AppHandle.
 #[derive(Default)]
 pub struct PagePrefs { pub dark: bool, pub site_dark: std::collections::BTreeMap<String, bool>,
     pub boosts: std::collections::BTreeMap<String, store::Boost>,
     /// Fingerprint protection on/off, and sites where it's turned off.
-    pub fp_on: bool, pub fp_off: Vec<String> }
+    pub fp_on: bool, pub fp_off: Vec<String>,
+    /// Page tools: link cleaner, video controls, mouse gestures (desktop).
+    pub clean: bool, pub video: bool, pub gestures: bool, pub wheel: Vec<String> }
 pub static PAGE_PREFS: LazyLock<parking_lot::RwLock<PagePrefs>> = LazyLock::new(Default::default);
 fn refresh_page_prefs(s: &store::Store) {
     let mut p = PAGE_PREFS.write();
@@ -75,6 +93,10 @@ fn refresh_page_prefs(s: &store::Store) {
     p.site_dark = s.site_dark.clone();
     p.boosts = s.site_boost.clone();
     p.fp_on = s.settings.ui.get("fp").map(|v| v != "off").unwrap_or(true);
+    let on = |k: &str, d: bool| s.settings.ui.get(k).map(|v| v == "on").unwrap_or(d);
+    p.clean = on("clean_links", true); p.video = on("video_bar", true); p.gestures = on("gestures", true);
+    p.wheel = s.settings.ui.get("wheel").map(|v| v.as_str()).unwrap_or("back,forward,reload,newtab,closetab,screenshot").split(',')
+        .filter(|x| !x.is_empty() && x.len() < 16 && x.chars().all(|c| c.is_ascii_lowercase())).take(8).map(str::to_string).collect();
     p.fp_off = s.settings.ui.get("fp_off").map(|v| v.split(',').map(|x| x.trim().to_lowercase()).filter(|x| !x.is_empty()).collect()).unwrap_or_default();
     let until = s.settings.ui.get("focus_until").and_then(|v| v.parse().ok()).unwrap_or(0);
     let sites = s.settings.ui.get("focus_sites").map(|v| v.split(',').map(|x| x.trim().trim_start_matches("www.").to_lowercase()).filter(|x| !x.is_empty()).collect()).unwrap_or_default();
@@ -126,6 +148,9 @@ pub fn page_action_js(action: &str, arg: &str) -> Result<String, String> {
     let a = serde_json::to_string(arg).map_err(|e| e.to_string())?;
     let call = match action {
         "dark-on" => "__hushPage.dark(true)".to_string(),
+        "wheel" => "window.__hushWheel&&__hushWheel()".to_string(),
+        "scroll-top" => "scrollTo({top:0,behavior:'smooth'})".to_string(),
+        "scroll-bottom" => "scrollTo({top:document.documentElement.scrollHeight,behavior:'smooth'})".to_string(),
         "dark-off" => "__hushPage.dark(false)".to_string(),
         "reader" => "__hushPage.reader()".to_string(),
         "find" => format!("__hushPage.find({a},false)"),
@@ -501,14 +526,14 @@ pub fn run() {
             extensions::extension_list, extensions::extension_install, extensions::extension_remove,
             desktop::open_tab, desktop::switch_tab, desktop::close_tab, desktop::navigate, desktop::nav,
             desktop::clear_data, desktop::start_picker, desktop::set_layout, desktop::show_content,
-            desktop::download_open, desktop::download_reveal])
+            desktop::download_open, desktop::download_reveal, tor::tor_start, tor::tor_new_identity, tor::tor_state, watch_check])
         .setup(desktop::setup);
     #[cfg(mobile)] let b = b
         .invoke_handler(tauri::generate_handler![toggle_shield, get_state, set_setting, bookmark_add, bookmark_remove,
             add_custom_filter, export_data, import_data, update_lists,
             site_dark, get_stats, history_add, history_list, history_clear, suggest, session_save,
             check_update, app_info, import_bookmarks,
-            mobile::page_action, mobile::native_call, boost_set, remove_custom_filter, bookmarks_reorder,
+            mobile::page_action, mobile::native_call, boost_set, remove_custom_filter, bookmarks_reorder, tor::tor_start, tor::tor_new_identity, tor::tor_state, watch_check,
             mobile::open_tab, mobile::switch_tab, mobile::close_tab, mobile::navigate, mobile::nav,
             mobile::clear_data, mobile::set_chrome_inset, mobile::set_web_prefs])
         .setup(mobile::setup);

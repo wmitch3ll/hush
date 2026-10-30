@@ -14,26 +14,30 @@ body.pinned{box-shadow:none}
 #edge{display:none;position:fixed;inset:0;background:var(--bg)}
 #edge::after{content:"";position:absolute;background:var(--mute);opacity:.5;border-radius:2px;left:50%;top:50%;width:2px;height:44px;transform:translate(-50%,-50%)}
 body.h #edge::after{width:44px;height:2px}
-body.collapsed #edge{display:block}body.collapsed>*:not(#edge){visibility:hidden}
-header{display:flex;gap:6px;align-items:center;padding:10px 10px 6px;flex:none}
+body>*:not(#edge):not(#menu){transition:opacity .16s ease,transform .2s cubic-bezier(.2,.8,.2,1)}
+#edge{transition:opacity .16s}body:not(.collapsed) #edge{display:block;opacity:0;pointer-events:none}
+body.collapsed #edge{display:block;opacity:1}body.collapsed>*:not(#edge){opacity:0;pointer-events:none}
+body.collapsed.left>*:not(#edge){transform:translateX(-14px)}body.collapsed.right>*:not(#edge){transform:translateX(14px)}body.collapsed.top>*:not(#edge){transform:translateY(-10px)}body.collapsed.bottom>*:not(#edge){transform:translateY(10px)}
+@media (prefers-reduced-motion:reduce){body>*{transition:none!important;transform:none!important}}
+header{display:flex;gap:4px;align-items:center;padding:8px 8px 4px;flex:none}
 body.h header{flex-direction:column;padding:8px 6px;justify-content:center}
 button{all:unset;cursor:pointer;border-radius:8px;display:grid;place-items:center}
 button:focus-visible{box-shadow:0 0 0 2px var(--glow)}
-#ws{height:26px;padding:0 10px;border:1px solid var(--line);font-weight:600;font-size:11.5px;color:var(--mute);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;line-height:24px}
+#ws{height:24px;padding:0 9px;border:1px solid var(--line);font-weight:600;font-size:11.5px;color:var(--mute);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;line-height:24px}
 #ws:hover,#new:hover,#newp:hover{color:var(--ink);background:var(--card)}
 #new,#newp{width:28px;height:28px;color:var(--mute)}
 #new svg,#newp svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
 .sp{flex:1}
-#list{flex:1;overflow:auto;padding:4px 10px 12px;display:flex;flex-direction:column;gap:10px;scrollbar-width:thin}
-body.h #list{flex-direction:row;padding:10px 12px 10px 4px;overflow-y:hidden}
+#list{flex:1;overflow:auto;padding:2px 8px 10px;display:flex;flex-direction:column;gap:8px;scrollbar-width:thin}
+body.h #list{flex-direction:row;padding:8px 10px 8px 2px;overflow-y:hidden}
 .t{position:relative;border-radius:12px;background:var(--card);border:1px solid var(--line);overflow:hidden;cursor:pointer;flex:none;transition:transform .12s,border-color .12s,box-shadow .12s}
-body.h .t{width:200px}
+body.h .t{width:156px}body.h.small .t{width:128px}
 .t:hover{transform:translateY(-1px)}.t.on{border-color:var(--acc);box-shadow:0 0 0 3px var(--glow)}
-.t.priv{border-style:dashed}.t.sleep .shot{filter:grayscale(1) opacity(.55)}.t.split .shot::after{content:"split";position:absolute;right:6px;bottom:6px;font-size:10px;background:var(--ink);color:var(--bg);padding:1px 6px;border-radius:99px}
+.t.priv{border-style:dashed}.t.tor{border:1px solid #8b5cf6}.t.tor .meta b::before{content:'Tor · ';color:#8b5cf6;font-weight:600}.t.sleep .shot{filter:grayscale(1) opacity(.55)}.t.split .shot::after{content:"split";position:absolute;right:6px;bottom:6px;font-size:10px;background:var(--ink);color:var(--bg);padding:1px 6px;border-radius:99px}
 .t.drag{opacity:.35}.t.over{box-shadow:0 0 0 2px var(--acc)}
 .shot{position:relative;aspect-ratio:16/10;background:var(--bg) center top/cover no-repeat;display:grid;place-items:center;color:var(--mute);font:300 30px/1 ui-serif,"Times New Roman",Georgia,serif;border-bottom:1px solid var(--line)}
 body.small .shot{aspect-ratio:16/7}body.noprev .shot{display:none}
-.meta{display:flex;gap:6px;align-items:center;padding:6px 8px;min-width:0}
+.meta{display:flex;gap:5px;align-items:center;padding:5px 7px;min-width:0;font-size:12px}
 .meta b{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 .meta i{font-style:normal;color:var(--mute);font-size:11px;flex:none}
 .x{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;background:var(--card);color:var(--mute);box-shadow:0 1px 4px #0003;opacity:0;font-size:12px}
@@ -67,10 +71,10 @@ function draw(){
   b.className=[S.pos,h?'h':'v',S.collapsed?'collapsed':'',S.pinned?'pinned':'',S.previews=='off'?'noprev':S.previews=='small'?'small':''].join(' ');
   $('#ws').textContent=S.ws;
   $('#list').innerHTML=S.tabs.map(t=>{const th=THUMBS[t.id],ti=TITLES[t.id]||t.title||host(t.url)||'New tab',au=AUDIO[t.id];
-    return `<div class="t ${t.id==S.cur?'on':''} ${t.priv?'priv':''} ${t.sleeping?'sleep':''} ${t.id==S.split?'split':''}" data-id="${esc(t.id)}" draggable=true role=tab aria-selected=${t.id==S.cur} title="${esc(ti)}\n${esc(t.url)}">
+    return `<div class="t ${t.id==S.cur?'on':''} ${t.priv?'priv':''} ${t.tor?'tor':''} ${t.sleeping?'sleep':''} ${t.id==S.split?'split':''}" data-id="${esc(t.id)}" draggable=true role=tab aria-selected=${t.id==S.cur} title="${esc(ti)}\n${esc(t.url)}">
       <div class=shot ${th&&!t.priv?`style="background-image:url('${th}')"`:''}>${th&&!t.priv?'':(t.priv?'◌':esc((host(t.url)||'·')[0].toUpperCase()))}</div>
       <div class=meta>${au||t.muted?`<button class=au data-mute="${esc(t.id)}" title="${t.muted?'Unmute':'Mute'} (Ctrl+M)">${t.muted?'<svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM16 9l5 6M21 9l-5 6"/></svg>':'<svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM16 8a5 5 0 0 1 0 8"/></svg>'}</button>`:''}
-        <b>${esc(ti)}</b>${t.sleeping?'<i>asleep</i>':''}</div>
+        <b>${esc(ti)}</b>${t.destruct?`<i title="Self-destructs">⏲ ${esc(t.destruct)}</i>`:''}${t.sleeping?'<i>asleep</i>':''}</div>
       <button class=x data-x="${esc(t.id)}" aria-label="Close tab">✕</button></div>`}).join('')||'<div style="color:var(--mute);padding:20px 4px;text-align:center">No tabs in this workspace</div>';
   document.querySelectorAll('.t').forEach(el=>{const id=el.dataset.id;
     el.onclick=e=>{if(e.target.closest('[data-x],[data-mute]'))return;send(e.shiftKey?'split':'select',{id})};
@@ -84,13 +88,13 @@ function draw(){
   const on=document.querySelector('.t.on');if(on&&!S.collapsed)on.scrollIntoView({block:'nearest',inline:'nearest'});
 }
 function menu(e,id){const t=S.tabs.find(x=>x.id==id);if(!t)return;const m=$('#menu');
-  const items=[['Split view with this tab','split'],[t.muted?'Unmute tab':'Mute tab','mute'],['Duplicate tab','dup'],['Copy link','copy'],
+  const items=[['Split view with this tab','split'],[t.muted?'Unmute tab':'Mute tab','mute'],['Duplicate tab','dup'],...(t.destruct?[['Cancel self-destruct','destruct:0']]:[['Self-destruct in 5 min','destruct:5'],['Self-destruct in 15 min','destruct:15'],['Self-destruct in 1 hour','destruct:60']]),['Copy link','copy'],
     ...S.wsList.filter(w=>w!=S.ws).map(w=>['Move to '+w,'move:'+w]),['Close other tabs','others'],['Close tab','close']];
   m.innerHTML=items.map(([l,a])=>`<button data-a="${esc(a)}" role=menuitem>${esc(l)}</button>`).join('');
   m.style.left=Math.min(e.clientX,innerWidth-180)+'px';m.style.top=Math.min(e.clientY,innerHeight-items.length*32-10)+'px';m.classList.add('on');
   m.querySelectorAll('[data-a]').forEach(b=>b.onclick=async()=>{m.classList.remove('on');const a=b.dataset.a;
     if(a=='copy'){try{await navigator.clipboard.writeText(t.url)}catch(e){}return}
-    if(a.startsWith('move:'))return send('move',{id,ws:a.slice(5)});send(a,{id})})}
+    if(a.startsWith('move:'))return send('move',{id,ws:a.slice(5)});if(a.startsWith('destruct:'))return send('destruct',{id,min:+a.slice(9)});send(a,{id})})}
 addEventListener('click',e=>{if(!e.target.closest('#menu'))$('#menu').classList.remove('on')});
 $('#new').onclick=()=>send('new');$('#newp').onclick=()=>send('newpriv');$('#ws').onclick=()=>send('ws');
 // Hover: the main UI decides when to slide in/out.

@@ -66,6 +66,19 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     private var fsView: View? = null; private var fsCb: WebChromeClient.CustomViewCallback? = null
     private var pendingPerm: PermissionRequest? = null
     private var pendingGeo: Pair<String, GeolocationPermissions.Callback>? = null
+    private var torOn = false
+    private val NO_RTC_JS = "(()=>{for(const k of ['RTCPeerConnection','webkitRTCPeerConnection','RTCDataChannel'])try{delete window[k];Object.defineProperty(window,k,{value:undefined})}catch(e){}})();"
+    /** Tor mode: route every tab through Hush's local Tor proxy (whole app), or back to a direct connection. */
+    @Command fun torMode(i: Invoke) { val a = i.parseArgs(TorArgs::class.java)
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) { i.reject("This phone's WebView can't use a proxy — update Android System WebView"); return }
+        val pc = androidx.webkit.ProxyController.getInstance(); val ex = java.util.concurrent.Executor { act.runOnUiThread(it) }
+        val done = Runnable { torOn = a.on
+            // Recreate open tabs so every page (and its WebRTC removal) uses the new route; nothing is reused across.
+            CookieManager.getInstance().removeAllCookies(null); WebStorage.getInstance().deleteAllData()
+            tabs.values.forEach { t -> t.wv?.let { w -> (w.parent as? ViewGroup)?.removeView(w); w.destroy() }; t.wv = null }
+            render(); i.resolve() }
+        if (a.on && a.port in 1..65535) pc.setProxyOverride(androidx.webkit.ProxyConfig.Builder().addProxyRule("socks5://127.0.0.1:" + a.port).build(), ex, done)
+        else pc.clearProxyOverride(ex, done) }
     private var tts: android.speech.tts.TextToSpeech? = null
     private var ttsQ: List<String> = emptyList(); private var ttsI = 0; private var ttsRate = 1f; private var ttsOn = false
     private var peekTab: Tab? = null; private var peekBox: FrameLayout? = null
@@ -219,6 +232,8 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         // YouTube / anti-adblock fixes must run before the page's own scripts: document-start injection (WebView 88+).
         val earlyScripts = try { WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT) } catch (e: Throwable) { false }
         if (earlyScripts) try { WebViewCompat.addDocumentStartJavaScript(w, Native.scriptletJs(), setOf("*")) } catch (e: Throwable) {}
+        // Tor mode: WebRTC could reveal your real IP outside the proxy, so it's removed from every page.
+        if (torOn && earlyScripts) try { WebViewCompat.addDocumentStartJavaScript(w, NO_RTC_JS, setOf("*")) } catch (e: Throwable) {}
         // Audio indicator: the page reports (only) whether something is playing. Spoofing it can't do anything but flip an icon.
         val audioMsgs = try { WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) } catch (e: Throwable) { false }
         if (audioMsgs) try {
@@ -242,7 +257,13 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                 return when (r.url.scheme) {
                     // Element picker result (Boosts → zap): only accepted for the site this tab is on.
                     "hush-pick" -> { val host = r.url.getQueryParameter("host") ?: ""; val sel = r.url.getQueryParameter("sel") ?: ""
-                        if (host.isNotEmpty() && sel.isNotEmpty() && host == Uri.parse(t.page).host) emit("pick", JSObject().apply { put("host", host); put("sel", sel) }); true }
+                        if (host.isNotEmpty() && sel.isNotEmpty() && host == Uri.parse(t.page).host) {
+                            if (r.url.host == "watch") emit("watchPick", JSObject().apply { put("url", t.page); put("sel", sel); put("text", r.url.getQueryParameter("text") ?: "") })
+                            else emit("pick", JSObject().apply { put("host", host); put("sel", sel) }) }; true }
+                    // Two-finger gestures and the quick wheel (tools.js): only a short shape / action id is passed on.
+                    "hush-gesture" -> { val h = (r.url.host ?: "").lowercase()
+                        if (h.startsWith("a-") && h.length < 20 && h.drop(2).all { it in 'a'..'z' }) emit("gesture", JSObject().apply { put("action", h.drop(2)) })
+                        else if (h.length in 1..4 && h.all { it in "lrudt" }) emit("gesture", JSObject().apply { put("g", h.uppercase()) }); true }
                     "http" -> { v.loadUrl(r.url.toString().replaceFirst("http://", "https://")); true }  // HTTPS-first
                     "https", "about", "data", "blob" -> false
                     else -> true   // intent:, file:, javascript:, market:, custom app schemes — refused
@@ -513,12 +534,15 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             act.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
             i.resolve(JSObject().put("saved", true)) } catch (e: Throwable) { i.reject("Couldn’t save: " + (e.message ?: "")) } }
     /** Boosts → zap: start the element picker in the current page. */
-    @Command fun pick(i: Invoke) { act.runOnUiThread { active?.let { tabs[it]?.wv }?.evaluateJavascript(Native.pickerJs(), null) }; i.resolve() }
+    @Command fun pick(i: Invoke) { val w = i.parseArgs(PickArgs::class.java).mode == "watch"
+        act.runOnUiThread { active?.let { tabs[it]?.wv }?.evaluateJavascript((if (w) "window.__hushPickMode=\"watch\";" else "") + Native.pickerJs(), null) }; i.resolve() }
 
     /** Run a page tool script (built by Rust from a fixed list of actions) in the active tab. */
     @Command fun evalJs(i: Invoke) { val js = i.parseArgs(JsArgs::class.java).js
         act.runOnUiThread { active?.let { tabs[it]?.wv }?.evaluateJavascript(js, null) }; i.resolve() }
 
+    @InvokeArg class PickArgs { var mode: String = "" }
+    @InvokeArg class TorArgs { var on: Boolean = false; var port: Int = 0 }
     @InvokeArg class ListenArgs { var action: String = ""; var rate: Double = 1.0 }
     @InvokeArg class ImgArgs { var data: String = "" }
     @InvokeArg class MuteArgs { var id: String = ""; var muted: Boolean = true }

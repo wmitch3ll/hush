@@ -24,14 +24,19 @@ ureq = { version = "2", default-features = false, features = ["tls"] }  # user-t
 zip = { version = "2", default-features = false, features = ["deflate"] }   # desktop extensions (.crx unpack)
 sha2 = "0.10"
 base64 = "0.22"
+# Built-in Tor (Arti). rustls (no OpenSSL) + bundled SQLite so it builds the same on Windows and Android.
+arti-client = { version = "0.47", default-features = false, features = ["tokio", "rustls", "compression", "static-sqlite", "onion-service-client"] }
+tor-rtcompat = { version = "0.47", default-features = false, features = ["tokio", "rustls"] }
+scraper = { version = "0.20", default-features = false }   # change watch: read one element from a page
+tokio = { version = "1", features = ["net", "io-util", "macros", "rt"] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [profile.release]
 opt-level = "s"
-lto = true
-codegen-units = 1
+lto = "thin"          # thin + parallel codegen: much faster CI builds (Tor is a lot of code)
+codegen-units = 16
 panic = "abort"
 strip = true
 

@@ -4,10 +4,16 @@ name: ci
 on:
   push: { branches: [main] }
   workflow_dispatch:
-concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: true }
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   desktop:
-    strategy: { matrix: { os: [ubuntu-22.04, windows-latest] }, fail-fast: false }
+    # Hand-started runs (a cheap check before a release) skip Windows: Windows minutes count double.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["ubuntu-22.04"]' || '["ubuntu-22.04","windows-latest"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

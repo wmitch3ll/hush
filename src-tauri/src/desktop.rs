@@ -15,11 +15,15 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let s = win.inner_size()?.to_logical::<f64>(win.scale_factor()?);
     // Every webview shares one engine environment, so the chrome uses the same extension setting as the tabs.
     win.add_child(
-        WebviewBuilder::new("chrome", WebviewUrl::App("index.html".into())).browser_extensions_enabled(true),
+        WebviewBuilder::new("chrome", WebviewUrl::App("index.html".into())).browser_extensions_enabled(true)
+            // Tauri's file-drop handler swallows HTML drag & drop on Windows; we need it for reordering tabs/shortcuts.
+            .disable_drag_drop_handler(),
         LogicalPosition::new(0.0, 0.0), LogicalSize::new(s.width, s.height))?;
     // The tab bar is its own small view that slides OVER the page (the page never resizes when it shows or hides).
     win.add_child(
-        WebviewBuilder::new("rail", WebviewUrl::App("rail.html".into())).browser_extensions_enabled(true),
+        WebviewBuilder::new("rail", WebviewUrl::App("rail.html".into())).browser_extensions_enabled(true)
+            // Tauri's file-drop handler swallows HTML drag & drop on Windows; we need it for reordering tabs/shortcuts.
+            .disable_drag_drop_handler(),
         LogicalPosition::new(-4000.0, 0.0), LogicalSize::new(1.0, 1.0))?;
     let w2 = win.clone();
     win.on_window_event(move |e| { if let tauri::WindowEvent::Resized(_) = e { relayout(&w2); } });
@@ -39,10 +43,16 @@ pub async fn set_rail(app: AppHandle, x: f64, y: f64, w: f64, h: f64, visible: b
     let Some(r) = app.get_webview("rail") else { return };
     let ok = |v: f64| v.is_finite() && v.abs() < 20000.0;
     if !(ok(x) && ok(y) && ok(w) && ok(h)) { return; }
+    // During a slide only the position changes: skip resize/raise when nothing else moved (smoother, no flicker).
+    static LAST: parking_lot::Mutex<(f64, f64, bool)> = parking_lot::Mutex::new((0.0, 0.0, false));
     let _ = r.set_position(LogicalPosition::new(x, y));
-    let _ = r.set_size(LogicalSize::new(w.max(1.0), h.max(1.0)));
-    if visible { let _ = r.show(); } else { let _ = r.hide(); }
-    raise_rail(&app);
+    let mut last = LAST.lock();
+    if (last.0 - w).abs() > 0.5 || (last.1 - h).abs() > 0.5 || last.2 != visible {
+        let _ = r.set_size(LogicalSize::new(w.max(1.0), h.max(1.0)));
+        if visible { let _ = r.show(); } else { let _ = r.hide(); }
+        raise_rail(&app);
+        *last = (w, h, visible);
+    }
 }
 /// Screenshot of the active tab (whole page or just what's visible) -> `screenshot {data}` event to the chrome UI.
 #[tauri::command]
@@ -254,14 +264,21 @@ fn handle_pick(app: &AppHandle, tab: &str, u: &url::Url) {
     }
     if host.is_empty() || sel.is_empty() || sel.contains('\n') || host.contains(|c: char| c.is_whitespace() || c == '#') { return; }
     // Any page can navigate to hush-pick://, so only accept a filter for the host the tab is actually on.
-    let on_host = app.get_webview(tab).and_then(|w| w.url().ok()).and_then(|cur| cur.host_str().map(str::to_string));
+    let cur = app.get_webview(tab).and_then(|w| w.url().ok());
+    let on_host = cur.as_ref().and_then(|cur| cur.host_str().map(str::to_string));
     if on_host.as_deref() != Some(host.as_str()) { return; }
+    if u.host_str() == Some("watch") {   // Change watch: the UI stores it and checks it in the background.
+        let text = u.query_pairs().find(|(k, _)| k == "text").map(|(_, v)| v.into_owned()).unwrap_or_default();
+        let _ = app.emit_to("chrome", "watch-pick", serde_json::json!({ "url": cur.map(|c| c.to_string()), "sel": sel, "text": text }));
+        return;
+    }
     let app = app.clone();
     tauri::async_runtime::spawn(async move { let _ = crate::add_filter(&app, format!("{host}##{sel}")); });
 }
 
 #[tauri::command]
-pub async fn open_tab(app: AppHandle, input: String, private: Option<bool>) -> Result<String, String> {
+pub async fn open_tab(app: AppHandle, input: String, private: Option<bool>, tor: Option<bool>) -> Result<String, String> {
+    if tor.unwrap_or(false) { return make_tab_tor(&app, input, false); }
     make_tab(&app, input, private.unwrap_or(false), false)
 }
 
@@ -295,11 +312,17 @@ pub async fn peek_expand(app: AppHandle) -> Option<String> {
 }
 
 /// Builds a tab webview with all of Hush's protections. `peek` = floating preview, not added to the tab list.
-fn make_tab(app: &AppHandle, input: String, private: bool, peek: bool) -> Result<String, String> {
+fn make_tab(app: &AppHandle, input: String, private: bool, peek: bool) -> Result<String, String> { make_tab_with(app, input, private, peek, None) }
+/// A Tor tab: its own private profile, every request (and DNS lookup) through Hush's Tor proxy, WebRTC can't leak your IP.
+fn make_tab_tor(app: &AppHandle, input: String, peek: bool) -> Result<String, String> {
+    let port = crate::tor::port().ok_or("Tor isn’t connected yet")?;
+    make_tab_with(app, input, true, peek, Some(port))
+}
+fn make_tab_with(app: &AppHandle, input: String, private: bool, peek: bool, tor: Option<u16>) -> Result<String, String> {
     let app = app.clone();
     let st = app.state::<AppState>();
     let win = app.get_window("main").ok_or("no window")?;
-    let label = format!("{}-{}", if peek { "peek" } else { "tab" }, st.next_id.fetch_add(1, Ordering::Relaxed));
+    let label = format!("{}-{}", if peek { "peek" } else if tor.is_some() { "tor" } else { "tab" }, st.next_id.fetch_add(1, Ordering::Relaxed));
     // chrome-extension:// pages (an extension's popup or settings) open only for extensions the user installed.
     let ext_page = input.strip_prefix("chrome-extension://").and_then(|r| r.split('/').next()).map(|id| crate::extensions::installed(&app, id)).unwrap_or(false);
     let url: url::Url = if ext_page { input.parse() } else { resolve_app(&app, &input).parse() }.map_err(|e: url::ParseError| e.to_string())?;
@@ -314,6 +337,14 @@ fn make_tab(app: &AppHandle, input: String, private: bool, peek: bool) -> Result
     let builder = WebviewBuilder::new(&label, WebviewUrl::External(url))
         .on_navigation(move |u| match u.scheme() {
             "hush-pick" => { handle_pick(&app_nav, &lbl_nav, u); false }
+            // Mouse gesture drawn in the page (tools.js): only the direction letters are passed on.
+            "hush-gesture" => {
+                let h = u.host_str().unwrap_or("").to_ascii_lowercase();
+                let ev = if let Some(a) = h.strip_prefix("a-") { a.chars().all(|c| c.is_ascii_lowercase()).then(|| serde_json::json!({ "tab": lbl_nav, "action": a })) }
+                    else { let g: String = h.chars().filter(|c| "lrudt".contains(*c)).take(4).collect::<String>().to_uppercase(); (!g.is_empty()).then(|| serde_json::json!({ "tab": lbl_nav, "g": g })) };
+                if let Some(ev) = ev { let _ = app_nav.emit_to("chrome", "gesture", ev); }
+                false
+            }
             // Shift-click (peek) / Ctrl- or middle-click (background tab) on a link, reported by harden.js.
             "hush-peek" => {
                 let target = u.query_pairs().find(|(k, _)| k == "u").map(|(_, v)| v.into_owned()).unwrap_or_default();
@@ -374,6 +405,15 @@ fn make_tab(app: &AppHandle, input: String, private: bool, peek: bool) -> Result
         .extensions_path(crate::extensions::dir(&app))
         .initialization_script(include_str!("harden.js"))
         .initialization_script(&crate::scriptlets_init_js());
+    let builder = match tor {
+        Some(port) => builder
+            .proxy_url(format!("socks5://127.0.0.1:{port}").parse().map_err(|e: url::ParseError| e.to_string())?)
+            .data_directory(app.path().app_data_dir().map_err(|e| e.to_string())?.join("tor-profile"))
+            .additional_browser_args("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --force-webrtc-ip-handling-policy=disable_non_proxied_udp --webrtc-ip-handling-policy=disable_non_proxied_udp")
+            .browser_extensions_enabled(false)
+            .initialization_script("(()=>{for(const k of ['RTCPeerConnection','webkitRTCPeerConnection','RTCDataChannel'])try{delete window[k];Object.defineProperty(window,k,{value:undefined})}catch(e){}})();"),
+        None => builder,
+    };
     #[cfg(feature = "new-window-api")]
     let builder = builder.on_new_window(|_url, _features| tauri::webview::NewWindowResponse::Deny);
 
@@ -438,7 +478,8 @@ pub async fn clear_data(app: AppHandle) {
 
 /// Start the element picker in the active tab (R-41, desktop).
 #[tauri::command]
-pub async fn start_picker(app: AppHandle) {
+pub async fn start_picker(app: AppHandle, mode: Option<String>) {
     let l = app.state::<AppState>().active.lock().clone();
-    if let Some(w) = l.and_then(|l| app.get_webview(&l)) { let _ = w.eval(include_str!("picker.js")); }
+    let pre = if mode.as_deref() == Some("watch") { "window.__hushPickMode=\"watch\";" } else { "" };
+    if let Some(w) = l.and_then(|l| app.get_webview(&l)) { let _ = w.eval(&format!("{pre}{}", include_str!("picker.js"))); }
 }

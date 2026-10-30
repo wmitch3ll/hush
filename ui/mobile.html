@@ -7,6 +7,9 @@
 :root{--bg:#f2f2f2;--ink:#111;--mute:#8c8c8c;--card:#fff;--line:#e0e0e0;--acc:#111;--glow:#00000014;color-scheme:light}
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e0e0e;--ink:#eee;--mute:#808080;--card:#1a1a1a;--line:#2a2a2a;--acc:#eee;--glow:#ffffff14;color-scheme:dark}}
 :root[data-theme="dark"]{--bg:#0e0e0e;--ink:#eee;--mute:#808080;--card:#1a1a1a;--line:#2a2a2a;--acc:#eee;--glow:#ffffff14;color-scheme:dark}
+
+.card.over{outline:3px solid var(--acc);outline-offset:2px}
+body.tor #pill{border-color:#8b5cf6;box-shadow:0 0 0 3px #8b5cf633}body.tor #tabs-btn{color:#8b5cf6}
 body.priv{--bg:#050505;--ink:#e6e6e6;--mute:#777;--card:#161616;--line:#2b2b2b;--acc:#ddd;--glow:#ffffff14;color-scheme:dark}
 *{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Roboto,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden;overscroll-behavior:none}
@@ -135,6 +138,16 @@ const hostOf=u=>{try{return new URL(u).hostname}catch{return""}};
 const bare=u=>hostOf(u).replace(/^www\./,"");
 const vibe=()=>{try{navigator.vibrate&&navigator.vibrate(8)}catch(e){}};
 const SPK=`<svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM16 8a5 5 0 0 1 0 8"/></svg>`,MUT=`<svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM16 9l5 6M21 9l-5 6"/></svg>`;
+// Hold a tab card, then drag it onto another card to reorder. Hold and let go without moving = the card's menu.
+function liftCard(c,id,menu){vibe();c.style.transition="transform .12s";c.style.transform="scale(1.04)";c.style.zIndex="5";c.style.boxShadow="0 10px 30px #0006";
+  let sx=null,sy=null,moved=false,over=null;
+  const mv=e=>{const p=e.touches[0];if(sx==null){sx=p.clientX;sy=p.clientY}const dx=p.clientX-sx,dy=p.clientY-sy;if(Math.hypot(dx,dy)>14)moved=true;if(!moved)return;e.preventDefault();
+    c.style.transition="none";c.style.transform=`translate(${dx}px,${dy}px) scale(1.04)`;c.style.pointerEvents="none";
+    const o=document.elementFromPoint(p.clientX,p.clientY)?.closest(".card");document.querySelectorAll(".card.over").forEach(x=>x.classList.remove("over"));over=o&&o!==c?o:null;if(over)over.classList.add("over")};
+  const up=()=>{document.removeEventListener("touchmove",mv,{capture:true});document.removeEventListener("touchend",up,true);document.removeEventListener("touchcancel",up,true);
+    c.style.cssText="";document.querySelectorAll(".card.over").forEach(x=>x.classList.remove("over"));
+    if(!moved){menu();return}if(over){const to=+over.dataset.id,a=tabs.findIndex(x=>x.id===id),m=tabs.splice(a,1)[0];tabs.splice(tabs.findIndex(x=>x.id===to),0,m);saveSession();vibe()}drawSwitcher()};
+  document.addEventListener("touchmove",mv,{capture:true,passive:false});document.addEventListener("touchend",up,true);document.addEventListener("touchcancel",up,true)}
 function toggleMute(t){if(!t||!t.native)return;t.muted=!t.muted;native("muteTab",{id:t.native,muted:t.muted});toast(t.muted?"Tab muted":"Tab unmuted");render();if(sheet==="switcher")drawSwitcher()}
 const native=(cmd,args)=>inv("native_call",{cmd,args:args||{}});
 // Site icons (sent by Android as tiny PNGs), kept on this phone in browser storage — a convenience, safe to lose.
@@ -165,7 +178,7 @@ function applyColor(){const c=pref("color"),v=/^#[0-9a-f]{6}$/i.test(c)?hexHS(c)
 matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",applyColor);
 function applyPrefs(){
   const t=pref("theme");if(t==="system")document.documentElement.removeAttribute("data-theme");else document.documentElement.dataset.theme=t;
-  applyColor();
+  applyColor();try{HX.applyLook()}catch(e){}
   document.body.classList.toggle("bottom",pref("bar_pos")==="bottom");
   inv("set_web_prefs",{textZoom:+pref("text_zoom"),desktop:pref("desktop")==="true",pullRefresh:pref("pull_refresh")==="true",bgPlay:pref("bg_play")==="true"}).catch(()=>{});
   requestAnimationFrame(insets);
@@ -244,7 +257,7 @@ const toPage=()=>pref("bar_pos")==="bottom"?"up":"down";
 gesture($("#top"),{left:()=>step(1),right:()=>step(-1),
   up:()=>toPage()==="up"&&openSwitcher(), down:()=>toPage()==="down"&&openSwitcher(),
   long:()=>{if(document.activeElement!==$("#url"))openCmd()}});
-gesture($("#tabs-btn"),{tap:()=>openSwitcher(),long:()=>actions("Tabs",[["New tab",()=>newTab()],["New private tab",()=>newTab(true)],["Close this tab",()=>closeTab(cur)]])});
+gesture($("#tabs-btn"),{tap:()=>openSwitcher(),long:()=>{if(T()?.native){vibe();inv("page_action",{action:"wheel"}).catch(()=>{})}else actions("Tabs",[["New tab",()=>newTab()],["New private tab",()=>newTab(true)],["Close this tab",()=>closeTab(cur)]])}});
 gesture($("#menu-btn"),{tap:()=>{drawMenu();show("menu")},long:()=>T()?.native&&findMode(true)});
 gesture($("#shield"),{tap:()=>{if(T()?.native){drawSite();show("site")}},long:()=>quickShield()});
 async function quickShield(){const t=T(),h=hostOf(t?.url);if(!h)return;await inv("toggle_shield",{host:h});allow.has(h)?allow.delete(h):allow.add(h);
@@ -299,6 +312,8 @@ window.__hushEvent=(name,d)=>{
   else if(name==="screenshot"){if(typeof d.data!=="string"||!d.data.startsWith("data:image/png;base64,"))return;show("xs");$("#xs").innerHTML="";const t=T();
     HX.markup(d.data,{name:"Hush "+(t?bare(t.url):""),save:async x=>{await native("saveImage",{data:x});setTimeout(()=>show(null),0);return "Photos › Pictures/Hush"}});
     const obs=new MutationObserver(()=>{if(!document.querySelector(".hx-shot")){obs.disconnect();if(sheet==="xs")show(null)}});obs.observe(document.body,{childList:true})}
+  else if(name==="gesture"){HX.gesture(d)}
+  else if(name==="watchPick"){HX.watchAdd({url:d.url,sel:d.sel,text:d.text});toast("Watching “"+String(d.text||"").slice(0,40)+"”");openWatch()}
   else if(name==="thumb"){const t=tabs.find(x=>x.native===d.id);if(t&&!t.priv&&typeof d.data==="string"&&d.data.startsWith("data:image/jpeg;base64,")){t.thumb=d.data;if(sheet==="switcher")drawSwitcher()}}
   else if(name==="find"){$("#findn").textContent=d.count?d.index+"/"+d.count:"0"}
   else if(name==="longpress"){if(!d.url)return;const u=d.url;
@@ -330,13 +345,28 @@ function qrSheet(u){const el=$("#site");el.innerHTML=head("Scan to open")+`<div 
 
 // ---------- sheets ----------
 // ---------- start page, Listen, Boosts, Peek, screenshots, auto-archive (shared code in extras.js) ----------
-let listenSt="",lRate=1;
-const HX=HushX({inv,pref,setPref,toast,open:u=>go(u),state:()=>state,reload:()=>loadState(),mobile:true,
+let listenSt="",lRate=1,torOn=false;
+async function setTor(on){show(null);try{
+  if(on){toast("Connecting to Tor… the first time can take ~20 s");const port=await inv("tor_start");await native("torMode",{on:true,port});toast("Tor mode on — sites can’t see your IP")}
+  else{await native("torMode",{on:false});toast("Tor mode off")}
+  torOn=on;document.body.classList.toggle("tor",on);render()}catch(e){toast(String(e))}}
+const HX=HushX({inv,pref,setPref,toast,open:u=>go(u),state:()=>state,reload:()=>loadState(),mobile:true,act:id=>runAction(id),
+  watchPick:()=>{if(!T()?.native)return toast("Open the page you want to watch first");show(null);setTimeout(()=>native("pick",{mode:"watch"}),200);toast("Tap the price or text to watch")},
   zap:()=>{show(null);setTimeout(()=>native("pick"),200);toast("Tap the thing to remove")}});
 function renderHome(t){const v=$("#view");HX.home(v,{priv:!!t?.priv,icon,long:true,
   top:`${WORDMARK}<p class="hx-mute" style="margin-top:-10px">${t?.priv?"private tab — nothing here gets saved.":"nothing here but you."}</p>${pref("sp_stats")!=="off"?'<p class="stats" id="stats"></p>':""}`,
   bottom:`<p class="hint hx-mute">Swipe the address bar ← → to switch tabs · hold a link to peek · hold a shortcut to edit</p>`,after:loadStats})}
 setInterval(()=>HX.archiveSweep(tabs,cur,id=>closeTab(id)),5*60000);
+setInterval(()=>{HX.destructSweep(tabs,id=>closeTab(id));if(sheet==="switcher")drawSwitcher()},20000);
+setInterval(()=>HX.watchSweep(),5*60000);setTimeout(()=>HX.watchSweep(),20000);
+function openWatch(){$("#xs").innerHTML=head("Change watch")+'<div id="wx" style="padding:0 4px 20px"></div>';wire($("#xs"));HX.watchPanel($("#wx"),u=>{newTab(false,true);go(u)});show("xs")}
+function runAction(id){const t=T();const A={back:()=>inv("nav",{action:"back"}),forward:()=>inv("nav",{action:"fwd"}),reload:()=>inv("nav",{action:"reload"}),newtab:()=>newTab(),closetab:()=>closeTab(cur),
+  reopen:()=>toast("Nothing to reopen"),nexttab:()=>step(1),prevtab:()=>step(-1),top:()=>inv("page_action",{action:"scroll-top"}),bottom:()=>inv("page_action",{action:"scroll-bottom"}),find:()=>findMode(true),
+  reader:()=>inv("page_action",{action:"reader"}),listen:()=>{native("listen",{action:listenSt?"stop":"start",rate:lRate});listenSt=listenSt?"":"playing"},screenshot:()=>native("screenshot").catch(e=>toast(String(e))),
+  tor:()=>setTor(!torOn),newid:()=>inv("tor_new_identity").then(()=>inv("nav",{action:"reload"})).catch(e=>toast(String(e))),bookmark:()=>t&&inv("bookmark_add",{title:t.title||bare(t.url),url:t.url}).then(loadState),
+  copylink:()=>t&&copy(t.url),dark:async()=>{await setPref("force_dark",pref("force_dark")==="true"?"false":"true");applyDarkNow()},alltabs:()=>openSwitcher(),home:()=>newTab(false,true),
+  private:()=>newTab(true),mute:()=>toggleMute(t),boosts:()=>{drawMenu();$("#m-boost")?.click()},destruct:()=>{if(!t)return;actions("Self-destruct this tab",HX.DESTRUCT.map(([l,m])=>[l,()=>{t.destruct=m?Date.now()+m*60000:0;toast(m?"Closes in "+l:"Off")}]))}};
+  (A[id]||(()=>{}))()}
 function show(id){sheet=id;["switcher","menu","settings","downloads","site","history","cmd","reading","focus","about","xs"].forEach(s=>$("#"+s).classList.toggle("on",s===id));
   if(id!=="cmd"&&document.activeElement?.id==="cmdq")document.activeElement.blur();syncNative()}
 const head=title=>`<div class="grab"></div><h2>${title}<button class="btn sm" data-done>Done</button></h2>`;
@@ -348,7 +378,7 @@ function openSwitcher(){drawSwitcher();show("switcher")}
 function drawSwitcher(dir){const el=$("#switcher"),list=inWs();
   el.innerHTML=head("Tabs")+`<div class="chips">${wsList().map(w=>`<button data-ws="${esc(w)}" class="${w===curWs()?"on":""}">${esc(w)} · ${tabs.filter(t=>t.ws===w).length}</button>`).join("")}<button data-ws-new>＋ Workspace</button></div>
     <div class="row"><button class="btn acc" id="sw-new">＋ New tab</button><button class="btn" id="sw-priv">◌ Private tab</button></div>
-    <div class="cards" id="cards">${list.map(t=>`<div class="card ${t.id===cur?"cur":""} ${t.priv?"priv":""}" data-id="${t.id}">${t.priv?`<span class="tag">private</span>`:""}<button class="x" data-x="${t.id}" aria-label="Close tab">✕</button>${t.audio||t.muted?`<button class="snd" data-snd="${t.id}" aria-label="${t.muted?"Unmute":"Mute"} tab">${t.muted?MUT:SPK}</button>`:""}
+    <div class="cards" id="cards">${list.map(t=>`<div class="card ${t.id===cur?"cur":""} ${t.priv?"priv":""}" data-id="${t.id}">${t.priv?`<span class="tag">private</span>`:""}${t.destruct?`<span class="tag" style="left:auto;right:44px">⏲ ${HX.destructLabel(t)}</span>`:""}<button class="x" data-x="${t.id}" aria-label="Close tab">✕</button>${t.audio||t.muted?`<button class="snd" data-snd="${t.id}" aria-label="${t.muted?"Unmute":"Mute"} tab">${t.muted?MUT:SPK}</button>`:""}
       <div class="shot" ${t.thumb?`style="background-image:url('${esc(t.thumb)}')"`:""}>${t.thumb?"":(t.url?esc((bare(t.url)||"?")[0].toUpperCase()):"hush.")}</div>
       <div class="meta"><b>${esc(t.title||bare(t.url)||"New tab")}</b><small>${t.url?esc(bare(t.url)):"Start page"}</small></div></div>`).join("")}</div>
     <p class="hint" style="text-align:center">Swipe a card sideways to close it · hold a card for more · swipe here ← → for other workspaces</p>`;
@@ -362,9 +392,10 @@ function drawSwitcher(dir){const el=$("#switcher"),list=inWs();
       dragEnd:dx=>{if(Math.abs(dx)>90){c.style.transform=`translateX(${dx>0?400:-400}px)`;c.style.opacity="0";vibe();setTimeout(()=>closeTab(id),160)}else{c.style.transform="";c.style.opacity=""}},
       left:()=>{c.style.transform="translateX(-400px)";c.style.opacity="0";vibe();setTimeout(()=>closeTab(id),160)},
       right:()=>{c.style.transform="translateX(400px)";c.style.opacity="0";vibe();setTimeout(()=>closeTab(id),160)},
-      long:()=>{const t=tabs.find(x=>x.id===id);actions(t.title||bare(t.url)||"New tab",[
+      long:()=>liftCard(c,id,()=>{const t=tabs.find(x=>x.id===id);actions(t.title||bare(t.url)||"New tab",[
+        ...(t.destruct?[["Cancel self-destruct",()=>{t.destruct=0;drawSwitcher()}]]:HX.DESTRUCT.filter(d=>d[1]).map(([l,m])=>["Self-destruct in "+l,()=>{t.destruct=Date.now()+m*60000;toast("Closes in "+l);drawSwitcher()}])),
         ...wsList().filter(w=>w!==t.ws).map(w=>["Move to "+w,()=>{t.ws=w;saveSession();drawSwitcher()}]),
-        ...(t.native?[[t.muted?"Unmute tab":"Mute tab",()=>toggleMute(t)]]:[]),["Copy link",()=>copy(t.url)],["Close tab",()=>closeTab(id)],["Close other tabs",()=>inWs().filter(x=>x.id!==id).forEach(x=>closeTab(x.id))]])}})});
+        ...(t.native?[[t.muted?"Unmute tab":"Mute tab",()=>toggleMute(t)]]:[]),["Copy link",()=>copy(t.url)],["Close tab",()=>closeTab(id)],["Close other tabs",()=>inWs().filter(x=>x.id!==id).forEach(x=>closeTab(x.id))]])})})});
   el.querySelectorAll("[data-x]").forEach(b=>{const shut=e=>{e.stopPropagation();e.preventDefault();const c=b.closest(".card");if(c){c.style.transition="transform .16s,opacity .16s";c.style.transform="scale(.9)";c.style.opacity="0"}vibe();setTimeout(()=>closeTab(+b.dataset.x),140)};
     b.ontouchstart=e=>e.stopPropagation();b.ontouchend=shut;b.onclick=shut});
   el.querySelectorAll("[data-snd]").forEach(b=>{b.onclick=e=>{e.stopPropagation();toggleMute(tabs.find(x=>x.id===+b.dataset.snd))};b.ontouchstart=e=>e.stopPropagation();b.ontouchend=e=>{e.stopPropagation();e.preventDefault();toggleMute(tabs.find(x=>x.id===+b.dataset.snd))}});
@@ -378,6 +409,8 @@ function drawMenu(){const el=$("#menu"),t=T(),live=!!(t&&t.native);
    <div class="row"><button class="btn" id="m-later" ${live?"":"disabled"}>Read later</button><button class="btn" id="m-pdf" ${live?"":"disabled"}>Save as PDF</button><button class="btn" id="m-pip" ${live?"":"disabled"}>Pop-out video</button></div>
    ${live?`<div class="row"><button class="btn" id="m-listen">${listenSt?"■ Stop reading":"▶ Listen"}</button><button class="btn" id="m-boost">Boosts</button><button class="btn" id="m-shot">Screenshot</button></div>`:""}
    ${listenSt?`<div class="row"><button class="btn" id="l-prev">‹ Prev</button><button class="btn" id="l-pp">${listenSt==="paused"?"Resume":"Pause"}</button><button class="btn" id="l-next">Next ›</button><button class="btn" id="l-rate">${lRate}×</button></div>`:""}
+   <div class="item"><div>Tor mode<small>${torOn?"on — every tab goes through Tor":"hide your IP and location from every site"}</small></div><button class="sw ${torOn?"on":""}" id="m-tor"></button></div>
+   ${torOn?'<button class="item" id="m-newid"><div>New Tor identity<small>fresh circuits and a new IP, then reload</small></div></button>':""}
    <button class="item" id="m-arch"><div>Archived tabs<small>${+pref("archive")?"tabs unused for "+(+pref("archive")>=24?pref("archive")/24+" day(s)":pref("archive")+" hours")+" are archived":"off — tap to set up"}</small></div></button>
    <button class="item" id="m-new"><div>New private tab<small>separate cookies & storage, gone when you close it</small></div></button>
    <button class="item" id="m-bm" ${live?"":"disabled"}><div>Bookmark this page<small>shows on the start page</small></div></button>
@@ -403,6 +436,7 @@ function drawMenu(){const el=$("#menu"),t=T(),live=!!(t&&t.native);
   if($("#l-pp"))$("#l-pp").onclick=()=>{native("listen",{action:listenSt==="paused"?"resume":"pause"})};
   if($("#l-next"))$("#l-next").onclick=()=>native("listen",{action:"next"});if($("#l-prev"))$("#l-prev").onclick=()=>native("listen",{action:"prev"});
   if($("#l-rate"))$("#l-rate").onclick=()=>{const R=[1,1.25,1.5,1.75,2,0.75];lRate=R[(R.indexOf(lRate)+1)%R.length];native("listen",{action:"rate",rate:lRate});drawMenu()};
+  $("#m-tor").onclick=()=>setTor(!torOn);if($("#m-newid"))$("#m-newid").onclick=async()=>{try{await inv("tor_new_identity");inv("nav",{action:"reload"}).catch(()=>{});toast("New identity")}catch(e){toast(String(e))}show(null)};
   $("#m-arch").onclick=()=>{$("#xs").innerHTML=head("Archived tabs")+'<div id="arx" style="padding:0 4px 20px"></div>';wire($("#xs"));HX.archivePanel($("#arx"),u=>{newTab(false,true);go(u)});show("xs")};
   $("#m-rl").onclick=()=>{drawReading();show("reading")};$("#m-focus").onclick=()=>{drawFocus();show("focus")};$("#m-about").onclick=()=>{drawAbout();show("about")}}
 
@@ -472,6 +506,7 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
    <div class="item" style="display:block"><div style="margin-bottom:10px">Browser color</div><div class="swatches">${Object.entries(COLORS).map(([k,v])=>
      `<button data-color="${k}" class="${pref("color")===k?"on":""}" aria-label="${k}" style="background:${v?`hsl(${v[0]} ${v[1]}% 55%)`:"#555"}"></button>`).join("")}
      <label class="btn sm" style="position:relative;overflow:hidden">Custom<input type="color" id="s-color" value="${/^#/.test(pref("color"))?pref("color"):"#3b82f6"}" style="position:absolute;inset:0;opacity:0"></label></div></div>
+   ${item("Look","A complete theme",'<span></span>')}<div id="s-look" style="padding:0 4px 10px"></div>
    <h3>Pages</h3>
    ${item("Dark mode for websites","Darkens light sites · change per site from the shield",sw("force_dark",pref("force_dark")==="true"))}
    ${item("Text size","",seg("text_zoom",[["85","S"],["100","M"],["115","L"],["130","XL"]]))}
@@ -496,6 +531,11 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
    <button class="item" id="s-export"><div>Export<small>copy settings, bookmarks and filters as text</small></div></button>
    <textarea id="s-json" rows="3" placeholder="Paste an export here to import it"></textarea>
    <button class="btn" id="s-import">Import</button>
+   <h3>Gestures & tools</h3>
+   ${item("Two-finger gestures & quick wheel","Swipe a page with two fingers · two-finger hold or hold the tabs button for your wheel",'<button class="btn sm" id="s-gest">Customize</button>')}
+   ${item("Clean links","Removes tracking tags from links you open and copy",sw("clean_links",pref("clean_links")!=="off"))}
+   ${item("Video controls","Speed, ±10 s, loop and pop-out on any video",sw("video_bar",pref("video_bar")!=="off"))}
+   ${item("Change watch","Get told when a price or text changes",'<button class="btn sm" id="s-watch">Open</button>')}
    <h3>Gestures</h3>
    <div class="item" style="display:block;line-height:1.9;font-size:13px">Address bar: swipe ← → switch tabs · swipe ${toPage()} all tabs · hold for commands<br>
     Tab cards: swipe sideways to close · hold to move or copy · Workspaces: swipe the chips<br>Shield: tap for site settings · hold to toggle · Links: hold for options<br>
@@ -507,6 +547,9 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
   $("#s-color").oninput=e=>{state.settings.ui.color=e.target.value;applyColor()};$("#s-color").onchange=async e=>{await setPref("color",e.target.value);drawSettings()};
   el.querySelectorAll("[data-sw]").forEach(b=>b.onclick=async()=>{const k=b.dataset.sw,on=b.classList.contains("on"),bin=["force_dark","pull_refresh","desktop","bg_play"].includes(k);
     await setPref(k,bin?String(!on):(on?"off":"on"));if(k==="force_dark")applyDarkNow();if(k==="restore")saveSession();drawSettings()});
+  HX.lookPicker($("#s-look"),()=>{applyPrefs();drawSettings()});
+  $("#s-gest").onclick=()=>{$("#xs").innerHTML=head("Gestures & quick wheel")+'<div id="gx" style="padding:0 4px 20px"></div>';wire($("#xs"));HX.gesturePanel($("#gx"));show("xs")};
+  $("#s-watch").onclick=openWatch;
   $("#s-ws").onclick=()=>{const n=prompt("Workspaces, separated by commas",wsList().join(", "));if(n===null)return;
     const list=[...new Set(n.split(",").map(x=>x.trim().replace(/\|/g,"").slice(0,24)).filter(Boolean))];if(!list.length)return;
     tabs.forEach(t=>{if(!list.includes(t.ws))t.ws=list[0]});setPref("workspaces",list.join("|")).then(()=>{drawSettings();render()})};
@@ -530,7 +573,11 @@ async function handleIncoming(){let u="";try{u=(await native("takeIntent")).url|
   if(u==="hush:private")return newTab(true);if(u==="hush:search")return newTab();if(u==="hush:voice"){newTab(false,true);render();return voice()}
   if(u.startsWith("hush://import")||u.startsWith("hush:import")){try{const raw=u.split("#")[1]||"",j=JSON.parse(decodeURIComponent(escape(atob(raw.replace(/-/g,"+").replace(/_/g,"/")))));
     const items=(j.b||[]).map(x=>({title:String(x[0]||""),url:String(x[1]||""),folder:String(x[2]||"")})).filter(x=>/^https?:\/\//.test(x.url));
-    if(items.length&&confirm(`Add ${items.length} bookmarks sent from your computer?`)){const n=await inv("import_bookmarks",{items});await loadState();toast(n+" bookmarks added")}}catch(e){toast("That link couldn’t be read")}return}
+    const tl=(j.t||[]).filter(x=>typeof x==="string"&&/^https:\/\//.test(x)).slice(0,60),st=j.s&&typeof j.s==="object"?j.s:{},sk=Object.keys(st).filter(k=>/^[a-z_]{1,20}$/.test(k)&&typeof st[k]==="string");
+    const parts=[items.length?items.length+" bookmarks":"",tl.length?tl.length+" open tabs":"",sk.length?"your settings":""].filter(Boolean);
+    if(parts.length&&confirm("Add "+parts.join(", ")+" from your computer?")){if(items.length)await inv("import_bookmarks",{items});
+      for(const k of sk)await inv("set_setting",{key:k==="search"?"search":"ui."+k,value:st[k].slice(0,200)}).catch(()=>{});
+      await loadState();applyPrefs();for(const u of tl){const t=newTab(false,true);t.url=u}saveSession();render();toast("Synced "+parts.join(", "))}}catch(e){toast("That link couldn’t be read")}return}
   const t=T();if(t&&!t.native)go(u);else{newTab(false,true);go(u)}}
 // Memory saver: tabs you haven't looked at for a while give back their memory (they reload when you return).
 setInterval(()=>{const m=+pref("memory_saver");if(m>0)native("discardBackground",{minutes:m}).catch(()=>{})},60000);

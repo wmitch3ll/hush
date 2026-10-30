@@ -167,30 +167,29 @@ pub fn install_extras(wv: &tauri::Webview) {
 async fn tokio_sleep(ms: u64) { let _ = tauri::async_runtime::spawn_blocking(move || std::thread::sleep(std::time::Duration::from_millis(ms))).await; }
 
 /// JPEG snapshot of what the tab shows -> `thumb {tab, data}` to the tab bar.
+/// Uses the DevTools screenshot (same path as the screenshot tool), scaled down: it works for any visible tab.
 pub fn capture(wv: &tauri::Webview) {
-    use windows::Win32::System::Com::StructuredStorage::{CreateStreamOnHGlobal, GetHGlobalFromStream};
-    use windows::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
-    use base64::Engine;
     let app = wv.app_handle().clone();
     let label = wv.label().to_string();
     let _ = wv.with_webview(move |p| unsafe {
         let Ok(core) = p.controller().CoreWebView2() else { return };
-        let Ok(stream) = CreateStreamOnHGlobal(Default::default(), true) else { return };
-        let s2 = stream.clone();
-        let h = webview2_com::CapturePreviewCompletedHandler::create(Box::new(move |res| {
-            if res.is_err() { return Ok(()); }
-            if let Ok(hg) = GetHGlobalFromStream(&s2) {
-                let n = GlobalSize(hg); let ptr = GlobalLock(hg) as *const u8;
-                if !ptr.is_null() && n > 0 && n < 8_000_000 {
-                    let bytes = std::slice::from_raw_parts(ptr, n);
-                    let data = format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes));
-                    let _ = app.emit_to("rail", "thumb", serde_json::json!({ "tab": label, "data": data }));
+        let mut b = windows::Win32::Foundation::RECT::default();
+        let _ = p.controller().Bounds(&mut b);
+        let (w, h) = ((b.right - b.left).max(1), (b.bottom - b.top).max(1));
+        let params = format!(r#"{{"format":"jpeg","quality":55,"clip":{{"x":0,"y":0,"width":{w},"height":{h},"scale":{}}}}}"#, (480.0 / w as f64).min(1.0));
+        let h2 = webview2_com::CallDevToolsProtocolMethodCompletedHandler::create(Box::new(move |res, json| {
+            if res.is_ok() {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) {
+                    if let Some(d) = v["data"].as_str() {
+                        let _ = app.emit_to("rail", "thumb", serde_json::json!({ "tab": label, "data": format!("data:image/jpeg;base64,{d}") }));
+                    }
                 }
-                let _ = GlobalUnlock(hg);
             }
             Ok(())
         }));
-        let _ = core.CapturePreview(COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_JPEG, &stream, &h);
+        let m: Vec<u16> = "Page.captureScreenshot\0".encode_utf16().collect();
+        let pr: Vec<u16> = format!("{params}\0").encode_utf16().collect();
+        let _ = core.CallDevToolsProtocolMethod(windows::core::PCWSTR(m.as_ptr()), windows::core::PCWSTR(pr.as_ptr()), &h2);
     });
 }
 

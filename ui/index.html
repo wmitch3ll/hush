@@ -35,6 +35,8 @@ button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7
 .tab:hover{color:var(--ink)}.tab.on{border-color:var(--acc);color:var(--ink);box-shadow:0 0 0 3px var(--glow)}
 .compact .tab{height:32px}.compact #tabsbar.v .tab{width:32px}.compact #tabsbar.h .tab{height:24px}
 
+body.tor #pill{border-color:#8b5cf6;box-shadow:0 0 0 3px #8b5cf622}#torb{display:none;font:600 10.5px system-ui;color:#fff;background:#7c3aed;border-radius:99px;padding:3px 8px;white-space:nowrap;flex:none}body.tor #torb{display:inline-block}
+#onion.on{color:#7c3aed}#newid{display:none}body.tor #newid{display:grid;color:#7c3aed}
 #pill{flex:1;display:flex;align-items:center;gap:6px;height:34px;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:0 4px 0 12px;margin:0 6px;transition:border-color .15s,box-shadow .15s;min-width:0}
 .compact #pill{height:30px}
 #pill:focus-within{border-color:var(--acc);box-shadow:0 0 0 3px var(--glow)}
@@ -108,6 +110,7 @@ kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:
   <button id=reload title="Reload (Ctrl+R)" aria-label=Reload disabled><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/></svg></button>
   <label id=pill>
     <svg id=lock viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=2><rect x=5 y=11 width=14 height=9 rx=2 /><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+    <span id=torb title="This tab goes through Tor: sites can't see your IP or location">via Tor</span>
     <input id=bar placeholder="Search or enter address" autocomplete=off spellcheck=false aria-label="Address">
     <span id=find><input id=findq placeholder="Find in page — Enter: next · Shift+Enter: previous" aria-label="Find in page"><span id=findn></span>
       <button id=findp title="Previous (Shift+Enter)" aria-label="Previous match"><svg viewBox="0 0 24 24"><path d="M18 15l-6-6-6 6"/></svg></button>
@@ -116,6 +119,8 @@ kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:
   </label>
   <span id=peekbar><button class=pb id=pk-open title="Keep it as a tab">Open as tab</button><button class=pb id=pk-close title="Close preview (Esc)">Close</button></span>
   <span id=lctl aria-label="Read aloud controls"><button id=l-prev title="Previous paragraph" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M6 5v14M18 6l-9 6 9 6z"/></svg></button><button id=l-pp title="Pause" aria-label="Pause"><svg viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></svg></button><button id=l-next title="Next paragraph" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M18 5v14M6 6l9 6-9 6z"/></svg></button><b id=l-rate title="Speed">1×</b><button id=l-stop title="Stop reading" aria-label="Stop"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>
+  <button id=newid title="New identity: fresh Tor circuits, then reload" aria-label="New Tor identity"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/><circle cx=12 cy=12 r=2 /></svg></button>
+  <button id=onion title="Open this page in a Tor tab (Ctrl+Shift+O)" aria-label="Tor"><svg viewBox="0 0 24 24"><circle cx=12 cy=13 r=8 /><path d="M12 5c-3 2-4 5-4 8s1 6 4 8M12 5c3 2 4 5 4 8s-1 6-4 8M12 5v-2"/></svg></button>
   <button id=listen title="Listen to this page (Ctrl+Shift+R)" aria-label="Listen to page" disabled><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM16 8a5 5 0 0 1 0 8M19 5a9 9 0 0 1 0 14"/></svg></button>
   <button id=boostb title="Boosts — restyle this site (Ctrl+Shift+A)" aria-label="Boosts" disabled><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx=16 cy=7 r=2 /><circle cx=10 cy=17 r=2 /></svg></button>
   <button id=snap title="Screenshot the whole page (Ctrl+Shift+S)" aria-label="Screenshot" disabled><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx=12 cy=13 r=3.5 /></svg></button>
@@ -153,18 +158,19 @@ async function setPref(k,v){state.settings.ui[k]=String(v);layout(true);try{awai
 const COLORS={graphite:null,sand:[35,32],sage:[145,20],ocean:[205,48],rose:[345,42],plum:[275,30],ember:[18,62]};
 function hexHS(hex){const n=parseInt(hex.slice(1),16),r=(n>>16&255)/255,g=(n>>8&255)/255,b=(n&255)/255,mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn,l=(mx+mn)/2;
   let h=0;if(d){h=mx===r?((g-b)/d)%6:mx===g?(b-r)/d+2:(r-g)/d+4;h=Math.round(h*60+360)%360}return[h,d?Math.round(d/(1-Math.abs(2*l-1))*100):0]}
-function applyColor(){const c=pref('color'),v=/^#[0-9a-f]{6}$/i.test(c)?hexHS(c):COLORS[c],r=document.documentElement.style;
+var applyColor=function(){const c=pref('color'),v=/^#[0-9a-f]{6}$/i.test(c)?hexHS(c):COLORS[c],r=document.documentElement.style;
   const P=['--bg','--card','--line','--ink','--mute','--acc','--glow'];if(!v){P.forEach(p=>r.removeProperty(p));return}
   const [h,s]=v,dark=pref('theme')=='dark'||(pref('theme')=='system'&&matchMedia('(prefers-color-scheme: dark)').matches),H=(l,k)=>`hsl(${h} ${Math.round(s*k)}% ${l}%)`;
   const t=dark?{'--bg':H(8,.35),'--card':H(12,.35),'--line':H(21,.3),'--ink':H(93,.25),'--mute':H(60,.15),'--acc':H(68,1),'--glow':`hsl(${h} ${s}% 68% / .22)`}
              :{'--bg':H(95,.5),'--card':H(99,.6),'--line':H(87,.35),'--ink':H(12,.45),'--mute':H(48,.15),'--acc':H(40,1),'--glow':`hsl(${h} ${s}% 40% / .18)`};
   for(const k in t)r.setProperty(k,t[k])}
+const _applyColor=applyColor;applyColor=function(){_applyColor();try{if(HX.applyLook())railState()}catch(e){}};
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',applyColor);
 // Layout. The address bar spans the window; the tab bar is a separate view ("rail.html") that slides OVER the page
 // when auto-hide is on (the page never resizes), or sits beside the page when pinned.
 const EDGE=6;
 const railSize=()=>{const tp=pref('tabs_pos'),vert=tp=='left'||tp=='right',big=pref('previews')!='small'&&pref('previews')!='off';
-  return vert?(pref('tabs_mode')=='auto'?(big?272:236):(big?236:200)):(pref('previews')=='off'?64:big?168:118)};
+  return vert?(pref('previews')=='off'?168:big?212:184):(pref('previews')=='off'?56:big?132:104)};
 let railOff=1, railAnim=null;   // 0 = fully shown, 1 = hidden (only the hover edge left)
 function layout(now){
   applyColor();
@@ -198,15 +204,15 @@ function placeRail(){
 function slideRail(target){
   if(pref('tabs_mode')!='auto'){railOff=0;placeRail();return}
   cancelAnimationFrame(railAnim);const from=railOff,t0=performance.now(),dur=matchMedia('(prefers-reduced-motion: reduce)').matches?1:170;
-  const ease=k=>1-Math.pow(1-k,3);
+  const ease=k=>k<.5?4*k*k*k:1-Math.pow(-2*k+2,3)/2;
   const step=now=>{const k=Math.min(1,(now-t0)/dur);railOff=from+(target-from)*ease(k);placeRail();if(k<1)railAnim=requestAnimationFrame(step);else railState()};
   railAnim=requestAnimationFrame(step);
 }
 function reveal(on){
   if(pref('tabs_mode')!='auto')return;
   clearTimeout(hideT);
-  if(on&&!revealed){revealed=true;railState();slideRail(0)}
-  if(!on&&revealed){revealed=false;slideRail(1)}
+  if(on&&!revealed){revealed=true;railState();slideRail(0);if(cur&&tab(cur)&&!panel)inv('capture_tab',{tab:cur}).catch(()=>{})}
+  if(!on&&revealed){revealed=false;railState();setTimeout(()=>{if(!revealed)slideRail(1)},90)}
 }
 function scheduleHide(){clearTimeout(hideT);if(pref('tabs_mode')!='auto')return;
   hideT=setTimeout(()=>{if(!overBar)reveal(false)},Math.max(.5,+pref('hide_delay'))*1000)}
@@ -215,7 +221,7 @@ const peek=()=>{reveal(true);if(!overBar)scheduleHide()};   // briefly show the 
 function railState(){if(!T.event.emitTo)return;
   const cs=getComputedStyle(document.documentElement),vars={};for(const k of ['--bg','--card','--line','--ink','--mute','--acc','--glow'])vars[k]=cs.getPropertyValue(k).trim();
   const dark=matchMedia('(prefers-color-scheme: dark)').matches?pref('theme')!='light':pref('theme')=='dark';
-  T.event.emitTo('rail','rail-state',{tabs:(typeof inWs=='function'?inWs():tabs).map(t=>({id:t.id,url:t.url,title:t.title||'',priv:t.priv,sleeping:!!t.sleeping,muted:!!t.muted})),
+  T.event.emitTo('rail','rail-state',{tabs:(typeof inWs=='function'?inWs():tabs).map(t=>({id:t.id,url:t.url,title:t.title||'',priv:t.priv,tor:!!t.tor,destruct:HX.destructLabel(t),sleeping:!!t.sleeping,muted:!!t.muted})),
     cur,split,pos:pref('tabs_pos'),ws:typeof curWs=='function'?curWs():'Personal',wsList:typeof wsList=='function'?wsList():[],collapsed:pref('tabs_mode')=='auto'&&!revealed&&railOff>.5,
     pinned:pref('tabs_mode')!='auto',previews:pref('previews'),vars,dark}).catch(()=>{})}
 // Clicks and hovers from the tab bar.
@@ -231,10 +237,11 @@ T.event.listen('rail-action',async({payload:a})=>{const t=a.id&&tab(a.id);
     case 'newpriv':newTab(true);break;
     case 'ws':openPanel('ws');break;
     case 'mute':if(t){t.muted=!t.muted;inv('set_muted',{tab:t.id,muted:t.muted});railState()}break;
-    case 'dup':if(t)openTab(t.url,{priv:t.priv});break;
+    case 'destruct':if(t){t.destruct=a.min?Date.now()+a.min*60000:0;toast(a.min?'This tab closes in '+a.min+' min':'Self-destruct off');railState()}break;
+    case 'dup':if(t)openTab(t.url,{priv:t.priv,tor:t.tor});break;
     case 'others':for(const o of inWs().filter(x=>x.id!=a.id))await closeTab(o.id,true);break;
     case 'move':if(t){t.ws=a.ws;if(cur==t.id){cur=inWs().at(-1)?.id??null;if(cur)inv('switch_tab',{label:cur})}draw();sync();saveSession()}break;
-    case 'reorder':{const i=tabs.findIndex(x=>x.id==a.from),m=tabs.splice(i,1)[0];tabs.splice(tabs.findIndex(x=>x.id==a.to),0,m);draw();saveSession()}break;
+    case 'reorder':{const i=tabs.findIndex(x=>x.id==a.from);if(i<0||!tab(a.to))break;const m=tabs.splice(i,1)[0];tabs.splice(tabs.findIndex(x=>x.id==a.to),0,m);draw();saveSession()}break;
   }});
 T.event.listen('tab-title',({payload:p})=>{const t=tab(p.tab);if(t){t.title=p.title}});
 addEventListener('resize',()=>layout(true));
@@ -270,7 +277,7 @@ function draw(){
       const a=tabs.findIndex(x=>x.id==from),moved=tabs.splice(a,1)[0];tabs.splice(tabs.findIndex(x=>x.id==t.id),0,moved);draw();saveSession()};
     box.append(d)});
   $('#ws').textContent=curWs()[0].toUpperCase();$('#ws').title='Workspace: '+curWs()+' — click to switch';
-  const t=tab(cur), live=t&&t.ws==curWs(), h=live?hostOf(t.url):'';
+  const t=tab(cur), live=t&&t.ws==curWs(), h=live?hostOf(t.url):'';document.body.classList.toggle('tor',!!(live&&t.tor&&!panel));
   if(document.activeElement!==$('#bar')) $('#bar').value=panel||!live?'':t.url;
   const showHome=!live&&!panel;if(showHome&&$('#home').hidden!==false||showHome&&!$('#home').firstChild)renderHome();$('#home').hidden=!showHome;$('#home').style.display=showHome?'block':'none';
   $('#panel').hidden=!panel;
@@ -284,10 +291,10 @@ function draw(){
   railState();
 }
 async function openTab(v,o={}){closePanel(true);newPending=false;
-  const id=await inv('open_tab',{input:v,private:!!o.priv});tabs.push({id,url:'',priv:!!o.priv,ws:o.ws||curWs(),zoom:+pref('zoom')/100,last:Date.now()});
+  const id=await inv('open_tab',{input:v,private:!!(o.priv||o.tor),tor:!!o.tor});tabs.push({id,url:'',priv:!!(o.priv||o.tor),tor:!!o.tor,ws:o.ws||curWs(),zoom:+pref('zoom')/100,last:Date.now()});
   if(pref('zoom')!='100')inv('set_zoom',{factor:+pref('zoom')/100,tab:id}).catch(()=>{});
   if(!o.background){cur=id}draw();layout();sync();if(!o.quiet)peek();return id}
-async function wake(t){const id=await inv('open_tab',{input:t.url,private:t.priv});const old=t.id;t.id=id;t.sleeping=false;if(cur==old)cur=id;return id}
+async function wake(t){const id=await inv('open_tab',{input:t.url,private:t.priv,tor:!!t.tor});const old=t.id;t.id=id;t.sleeping=false;if(cur==old)cur=id;return id}
 function select(id){closePanel(true);const t=tab(id);if(!t)return;t.last=Date.now();if(t.sleeping){wake(t).then(nid=>{cur=nid;draw();sync()});return}if(t.ws!=curWs()){state.settings.ui.ws=t.ws;inv('set_setting',{key:'ui.ws',value:t.ws})}
   cur=id;if(split==id){split=null;inv('set_split',{label:null})}inv('switch_tab',{label:id});draw();sync()}
 const closedStack=[];
@@ -356,6 +363,7 @@ function shortcut(k){
   else if(k=='m'){const t=tab(cur);if(t){t.muted=!t.muted;inv('set_muted',{tab:t.id,muted:t.muted});toast(t.muted?'Tab muted':'Tab unmuted');railState()}}
   else if(k=='g'){if(!tab(cur))return;if(findOn&&$('#findq').value)inv('page_action',{action:'find',arg:$('#findq').value});else findMode(true)}
   else if(k=='f11')inv('toggle_fullscreen');
+  else if(k=='shift+o')torTab();
   else if(k=='shift+s'){if(tab(cur))snapshot(true)} else if(k=='shift+r'){if(tab(cur))listenToggle()} else if(k=='shift+a'){if(tab(cur))panel=='boost'?closePanel():openPanel('boost')}
   else if(k=='shift+b')panel=='bookmarks'?closePanel():openPanel('bookmarks');
   else if(k=='\\'){const o=inWs().filter(t=>t.id!=cur).at(-1);if(split)toggleSplit(split);else if(o)toggleSplit(o.id)}
@@ -366,7 +374,7 @@ addEventListener('keydown',e=>{const m=e.ctrlKey||e.metaKey,k=e.key.toLowerCase(
   if(m&&e.key=='Tab'){e.preventDefault();shortcut(e.shiftKey?'shift+tab':'tab')}
   else if(m&&e.shiftKey&&k=='n'){e.preventDefault();shortcut('shift+n')}
   else if(m&&e.shiftKey&&k=='t'){e.preventDefault();shortcut('shift+t')}
-  else if(m&&e.shiftKey&&['b','s','r','a'].includes(k)){e.preventDefault();shortcut('shift+'+k)}
+  else if(m&&e.shiftKey&&['b','s','r','a','o'].includes(k)){e.preventDefault();shortcut('shift+'+k)}
   else if(m&&/^[0-9]$/.test(e.key)){e.preventDefault();shortcut(e.key)}
   else if(m&&(e.key=='='||e.key=='+')){e.preventDefault();shortcut('+')}else if(m&&e.key=='-'){e.preventDefault();shortcut('-')}
   else if(m&&(k=='m'||k=='g')){e.preventDefault();shortcut(k)}
@@ -401,9 +409,12 @@ const RENDER={bookmarks:()=>renderBookmarks(),ext:()=>renderExt(),reading:()=>re
   boost:()=>{const p=$('#panel'),t=tab(cur),h=t?HX.host(t.url):'';if(!h){closePanel();return}p.innerHTML=`<h2>Boosts · ${esc(h)} ${closeBtn}</h2><div id=bx></div>`;
     HX.boost($('#bx'),h,()=>inv('nav',{action:'reload'}).catch(()=>{}));wire(p)},
   archive:()=>{const p=$('#panel');p.innerHTML=`<h2>Archived tabs ${closeBtn}</h2><div id=arx></div>`;HX.archivePanel($('#arx'),u=>openTab(u));wire(p)},
+  gest:()=>{const p=$('#panel');p.innerHTML=`<h2>Gestures & quick wheel ${closeBtn}</h2><div id=gx></div>`;HX.gesturePanel($('#gx'));wire(p)},
+  watch:()=>{const p=$('#panel');p.innerHTML=`<h2>Change watch ${closeBtn}</h2><div id=wx></div>`;HX.watchPanel($('#wx'),u=>openTab(u));wire(p)},
   shot:()=>{$('#panel').innerHTML='<p style="color:var(--mute);padding:40px;text-align:center">Screenshot editor</p>'}};
 // ---------- start page, Listen, Peek, screenshots, auto-archive (shared code in extras.js) ----------
-const HX=HushX({inv,pref,setPref,toast,open:u=>openTab(u),state:()=>state,reload:()=>loadState(),mobile:false,
+const HX=HushX({inv,pref,setPref,toast,open:u=>openTab(u),state:()=>state,reload:()=>loadState(),mobile:false,act:id=>runAction(id),
+  watchPick:()=>{if(!tab(cur))return toast('Open the page you want to watch first');closePanel();inv('start_picker',{mode:'watch'});toast('Click the price or text to watch')},
   zap:()=>{closePanel();inv('start_picker');toast('Click an element to remove it from this site · Esc to cancel')}});
 function renderHome(){const el=$('#home');HX.home(el,{top:`<h1 class="wordmark">hush.</h1>${pref('sp_stats')!='off'?'<div class=stats id=stats></div>':''}`,
   bottom:'<p class=hint style="color:var(--mute);font-size:12px">Ctrl+K for everything · Shift-click a link to peek · Ctrl+Shift+S full-page screenshot</p>',after:loadStats})}
@@ -422,6 +433,28 @@ T.event.listen('screenshot',({payload:p})=>{if(typeof p.data!='string'||!p.data.
   const t=tab(cur),name='Hush '+(t?HX.host(t.url):'')+' '+new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');openPanel('shot');
   HX.markup(p.data,{name,save:async d=>{const path=await inv('save_png',{data:d,name:name+'.png'});setTimeout(closePanel,0);return 'Downloads'}});
   const obs=new MutationObserver(()=>{if(!document.querySelector('.hx-shot')){obs.disconnect();if(panel=='shot')closePanel()}});obs.observe(document.body,{childList:true})});
+// ---------- Tor tabs: routed through Hush's built-in Tor; their own private profile ----------
+async function torReady(){const s=await inv('tor_state');if(s.on)return true;toast('Connecting to Tor… (first time can take ~20 s)');$('#onion').classList.add('on');
+  try{await inv('tor_start');toast('Connected to Tor');return true}catch(e){$('#onion').classList.remove('on');toast(String(e));return false}}
+async function torTab(blank){const t=tab(cur);if(!await torReady())return;
+  const u=!blank&&t&&!t.tor&&/^https?:/.test(t.url)?t.url:'https://duckduckgo.com/';await openTab(u,{tor:true})}
+async function newIdentity(){try{await inv('tor_new_identity');
+  if(tab(cur)?.tor)inv('nav',{action:'reload'});toast('New identity — fresh Tor circuits')}catch(e){toast(String(e))}}
+$('#onion').onclick=()=>torTab();$('#newid').onclick=newIdentity;
+T.event.listen('tor-status',({payload:p})=>{if(p.state=='error')toast(p.msg)});
+// ---------- actions (gestures, quick wheel, palette) ----------
+function destructMenu(id){const t=tab(id);if(!t)return;openPanel('pal');const p=$('#panel');
+  p.innerHTML=`<h2>Self-destruct this tab ${closeBtn}</h2><p style="color:var(--mute);margin:-8px 0 12px">It closes itself — and its history entry is not kept — when the time is up.</p>`+HX.DESTRUCT.map(([l,m])=>`<div class=row style="cursor:pointer" data-m=${m}><div>${l}</div></div>`).join('');
+  p.querySelectorAll('[data-m]').forEach(r=>r.onclick=()=>{const m=+r.dataset.m;t.destruct=m?Date.now()+m*60000:0;closePanel();toast(m?'This tab closes in '+r.textContent.trim():'Self-destruct off');railState()});wire(p)}
+function runAction(id){const t=tab(cur);const A={back:()=>inv('nav',{action:'back'}),forward:()=>inv('nav',{action:'fwd'}),reload:()=>inv('nav',{action:'reload'}),newtab:()=>newTab(false),
+  closetab:()=>cur&&closeTab(cur),reopen:()=>shortcut('shift+t'),nexttab:()=>cycle(1),prevtab:()=>cycle(-1),top:()=>inv('page_action',{action:'scroll-top'}),bottom:()=>inv('page_action',{action:'scroll-bottom'}),
+  find:()=>findMode(true),reader:()=>inv('page_action',{action:'reader'}),listen:()=>listenToggle(),screenshot:()=>snapshot(true),tor:()=>torTab(),newid:()=>newIdentity(),bookmark:()=>$('#star').click(),
+  copylink:async()=>{if(t)try{await navigator.clipboard.writeText(t.url)}catch(e){}},dark:async()=>{await setPref('force_dark',pref('force_dark')=='true'?'false':'true');applyDarkNow()},
+  alltabs:()=>peek(),home:()=>{cur=null;draw();sync()},private:()=>newTab(true),mute:()=>shortcut('m'),boosts:()=>openPanel('boost'),destruct:()=>cur&&destructMenu(cur)};(A[id]||(()=>{}))()}
+T.event.listen('gesture',({payload:p})=>{if(p.tab&&p.tab!=cur)return;HX.gesture(p)});
+T.event.listen('watch-pick',({payload:p})=>{if(!p.url)return;HX.watchAdd({url:p.url,sel:p.sel,text:p.text});toast('Watching “'+(p.text||'').slice(0,40)+'” — Settings › Change watch');openPanel('watch')});
+setInterval(()=>{HX.destructSweep(tabs,id=>closeTab(id,true));railState()},20000);
+setInterval(()=>HX.watchSweep(),5*60000);setTimeout(()=>HX.watchSweep(),20000);
 let peeking=false;
 function peekUI(u){$('#peekbar').classList.toggle('on',peeking);if(peeking){$('#bar').value=u||'';toast('Peeking — Esc to close')}else draw()}
 async function peekClose(){peeking=false;await inv('peek_close').catch(()=>{});peekUI()}
@@ -457,11 +490,11 @@ const ACTIONS=()=>[
   ['Split view with last tab','Ctrl+\\',()=>{closePanel();shortcut('\\')}],['Site settings & QR code','',()=>tab(cur)&&openPanel('site')],
   ['Toggle dark mode for websites','',async()=>{await setPref('force_dark',pref('force_dark')=='true'?'false':'true');applyDarkNow();closePanel()}],
   ['Read later','',async()=>{const t=tab(cur);if(!t)return;await inv('bookmark_add',{title:hostOf(t.url),url:t.url,folder:'reading'});await loadState();closePanel();toast('Added to reading list')}],
-  ['Reading list','',()=>openPanel('reading')],['Listen to this page','Ctrl+Shift+R',()=>{closePanel();tab(cur)&&listenToggle()}],['Boosts for this site','Ctrl+Shift+A',()=>tab(cur)&&openPanel('boost')],['Screenshot — whole page','Ctrl+Shift+S',()=>{closePanel();tab(cur)&&snapshot(true)}],['Screenshot — visible area','',()=>{closePanel();tab(cur)&&snapshot(false)}],['Archived tabs','',()=>openPanel('archive')],['Customize start page','',()=>{closePanel();renderHome()}],['Save page as PDF / print','Ctrl+P',()=>{closePanel();tab(cur)&&inv('page_action',{action:'print'})}],
+  ['Reading list','',()=>openPanel('reading')],['Self-destruct this tab','',()=>cur&&destructMenu(cur)],['Change watch','',()=>openPanel('watch')],['Gestures & quick wheel','',()=>openPanel('gest')],['New Tor tab','Ctrl+Shift+O',()=>{closePanel();torTab(true)}],['New Tor identity','',()=>{closePanel();newIdentity()}],['Listen to this page','Ctrl+Shift+R',()=>{closePanel();tab(cur)&&listenToggle()}],['Boosts for this site','Ctrl+Shift+A',()=>tab(cur)&&openPanel('boost')],['Screenshot — whole page','Ctrl+Shift+S',()=>{closePanel();tab(cur)&&snapshot(true)}],['Screenshot — visible area','',()=>{closePanel();tab(cur)&&snapshot(false)}],['Archived tabs','',()=>openPanel('archive')],['Customize start page','',()=>{closePanel();renderHome()}],['Save page as PDF / print','Ctrl+P',()=>{closePanel();tab(cur)&&inv('page_action',{action:'print'})}],
   ['Bookmarks','Ctrl+Shift+B',()=>openPanel('bookmarks')],['Reopen closed tab','Ctrl+Shift+T',()=>{closePanel();shortcut('shift+t')}],
   ['Mute / unmute tab','Ctrl+M',()=>{closePanel();shortcut('m')}],['Full screen','F11',()=>{closePanel();shortcut('f11')}],
   ['Zoom in','Ctrl+=',()=>shortcut('+')],['Zoom out','Ctrl+−',()=>shortcut('-')],['Reset zoom','Ctrl+0',()=>shortcut('0')],
-  ['Focus mode','',()=>openPanel('focus')],['Extensions','',()=>openPanel('ext')],['Send bookmarks to phone','',()=>openPanel('send')],['About Hush & updates','',()=>openPanel('about')],
+  ['Focus mode','',()=>openPanel('focus')],['Extensions','',()=>openPanel('ext')],['Sync tabs, bookmarks & settings to phone (QR)','',()=>openPanel('send')],['About Hush & updates','',()=>openPanel('about')],
   ['History','Ctrl+H',()=>openPanel('history')],['Downloads','Ctrl+J',()=>openPanel('downloads')],['Settings','Ctrl+,',()=>openPanel('settings')],
   ['New workspace…','',()=>openPanel('ws')],['Close tab','Ctrl+W',()=>{closePanel();cur&&closeTab(cur)}],['Clear browsing data','',()=>{closePanel();$('#s-wipe')?.click()||wipe()}],
   ...wsList().filter(w=>w!=curWs()).map(w=>['Switch to workspace: '+w,'',()=>{closePanel();switchWs(w)}]),
@@ -527,7 +560,11 @@ function renderFocus(){const p=$('#panel'),left=focusLeft(),sites=pref('focus_si
   p.querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{await setPref('focus_sites',sites.filter(x=>x!=b.dataset.rm).join(','));renderFocus()});
   $('#f-addb').onclick=async()=>{const v=hostOf('https://'+$('#f-add').value.trim().replace(/^https?:\/\//,'')).replace(/^www\./,'');if(v&&!sites.includes(v)){await setPref('focus_sites',[...sites,v].join(','));renderFocus()}};wire(p)}
 // Bookmarks -> phone: a hush:// link in a QR code. The phone's camera opens it in Hush, which asks before importing.
-function renderSend(){const p=$('#panel'),all=state.bookmarks.filter(b=>/^https?:/.test(b.url));let n=all.length,link='';
+function renderSend(){const p=$('#panel'),r=HX.syncLink(tabs);
+  p.innerHTML=`<h2>Sync to phone ${closeBtn}</h2><p style="color:var(--mute);margin:-8px 0 14px">Scan with your phone’s camera and tap the link. Hush on your phone asks before adding anything. It goes straight from this screen to your phone — no account, no server.</p>
+    <div class=qr style="width:280px;height:280px">${hushQR.svg(r.link)}</div>
+    <p style="color:var(--mute);margin-top:12px;text-align:center">${r.tabs} of ${r.totalTabs} open tabs · ${r.bookmarks} of ${r.totalBookmarks} bookmarks · ${r.settings} settings${r.tabs<r.totalTabs||r.bookmarks<r.totalBookmarks?' (that’s what fits in one code)':''}</p>`;wire(p)}
+function renderSendOld(){const p=$('#panel'),all=state.bookmarks.filter(b=>/^https?:/.test(b.url));let n=all.length,link='';
   const mk=k=>'hush://import#'+btoa(unescape(encodeURIComponent(JSON.stringify({b:all.slice(0,k).map(b=>[b.title.slice(0,40),b.url,b.folder||''])})))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
   while(n>0&&(link=mk(n)).length>2200)n--;
   p.innerHTML=`<h2>Send to phone ${closeBtn}</h2>`+(n?`<p style="color:var(--mute);margin:-8px 0 14px">Point your phone’s camera at this code and tap the link — Hush on your phone asks before adding ${n} bookmark${n>1?'s':''}${n<all.length?` (the first ${n} of ${all.length} fit in one code)`:''}.</p>
@@ -600,6 +637,12 @@ function renderSettings(){
   ${row('Browser color','Tints the whole browser',`<div class=swatches>${Object.entries(COLORS).map(([k,v])=>`<button data-color=${k} title=${k} class="${pref('color')==k?'on':''}" style="background:${v?`hsl(${v[0]} ${v[1]}% 55%)`:'#555'}"></button>`).join('')}
     <label class=btn style="position:relative;overflow:hidden;height:26px;padding:0 10px">Custom<input type=color id=s-color value="${/^#/.test(pref('color'))?pref('color'):'#3b82f6'}" style="position:absolute;inset:0;opacity:0;cursor:pointer"></label></div>`)}
   ${row('Dark mode for websites','Darkens light sites. Change it per site from the shield.',sw('force_dark',pref('force_dark')=='true'))}
+  ${row('Look','A complete theme — colors, start page and tab bar','<div id=s-look></div>')}
+  <h3>Gestures & tools</h3>
+  ${row('Mouse gestures & quick wheel','Right-drag on a page to go back, close tabs… · right-click and hold for your wheel','<button class=btn id=s-gest>Customize</button>')}
+  ${row('Clean links','Removes tracking tags (utm, fbclid, gclid…) from links you open and copy',sw('clean_links',pref('clean_links')!='off'))}
+  ${row('Video controls','Speed, ±10 s, loop and pop-out on any video',sw('video_bar',pref('video_bar')!='off'))}
+  ${row('Change watch','Get told when a price or text on a page changes','<button class=btn id=s-watch>Open</button>')}
   <h3>Tabs & history</h3>
   ${row('Reopen tabs on start','Restores your tabs and workspaces next time (private tabs never)',sw('restore',pref('restore')=='on'))}
   ${row('Remember history','Off by default · kept only on this computer · <a href="#" id=s-hist>open history</a>',sw('history',pref('history')=='on'))}
@@ -639,6 +682,7 @@ function renderSettings(){
   p.querySelectorAll('[data-sw]').forEach(b=>b.onclick=async()=>{const k=b.dataset.sw,on=b.classList.contains('on');
     await setPref(k,k=='force_dark'?String(!on):(on?'off':'on'));if(k=='fp')toast('Applies to tabs you open from now on');if(k=='force_dark')applyDarkNow();if(k=='restore')saveSession();renderSettings()});
   $('#s-hist').onclick=e=>{e.preventDefault();openPanel('history')};
+  HX.lookPicker($('#s-look'),()=>{applyColor();renderSettings()});$('#s-gest').onclick=()=>openPanel('gest');$('#s-watch').onclick=()=>openPanel('watch');
   $('#s-ext').onclick=()=>openPanel('ext');$('#s-rl').onclick=()=>openPanel('reading');$('#s-focus').onclick=()=>openPanel('focus');$('#s-send').onclick=()=>openPanel('send');$('#s-about').onclick=()=>openPanel('about');
   $('#s-bangs').onclick=async()=>{const v=prompt('Your shortcuts, separated by | as  key=https://site.com/search?q=%s',pref('bangs'));if(v===null)return;
     const list=v.split(/\||\n/).map(x=>x.trim()).filter(x=>/^[a-z0-9]{1,12}=https:\/\/\S+$/i.test(x));await setPref('bangs',list.join('|'));renderSettings();toast(list.length+' shortcuts saved')};$('#s-ws').onclick=()=>openPanel('ws');
