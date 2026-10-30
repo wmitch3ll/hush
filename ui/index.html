@@ -52,7 +52,7 @@ body.tor #pill{border-color:#8b5cf6;box-shadow:0 0 0 3px #8b5cf622}#torb{display
 #home{height:100%;display:grid;place-content:center;justify-items:center;text-align:center;gap:26px}
 #home h1{font:300 66px/1 ui-serif,"Times New Roman",Times,Georgia,serif;letter-spacing:-2px;margin-bottom:6px}#home p{color:var(--mute);margin-top:-18px}
 #bms{display:none}
-#home{display:block!important;overflow:auto}#home[hidden]{display:none!important}
+#home{display:block!important;overflow:auto}#home .hx-home h1{margin:0}#home .hx-home p{margin:0}#home[hidden]{display:none!important}
 #lctl{display:none;gap:2px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:0 4px;height:32px}#lctl.on{display:flex}#lctl b{font:600 11px system-ui;color:var(--mute);min-width:30px;text-align:center;cursor:pointer}
 #peekbar{display:none;gap:6px;align-items:center}#peekbar.on{display:flex}#peekbar .pb{width:auto;padding:0 10px;background:var(--card);border:1px solid var(--line);color:var(--ink);font-size:12px}
 .bm{all:unset;cursor:pointer;display:grid;justify-items:center;gap:6px;width:68px;color:var(--mute);font-size:11px}
@@ -148,7 +148,7 @@ let panel=null, revealed=false, overBar=false, hideT=null, downloads=[];
 const tab=id=>tabs.find(t=>t.id==id), hostOf=u=>{try{return new URL(u).hostname}catch{return''}};
 
 // ---------- preferences (stored in Rust as ui.<name>) ----------
-const DEF={tabs_pos:'left',tabs_mode:'auto',hide_delay:'3',bar_pos:'top',density:'normal',theme:'system',tab_style:'auto',
+const DEF={video_quality:'1080',tabs_pos:'left',tabs_mode:'auto',hide_delay:'3',bar_pos:'top',density:'normal',theme:'system',tab_style:'auto',
   zoom:'100',previews:'large',fp:'on',fp_off:'',bangs:'',memory_saver:'30',focus_sites:'youtube.com,reddit.com,x.com,instagram.com,tiktok.com,facebook.com',focus_until:'0',color:'graphite',force_dark:'false',history:'off',restore:'off',workspaces:'Personal',ws:'Personal'};
 const pref=k=>state.settings.ui?.[k]??DEF[k];
 async function setPref(k,v){state.settings.ui[k]=String(v);layout(true);try{await inv('set_setting',{key:'ui.'+k,value:String(v)})}catch(e){toast(String(e))}}
@@ -409,6 +409,7 @@ const RENDER={bookmarks:()=>renderBookmarks(),ext:()=>renderExt(),reading:()=>re
   boost:()=>{const p=$('#panel'),t=tab(cur),h=t?HX.host(t.url):'';if(!h){closePanel();return}p.innerHTML=`<h2>Boosts · ${esc(h)} ${closeBtn}</h2><div id=bx></div>`;
     HX.boost($('#bx'),h,()=>inv('nav',{action:'reload'}).catch(()=>{}));wire(p)},
   archive:()=>{const p=$('#panel');p.innerHTML=`<h2>Archived tabs ${closeBtn}</h2><div id=arx></div>`;HX.archivePanel($('#arx'),u=>openTab(u));wire(p)},
+  diag:()=>{const p=$('#panel');p.innerHTML=`<h2>Diagnostics ${closeBtn}</h2><p style="color:var(--mute);margin:-8px 0 12px">Recent internal events. A screenshot of this helps fix problems.</p><pre style="white-space:pre-wrap;font:12px ui-monospace,monospace;user-select:text">${esc(DIAG.join('\n')||'Nothing yet — open the tab bar or load a page, then come back.')}</pre>`;wire(p)},
   gest:()=>{const p=$('#panel');p.innerHTML=`<h2>Gestures & quick wheel ${closeBtn}</h2><div id=gx></div>`;HX.gesturePanel($('#gx'));wire(p)},
   watch:()=>{const p=$('#panel');p.innerHTML=`<h2>Change watch ${closeBtn}</h2><div id=wx></div>`;HX.watchPanel($('#wx'),u=>openTab(u));wire(p)},
   shot:()=>{$('#panel').innerHTML='<p style="color:var(--mute);padding:40px;text-align:center">Screenshot editor</p>'}};
@@ -457,6 +458,8 @@ setInterval(()=>{HX.destructSweep(tabs,id=>closeTab(id,true));railState()},20000
 setInterval(()=>HX.watchSweep(),5*60000);setTimeout(()=>HX.watchSweep(),20000);
 // ---------- Floating video: leave a tab that's playing and it keeps playing in a small player you can drag and resize ----------
 let floating=null;
+// Diagnostics (Ctrl+K → Diagnostics): recent internal events, to help track down problems.
+const DIAG=[];T.event.listen('diag',({payload:p})=>{DIAG.unshift(new Date().toLocaleTimeString()+' '+p.what+' '+(p.tab||'')+': '+p.msg);DIAG.length=Math.min(DIAG.length,40)});
 T.event.listen('tab-audio',({payload:p})=>{const t=tab(p.tab);if(t)t.audio=p.audio});
 function maybeFloat(from,to){if(!from||from==to||pref('float_video')=='off')return;const t=tab(from);if(!t||!t.audio||t.muted||t.sleeping)return;
   const [x,y,w]=(pref('float_pos')||'').split(',').map(Number);floating=from;
@@ -498,7 +501,7 @@ const ACTIONS=()=>[
   ['Split view with last tab','Ctrl+\\',()=>{closePanel();shortcut('\\')}],['Site settings & QR code','',()=>tab(cur)&&openPanel('site')],
   ['Toggle dark mode for websites','',async()=>{await setPref('force_dark',pref('force_dark')=='true'?'false':'true');applyDarkNow();closePanel()}],
   ['Read later','',async()=>{const t=tab(cur);if(!t)return;await inv('bookmark_add',{title:hostOf(t.url),url:t.url,folder:'reading'});await loadState();closePanel();toast('Added to reading list')}],
-  ['Reading list','',()=>openPanel('reading')],['Self-destruct this tab','',()=>cur&&destructMenu(cur)],['Change watch','',()=>openPanel('watch')],['Gestures & quick wheel','',()=>openPanel('gest')],['New Tor tab','Ctrl+Shift+O',()=>{closePanel();torTab(true)}],['New Tor identity','',()=>{closePanel();newIdentity()}],['Listen to this page','Ctrl+Shift+R',()=>{closePanel();tab(cur)&&listenToggle()}],['Boosts for this site','Ctrl+Shift+A',()=>tab(cur)&&openPanel('boost')],['Screenshot — whole page','Ctrl+Shift+S',()=>{closePanel();tab(cur)&&snapshot(true)}],['Screenshot — visible area','',()=>{closePanel();tab(cur)&&snapshot(false)}],['Archived tabs','',()=>openPanel('archive')],['Customize start page','',()=>{closePanel();renderHome()}],['Save page as PDF / print','Ctrl+P',()=>{closePanel();tab(cur)&&inv('page_action',{action:'print'})}],
+  ['Reading list','',()=>openPanel('reading')],['Self-destruct this tab','',()=>cur&&destructMenu(cur)],['Change watch','',()=>openPanel('watch')],['Gestures & quick wheel','',()=>openPanel('gest')],['Diagnostics','',()=>openPanel('diag')],['New Tor tab','Ctrl+Shift+O',()=>{closePanel();torTab(true)}],['New Tor identity','',()=>{closePanel();newIdentity()}],['Listen to this page','Ctrl+Shift+R',()=>{closePanel();tab(cur)&&listenToggle()}],['Boosts for this site','Ctrl+Shift+A',()=>tab(cur)&&openPanel('boost')],['Screenshot — whole page','Ctrl+Shift+S',()=>{closePanel();tab(cur)&&snapshot(true)}],['Screenshot — visible area','',()=>{closePanel();tab(cur)&&snapshot(false)}],['Archived tabs','',()=>openPanel('archive')],['Customize start page','',()=>{closePanel();renderHome()}],['Save page as PDF / print','Ctrl+P',()=>{closePanel();tab(cur)&&inv('page_action',{action:'print'})}],
   ['Bookmarks','Ctrl+Shift+B',()=>openPanel('bookmarks')],['Reopen closed tab','Ctrl+Shift+T',()=>{closePanel();shortcut('shift+t')}],
   ['Mute / unmute tab','Ctrl+M',()=>{closePanel();shortcut('m')}],['Full screen','F11',()=>{closePanel();shortcut('f11')}],
   ['Zoom in','Ctrl+=',()=>shortcut('+')],['Zoom out','Ctrl+−',()=>shortcut('-')],['Reset zoom','Ctrl+0',()=>shortcut('0')],
@@ -650,6 +653,7 @@ function renderSettings(){
   ${row('Mouse gestures & quick wheel','Right-drag on a page to go back, close tabs… · right-click and hold for your wheel','<button class=btn id=s-gest>Customize</button>')}
   ${row('Clean links','Removes tracking tags (utm, fbclid, gclid…) from links you open and copy',sw('clean_links',pref('clean_links')!='off'))}
   ${row('Video controls','Speed, ±10 s, loop and pop-out on any video',sw('video_bar',pref('video_bar')!='off'))}
+  ${row('YouTube quality','Videos start at this quality instead of YouTube’s low automatic pick',seg('video_quality',[['1080','1080p'],['720','720p'],['1440','1440p'],['2160','4K'],['auto','Auto']]))}
   ${row('Floating video','Switch tabs while a video plays and it keeps going in a small player — drag it anywhere, drag its corner to resize',sw('float_video',pref('float_video')!='off'))}
   ${row('Change watch','Get told when a price or text on a page changes','<button class=btn id=s-watch>Open</button>')}
   <h3>Tabs & history</h3>

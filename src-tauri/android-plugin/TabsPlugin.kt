@@ -246,7 +246,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         // This must be the first call on the WebView.
         if (t.priv && privateSupported()) try { WebViewCompat.setProfile(w, PRIVATE) } catch (e: Throwable) {}
         w.settings.apply {
-            javaScriptEnabled = true; domStorageEnabled = true
+            javaScriptEnabled = true; domStorageEnabled = true; mediaPlaybackRequiresUserGesture = false   // videos autoplay
             setSupportMultipleWindows(false); javaScriptCanOpenWindowsAutomatically = false   // popup deny
             safeBrowsingEnabled = true; allowFileAccess = false; allowContentAccess = false
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW; setGeolocationEnabled(!t.priv)
@@ -360,17 +360,28 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     }
 
     /** Small JPEG of what the tab currently shows, for the tab grid. Never for private tabs. */
-    private fun snap(t: Tab) {
-        val w = t.wv ?: return
-        if (t.priv || w.width <= 0 || w.height <= 0 || w.parent == null) return
+    /** Copy what a view shows on screen (WebViews draw on the GPU, so drawing them into a bitmap gives black). */
+    private fun pixels(v: android.view.View, maxW: Int, done: (android.graphics.Bitmap?) -> Unit) {
+        if (v.width <= 0 || v.height <= 0 || !v.isAttachedToWindow || Build.VERSION.SDK_INT < 26) { done(null); return }
+        val loc = IntArray(2); v.getLocationInWindow(loc)
+        val full = android.graphics.Bitmap.createBitmap(v.width, v.height, android.graphics.Bitmap.Config.ARGB_8888)
         try {
-            val s = 360f / w.width
-            val bmp = android.graphics.Bitmap.createBitmap(360, (w.height * s).toInt().coerceIn(1, 1200), android.graphics.Bitmap.Config.RGB_565)
-            val c = android.graphics.Canvas(bmp); c.scale(s, s); c.translate(-w.scrollX.toFloat(), -w.scrollY.toFloat()); w.draw(c)
-            val out = java.io.ByteArrayOutputStream(); bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 62, out); bmp.recycle()
-            emit("thumb", JSObject().apply { put("id", t.id)
-                put("data", "data:image/jpeg;base64," + android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)) })
-        } catch (e: Throwable) {}
+            android.view.PixelCopy.request(act.window, android.graphics.Rect(loc[0], loc[1], loc[0] + v.width, loc[1] + v.height), full, { r ->
+                if (r != android.view.PixelCopy.SUCCESS) { full.recycle(); done(null); return@request }
+                if (maxW >= v.width) { done(full); return@request }
+                val s = android.graphics.Bitmap.createScaledBitmap(full, maxW, (v.height * maxW.toFloat() / v.width).toInt().coerceAtLeast(1), true); full.recycle(); done(s)
+            }, android.os.Handler(android.os.Looper.getMainLooper()))
+        } catch (e: Throwable) { full.recycle(); done(null) }
+    }
+    /** Tab-switcher preview of a tab while it's still on screen; `then` runs afterwards (e.g. take it off screen). */
+    private fun snap(t: Tab, then: (() -> Unit)? = null) {
+        val w = t.wv
+        if (w == null || t.priv || w.parent == null) { then?.invoke(); return }
+        pixels(w, 360) { bmp -> try { if (bmp != null) {
+                val out = java.io.ByteArrayOutputStream(); bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 62, out); bmp.recycle()
+                emit("thumb", JSObject().apply { put("id", t.id)
+                    put("data", "data:image/jpeg;base64," + android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)) }) } } catch (e: Throwable) {}
+            then?.invoke() }
     }
 
     /** The view that goes on screen: the WebView inside a pull-to-refresh container. */
@@ -409,7 +420,9 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     /** Show the active tab's view (or none while a chrome sheet is open). */
     private fun render() = act.runOnUiThread {
         val root = act.findViewById<ViewGroup>(android.R.id.content)
-        tabs.values.forEach { t -> t.box?.let { if (it.parent != null && (t.id != active || !visible) && !(t.id == floatId && visible)) { snap(t); root.removeView(it) } } }
+        tabs.values.forEach { t -> t.box?.let { b -> if (b.parent != null && (t.id != active || !visible) && !(t.id == floatId && visible)) {
+            // Grab the preview first (it needs the tab on screen), then take it off one frame later (the new tab covers it).
+            if (b.tag != "leaving") { b.tag = "leaving"; snap(t) { b.tag = null; if ((t.id != active || !visible) && !(t.id == floatId && visible)) (b.parent as? ViewGroup)?.removeView(b) } } } } }
         // Floating video: that tab's view stays on top in a small, movable, resizable frame.
         floatId?.let { fid -> tabs[fid]?.let { ft -> if (visible && fid != active) ft.wv?.let { fw ->
             val fb = boxFor(ft, fw); val m = act.resources.displayMetrics
@@ -562,12 +575,11 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
 
     // ---------- Screenshot (visible area) + save to Pictures/Hush ----------
     @Command fun screenshot(i: Invoke) { act.runOnUiThread { val w = active?.let { tabs[it]?.wv }
-        if (w == null || w.width <= 0) { i.reject("no page"); return@runOnUiThread }
-        try { val bmp = android.graphics.Bitmap.createBitmap(w.width, w.height, android.graphics.Bitmap.Config.ARGB_8888)
-            val c = android.graphics.Canvas(bmp); c.translate(-w.scrollX.toFloat(), -w.scrollY.toFloat()); w.draw(c)
+        if (w == null || w.width <= 0 || w.parent == null) { i.reject("no page"); return@runOnUiThread }
+        pixels(w, Int.MAX_VALUE) { bmp -> if (bmp == null) { i.reject("couldn't capture"); return@pixels }
             val out = java.io.ByteArrayOutputStream(); bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out); bmp.recycle()
             emit("screenshot", JSObject().apply { put("data", "data:image/png;base64," + android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)) })
-            i.resolve() } catch (e: Throwable) { i.reject("couldn't capture") } } }
+            i.resolve() } } }
     @Command fun saveImage(i: Invoke) { val a = i.parseArgs(ImgArgs::class.java)
         try { val b64 = a.data.removePrefix("data:image/png;base64,"); val bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
             val v = android.content.ContentValues().apply { put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "Hush " + System.currentTimeMillis() + ".png")

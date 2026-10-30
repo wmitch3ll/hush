@@ -4,7 +4,7 @@
 // 3) Gestures: right-button drag (desktop) / two-finger swipe (phone) -> hush-gesture://<shape>; right-hold / two-finger hold = quick wheel.
 (() => {
   if (window.__hushTools || window.top !== window && !document.documentElement) return; window.__hushTools = true;
-  const cfg = (typeof __HUSH_TOOLS === "object" && __HUSH_TOOLS) || { clean: true, video: true, gestures: false };
+  const cfg = (typeof __HUSH_TOOLS === "object" && __HUSH_TOOLS) || { clean: true, video: true, gestures: false, quality: "1080" };
   const TRACK = /^(utm_[a-z_]+|fbclid|gclid|gclsrc|dclid|gbraid|wbraid|msclkid|mc_eid|mc_cid|igshid|igsh|yclid|_hsenc|_hsmi|mkt_tok|oly_anon_id|oly_enc_id|vero_id|wickedid|twclid|ttclid|s_cid|rb_clickid|_openstat|ref_src|ref_url|si)$/i;
   const KEEP_SI = /(^|\.)(spotify|youtube|youtu)\./i;   // "si" is a share-tracking id on these sites only
   const clean = href => { try { const u = new URL(href, location.href); if (!/^https?:$/.test(u.protocol)) return href; let changed = false;
@@ -45,6 +45,20 @@
     addEventListener("pointermove", e => { if (e.pointerType === "mouse") over(e); }, { passive: true, capture: true });
     addEventListener("touchstart", over, { passive: true, capture: true });
     addEventListener("scroll", () => bar && bar.classList.remove("on"), { passive: true, capture: true });
+  }
+
+  // YouTube video quality: start at your chosen quality (default 1080p) instead of YouTube's low "auto" pick.
+  const Q = { "2160": "hd2160", "1440": "hd1440", "1080": "hd1080", "720": "hd720", "480": "large" };
+  if (cfg.quality && Q[cfg.quality] && /(^|\.)youtube\.com$/.test(location.hostname)) {
+    const q = +cfg.quality, now = Date.now();
+    try { localStorage.setItem("yt-player-quality", JSON.stringify({ data: JSON.stringify({ quality: q, previousQuality: q }), expiration: now + 31536e6, creation: now })); } catch (e) {}
+    const apply = () => { const p = document.getElementById("movie_player") || document.querySelector(".html5-video-player");
+      if (p && p.setPlaybackQualityRange) { try { const lv = p.getAvailableQualityLevels ? p.getAvailableQualityLevels() : [];
+        const want = lv.includes(Q[cfg.quality]) ? Q[cfg.quality] : (lv.find(l => /^hd/.test(l)) || Q[cfg.quality]);
+        p.setPlaybackQualityRange(want, want); if (p.setPlaybackQuality) p.setPlaybackQuality(want); } catch (e) {} } };
+    let n = 0; const tick = setInterval(() => { apply(); if (++n > 20) clearInterval(tick); }, 1000);
+    addEventListener("yt-navigate-finish", () => { n = 0; apply(); }, true);
+    document.addEventListener("loadeddata", e => { if (e.target && e.target.tagName === "VIDEO") setTimeout(apply, 300); }, true);
   }
 
   // Gestures. Mouse (desktop): hold the right button and draw. Touch (Android): swipe with two fingers.

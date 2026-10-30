@@ -14,7 +14,10 @@ window.HushX = function (A) {
   const css = `
 .hx-home{position:relative;min-height:100%;width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:40px 16px;background-size:cover;background-position:center}
 .hx-home.walled{color:#fff;text-shadow:0 1px 8px #0006}.hx-home.walled .hx-mute{color:#ffffffcc}
-.hx-clock{font:200 64px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:-2px;font-variant-numeric:tabular-nums}.hx-date{font-size:13px;opacity:.75;margin-top:-10px}
+.hx-time{display:flex;flex-direction:column;align-items:center;gap:6px}.hx-clock{font:200 60px/1.05 ui-sans-serif,system-ui,"Segoe UI",sans-serif;letter-spacing:-1px;font-variant-numeric:tabular-nums;margin:0}.hx-date{font-size:13px;opacity:.75;margin:0}
+.hx-home .wordmark,.hx-home h1.wordmark{font:300 58px/1.1 ui-serif,"Times New Roman",Times,Georgia,serif;letter-spacing:-1.5px;margin:0;padding:0}
+.hx-home p,.hx-home .hx-mute{margin:0!important;color:var(--mute);line-height:1.45}.hx-home .stats{font-size:12px;margin:0!important;font-variant-numeric:tabular-nums}.hx-home .stats b{color:var(--ink)}.hx-home.walled .stats b{color:#fff}
+.hx-brand{display:flex;flex-direction:column;align-items:center;gap:8px}.hx-home .hint{font-size:11.5px;text-align:center;max-width:520px}
 .hx-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(84px,96px));justify-content:center;gap:12px;width:min(640px,100%)}
 .hx-tile{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 4px;border-radius:14px;cursor:pointer;min-width:0;touch-action:none}
 .hx-tile:hover{background:#8881}.hx-tile i{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font:600 18px system-ui;font-style:normal;background:var(--card);color:var(--ink);border:1px solid var(--line);background-size:60%;background-position:center;background-repeat:no-repeat}
@@ -51,8 +54,8 @@ window.HushX = function (A) {
     const st = A.state(), bms = (st.bookmarks || []).filter(b => b.folder !== 'reading'), bg = wallStyle(), priv = !!opts.priv;
     const clock = A.pref('sp_clock') !== 'off', notes = A.pref('sp_notes') === 'on' && !priv;
     el.innerHTML = `<div class="hx-home ${bg && !priv ? 'walled' : ''}" style="${bg && !priv ? 'background:' + esc(bg) + ';background-size:cover;background-position:center' : ''}">
-      ${clock ? '<div class=hx-clock></div><div class=hx-date></div>' : ''}
-      ${opts.top || ''}
+      ${clock ? '<div class=hx-time><div class=hx-clock></div><div class=hx-date></div></div>' : ''}
+      <div class=hx-brand>${opts.top || ''}</div>
       <div class="hx-grid ${editing ? 'hx-edit' : ''}">${bms.slice(0, 24).map(b => { const ic = opts.icon && opts.icon(b.url);
         return `<div class=hx-tile draggable=${editing} data-u="${esc(b.url)}" title="${esc(b.title || host(b.url))}"><i ${ic ? `style="background-image:url('${esc(ic)}');color:transparent"` : ''}>${esc((host(b.url) || '?')[0].toUpperCase())}</i><span>${esc(b.title || host(b.url))}</span><b class=hx-x data-rm="${esc(b.url)}">✕</b></div>` }).join('')}</div>
       ${editing ? `<form class=hx-add><input name=u placeholder="Add a site — example.com" autocomplete=off><button class=hx-b>Add</button></form>` : ''}

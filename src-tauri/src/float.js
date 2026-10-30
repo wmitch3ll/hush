@@ -2,15 +2,21 @@
 // Rust appends __hushFloat(true|false). Controls report back by navigating to hush-float://<action> (cancelled in Rust/Kotlin).
 window.__hushFloat = window.__hushFloat || ((on) => {
   const old = document.getElementById("hush-float"); if (old) old.remove();
-  const prev = document.querySelector("[data-hush-float]");
-  if (prev) { prev.style.cssText = prev.dataset.hushFloat; prev.removeAttribute("data-hush-float"); }
-  if (!on) { document.documentElement.style.overflow = ""; return; }
+  const css0 = document.getElementById("hush-float-css"); if (css0) css0.remove();
+  document.querySelectorAll("[data-hush-float],[data-hush-float-anc]").forEach(e => { e.removeAttribute("data-hush-float"); e.removeAttribute("data-hush-float-anc"); });
+  if (!on) { window.dispatchEvent(new Event("resize")); return; }
   const vids = [...document.querySelectorAll("video")];
   const v = vids.find(x => !x.paused && x.readyState > 2) || vids.sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0];
   if (!v) return;
-  v.dataset.hushFloat = v.style.cssText;
-  v.style.cssText += ";position:fixed!important;inset:0!important;left:0!important;top:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;z-index:2147483646!important;object-fit:contain!important;background:#000!important;transform:none!important;margin:0!important";
-  document.documentElement.style.overflow = "hidden";
+  // A stylesheet (not inline styles) so the site's own player code can't undo it when the window shrinks.
+  // Everything else is hidden; the video's parents lose transforms/containment so "fixed" really fills the view.
+  v.setAttribute("data-hush-float", "");
+  for (let e = v.parentElement; e && e !== document.documentElement; e = e.parentElement) e.setAttribute("data-hush-float-anc", "");
+  const st = document.createElement("style"); st.id = "hush-float-css";
+  st.textContent = "html,body{overflow:hidden!important;background:#000!important}body *{visibility:hidden!important}" +
+    "[data-hush-float-anc]{visibility:visible!important;transform:none!important;filter:none!important;contain:none!important;will-change:auto!important;perspective:none!important;backdrop-filter:none!important;clip-path:none!important;mask:none!important}" +
+    "video[data-hush-float]{visibility:visible!important;position:fixed!important;inset:0!important;left:0!important;top:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;min-width:0!important;min-height:0!important;z-index:2147483646!important;object-fit:contain!important;background:#000!important;transform:none!important;margin:0!important;padding:0!important;border:0!important}";
+  (document.head || document.documentElement).append(st);
   const go = a => { location.href = "hush-float://" + a; };
   const ui = document.createElement("hush-float"); ui.id = "hush-float";
   const sh = ui.attachShadow({ mode: "closed" });

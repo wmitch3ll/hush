@@ -2,6 +2,9 @@
 //! Commands are `async` on purpose: creating webviews from sync commands can deadlock on Windows.
 use crate::{resolve_app, AppState};
 use std::sync::atomic::Ordering;
+/// One set of WebView2 browser flags for every view that shares the main profile (WebView2 requires them to match).
+/// Tauri's defaults + videos may start playing without a click (autoplay).
+const WV2_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required";
 use std::path::{Path, PathBuf};
 use tauri::{webview::{DownloadEvent, PageLoadEvent, WebviewBuilder}, window::WindowBuilder, AppHandle, Emitter, LogicalPosition,
             LogicalSize, Manager, WebviewUrl, Window};
@@ -16,12 +19,14 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // Every webview shares one engine environment, so the chrome uses the same extension setting as the tabs.
     win.add_child(
         WebviewBuilder::new("chrome", WebviewUrl::App("index.html".into())).browser_extensions_enabled(true)
+            .additional_browser_args(WV2_ARGS)
             // Tauri's file-drop handler swallows HTML drag & drop on Windows; we need it for reordering tabs/shortcuts.
             .disable_drag_drop_handler(),
         LogicalPosition::new(0.0, 0.0), LogicalSize::new(s.width, s.height))?;
     // The tab bar is its own small view that slides OVER the page (the page never resizes when it shows or hides).
     win.add_child(
         WebviewBuilder::new("rail", WebviewUrl::App("rail.html".into())).browser_extensions_enabled(true)
+            .additional_browser_args(WV2_ARGS)
             // Tauri's file-drop handler swallows HTML drag & drop on Windows; we need it for reordering tabs/shortcuts.
             .disable_drag_drop_handler(),
         LogicalPosition::new(-4000.0, 0.0), LogicalSize::new(1.0, 1.0))?;
@@ -492,10 +497,10 @@ fn make_tab_with(app: &AppHandle, input: String, private: bool, peek: bool, tor:
         Some(port) => builder
             .proxy_url(format!("socks5://127.0.0.1:{port}").parse().map_err(|e: url::ParseError| e.to_string())?)
             .data_directory(app.path().app_data_dir().map_err(|e| e.to_string())?.join("tor-profile"))
-            .additional_browser_args("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --force-webrtc-ip-handling-policy=disable_non_proxied_udp --webrtc-ip-handling-policy=disable_non_proxied_udp")
+            .additional_browser_args("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required --force-webrtc-ip-handling-policy=disable_non_proxied_udp --webrtc-ip-handling-policy=disable_non_proxied_udp")
             .browser_extensions_enabled(false)
             .initialization_script("(()=>{for(const k of ['RTCPeerConnection','webkitRTCPeerConnection','RTCDataChannel'])try{delete window[k];Object.defineProperty(window,k,{value:undefined})}catch(e){}})();"),
-        None => builder,
+        None => builder.additional_browser_args(WV2_ARGS),
     };
     #[cfg(feature = "new-window-api")]
     let builder = builder.on_new_window(|_url, _features| tauri::webview::NewWindowResponse::Deny);

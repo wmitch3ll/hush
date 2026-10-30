@@ -75,7 +75,7 @@ pub fn scriptlets_init_js() -> String {
         let fp_off: Vec<&String> = p.fp_off.iter().chain(off.iter()).collect();
         format!("const __HUSH_FP={};\n{}\n", json!({ "secret": *FP_SECRET, "off": fp_off }), FARBLE_JS)
     } else { String::new() };
-    let tools = format!("{{const __HUSH_TOOLS={};\n{}\n}}\n", json!({ "clean": p.clean, "video": p.video, "gestures": p.gestures, "wheel": p.wheel }), include_str!("tools.js"));
+    let tools = format!("{{const __HUSH_TOOLS={};\n{}\n}}\n", json!({ "clean": p.clean, "video": p.video, "gestures": p.gestures, "wheel": p.wheel, "quality": p.quality }), include_str!("tools.js"));
     format!("{fp}{tools}window.__hushOff={};\n{}", serde_json::to_string(&off).unwrap_or("[]".into()), SCRIPTLETS_JS)
 }
 /// What every page gets when it starts loading; readable from JNI threads without the AppHandle.
@@ -85,7 +85,7 @@ pub struct PagePrefs { pub dark: bool, pub site_dark: std::collections::BTreeMap
     /// Fingerprint protection on/off, and sites where it's turned off.
     pub fp_on: bool, pub fp_off: Vec<String>,
     /// Page tools: link cleaner, video controls, mouse gestures (desktop).
-    pub clean: bool, pub video: bool, pub gestures: bool, pub wheel: Vec<String> }
+    pub clean: bool, pub video: bool, pub gestures: bool, pub wheel: Vec<String>, pub quality: String }
 pub static PAGE_PREFS: LazyLock<parking_lot::RwLock<PagePrefs>> = LazyLock::new(Default::default);
 fn refresh_page_prefs(s: &store::Store) {
     let mut p = PAGE_PREFS.write();
@@ -95,6 +95,7 @@ fn refresh_page_prefs(s: &store::Store) {
     p.fp_on = s.settings.ui.get("fp").map(|v| v != "off").unwrap_or(true);
     let on = |k: &str, d: bool| s.settings.ui.get(k).map(|v| v == "on").unwrap_or(d);
     p.clean = on("clean_links", true); p.video = on("video_bar", true); p.gestures = on("gestures", true);
+    p.quality = s.settings.ui.get("video_quality").filter(|v| matches!(v.as_str(), "2160" | "1440" | "1080" | "720" | "480" | "auto")).cloned().unwrap_or_else(|| "1080".into());
     p.wheel = s.settings.ui.get("wheel").map(|v| v.as_str()).unwrap_or("back,forward,reload,newtab,closetab,screenshot").split(',')
         .filter(|x| !x.is_empty() && x.len() < 16 && x.chars().all(|c| c.is_ascii_lowercase())).take(8).map(str::to_string).collect();
     p.fp_off = s.settings.ui.get("fp_off").map(|v| v.split(',').map(|x| x.trim().to_lowercase()).filter(|x| !x.is_empty()).collect()).unwrap_or_default();
