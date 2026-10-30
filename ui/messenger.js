@@ -78,12 +78,55 @@ window.HushMsg = function (A) {
     const u = byId[p.id]; if (!u) return; const c = conns[u];
     if (p.t === 'open') { c.open = true; c.tries = 0; setStatus('on');
       send(u, ['REQ', 'hush', { kinds: [1059], '#p': [me], since: LS.get('since', 0) - 2 * 86400 }]);
-      c.queue.splice(0).forEach(m => send(u, m)); }
+      c.queue.splice(0).forEach(m => send(u, m));
+      Object.entries(subs).forEach(([id, s]) => send(u, ['REQ', id, ...s.filters])); }
     else if (p.t === 'close') { delete byId[p.id]; if (!okRelays()) setStatus(p.d ? 'error:' + p.d : 'connecting'); retry(u); }
     else if (p.t === 'msg') { let m; try { m = JSON.parse(p.d); } catch { return; }
-      if (m[0] === 'EVENT' && m[2]) receive(m[2]);
+      if (m[0] === 'EVENT' && m[2]) { if (m[1] === 'hush') receive(m[2]); else if (subs[m[1]]) { if (!subSeen.has(m[2].id)) { subSeen.add(m[2].id); try { if (N.verifyEvent(m[2])) subs[m[1]].onEvent(m[2]); } catch {} } } }
+      else if (m[0] === 'EOSE' && subs[m[1]]) { const s = subs[m[1]]; s.eose = (s.eose || 0) + 1; if (s.eose === 1 && s.onEose) s.onEose(); }
       else if (m[0] === 'OK' && pending[m[1]] && m[2]) { const { chat, msgId } = pending[m[1]]; delete pending[m[1]]; mark(chat, msgId, 'sent'); } }
   }
+
+  // ---------------------------------------------------------------- shared API for Echo (social): subscriptions + signed events
+  const ECHO_KINDS = new Set([1414, 1416, 1417, 31414]);
+  const hooks = { echo: [] }, subs = {}, subSeen = new Set();
+  function req(id, filters, onEvent, onEose) { subs[id] = { filters, onEvent, onEose, eose: 0 }; for (const u of relays()) send(u, ['REQ', id, ...filters]); }
+  function unreq(id) { if (!subs[id]) return; delete subs[id]; for (const u of relays()) send(u, ['CLOSE', id]); }
+  function sign(ev) { return N.finalizeEvent({ created_at: now(), tags: [], content: '', ...ev }, sk); }
+  function broadcast(ev) { for (const u of relays()) send(u, ['EVENT', ev]); return ev; }
+  function wrapTo(pks, kind, content, tags = []) {      // private: one encrypted copy per recipient (+ me)
+    const rumor = N.nip59.createRumor({ kind, content, tags, created_at: now() }, sk);
+    const list = [...new Set(pks.filter(p => /^[0-9a-f]{64}$/.test(p) && p !== me))];
+    for (const p of [...list, me]) { const w = wrapFor(rumor, p); if (p === me) seen.add(w.id); for (const u of relays()) send(u, ['EVENT', w]); }
+    return rumor;
+  }
+  async function uploadEncrypted(blob) {      // returns {url, k, nonce, x, alt[], mime, size}
+    const plain = new Uint8Array(await blob.arrayBuffer()), kb = crypto.getRandomValues(new Uint8Array(32)), iv = crypto.getRandomValues(new Uint8Array(12));
+    const ck = await crypto.subtle.importKey('raw', kb, 'AES-GCM', false, ['encrypt']);
+    const enc = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, ck, plain));
+    const x = hex(new Uint8Array(await crypto.subtle.digest('SHA-256', enc))); const got = []; let err = '';
+    for (const h of hosts()) { if (got.length >= 2) break;
+      try { const t = N.finalizeEvent({ kind: 24242, created_at: now(), content: 'Upload', tags: [['t', 'upload'], ['x', x], ['expiration', String(now() + 900)]] }, N.generateSecretKey());
+        const res = await A.invRaw('blob_put', enc, { 'x-hush-server': h, 'x-hush-auth': btoa(unescape(encodeURIComponent(JSON.stringify(t)))) });
+        got.push(res && /^https:\/\//.test(res.url) ? res.url : h.replace(/\/$/, '') + '/' + x); } catch (e) { err = String(e); } }
+    if (!got.length) throw new Error(err || 'no host accepted the file');
+    await putFile(x.slice(0, 32), blob);
+    return { url: got[0], alt: got.slice(1), k: hex(kb), nonce: hex(iv), x, mime: blob.type, size: blob.size };
+  }
+  async function mediaUrl(meta) {      // download (through Tor) + verify + decrypt, cached in IndexedDB
+    if (!meta || !/^[0-9a-f]{64}$/.test(meta.x || '')) return null;
+    const id = meta.x.slice(0, 32); const u0 = await fileUrl(id); if (u0) return u0;
+    for (const u of [meta.url, ...(meta.alt || [])].filter(z => /^https:\/\//.test(z || ''))) {
+      try { const buf = new Uint8Array(await A.inv('blob_get', { url: u }));
+        if (hex(new Uint8Array(await crypto.subtle.digest('SHA-256', buf))) !== meta.x) continue;
+        const ck = await crypto.subtle.importKey('raw', unhex(meta.k), 'AES-GCM', false, ['decrypt']);
+        await putFile(id, new Blob([await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unhex(meta.nonce) }, ck, buf)], { type: meta.mime || 'image/jpeg' }));
+        return fileUrl(id); } catch {} }
+    return null;
+  }
+  const api = { ready: () => !!N && loadKey(), me: () => me, start, req, unreq, sign, broadcast, wrapTo, uploadEncrypted, mediaUrl, shrink,
+    onEcho: f => hooks.echo.push(f), npub, nameOf, colorOf, initials, contacts, profile, setProfile: p => LS.set('profile', p), status: () => status, okRelays,
+    friends: () => { const c = contacts(); return Object.keys(c).filter(k => !c[k].blocked && !c[k].request && !c[k].auto); }, openChat: pk => { if (view.el) openChat(pk); } };
 
   // ---------------------------------------------------------------- receive
   const seen = new Set(LS.get('seen', []));
@@ -92,6 +135,7 @@ window.HushMsg = function (A) {
     if (!wrap || wrap.kind !== 1059 || seen.has(wrap.id)) return; seen.add(wrap.id);
     if (seen.size % 25 === 0) LS.set('seen', [...seen].slice(-8000));
     let r; try { if (!N.verifyEvent(wrap)) return; r = N.nip59.unwrapEvent(wrap, sk); } catch { return; }
+    if (ECHO_KINDS.has(r.kind)) { if (!contacts()[r.pubkey]?.blocked) hooks.echo.forEach(f => { try { f(r, 'private'); } catch (e) {} }); return; }   // Echo (private posts)
     const ps = r.tags.filter(t => t[0] === 'p').map(t => t[1]).filter(p => /^[0-9a-f]{64}$/.test(p));
     const key = keyOf([r.pubkey, ...ps]); if (!key) return;
     if (members(key).some(pk => contacts()[pk]?.blocked) && !isGroup(key)) return;
@@ -684,5 +728,5 @@ window.HushMsg = function (A) {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && view.open && view.screen === 'chat') sendRead(view.chat); });
   // Background: once set up, stay connected (through Tor) so messages arrive while you browse.
   function boot() { if (!N) return; if (loadKey()) { start(); badge(); } }
-  return { open, close, boot, unread: unreadTotal, addFromLink: s => { const pk = parseId(s); if (!pk || !loadKey()) return false; addContact(pk); return pk; }, ready: () => !!N };
+  return { api, open, close, boot, unread: unreadTotal, addFromLink: s => { const pk = parseId(s); if (!pk || !loadKey()) return false; addContact(pk); return pk; }, ready: () => !!N };
 };
