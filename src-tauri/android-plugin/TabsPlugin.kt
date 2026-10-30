@@ -11,7 +11,10 @@ import app.tauri.plugin.*
 
 @TauriPlugin
 class TabsPlugin(private val act: Activity) : Plugin(act) {
-    private class Tab(var url: String, var wv: WebView?, var saved: Bundle? = null, var priv: Boolean = false)
+    private class Tab(var url: String, var wv: WebView?, var saved: Bundle? = null, var priv: Boolean = false) {
+        /** Current page URL, readable from WebView's network thread (WebView methods like getUrl() are UI-thread only). */
+        @Volatile var page: String = url
+    }
     private val tabs = LinkedHashMap<String, Tab>(); private var active: String? = null; private var topPx = 0
     private val empty = WebResourceResponse("text/plain", "utf-8", 403, "Blocked", emptyMap(), "".byteInputStream())
 
@@ -36,15 +39,19 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         CookieManager.getInstance().setAcceptThirdPartyCookies(w, false)
         w.webViewClient = object : WebViewClient() {
             // Runs on a worker thread BEFORE the network request: same Rust engine via JNI.
+            // NEVER call v.url (or any WebView method) here: this runs on a network thread and WebView throws,
+            // which crashes the app ("the installed version of WebView caused the crash").
             override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): WebResourceResponse? {
-                val kind = kindOf(r)
-                return if (Native.shouldBlock(r.url.toString(), v.url ?: r.url.toString(), kind)) empty else null
+                val u = r.url.toString()
+                if (r.isForMainFrame) t.page = u
+                return try { if (Native.shouldBlock(u, t.page, kindOf(r))) empty else null } catch (e: Throwable) { null }
             }
             override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
                 if (r.url.scheme == "http") { v.loadUrl(r.url.toString().replaceFirst("http://", "https://")); return true }  // HTTPS-first
                 return false }
             override fun onPageStarted(v: WebView, u: String, f: android.graphics.Bitmap?) {
-                v.evaluateJavascript(Native.cosmeticJs(u), null)
+                t.page = u; t.url = u
+                try { v.evaluateJavascript(Native.cosmeticJs(u), null) } catch (e: Throwable) {}
             }
         }
         w.webChromeClient = object : WebChromeClient() {
