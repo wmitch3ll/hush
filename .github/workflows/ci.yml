@@ -75,10 +75,7 @@ jobs:
             echo "new=1" >> "$GITHUB_OUTPUT"
           fi
           echo "HUSH_KEYSTORE=$HOME/.hush/hush.jks" >> "$GITHUB_ENV"
-      - name: Back up a newly created signing key
-        if: steps.key.outputs.new == '1'
-        uses: actions/upload-artifact@v4
-        with: { name: SIGNING-KEY-BACKUP-keep-private, path: ~/.hush/hush.jks, retention-days: 90 }
+      # (No key backup as a build download: the repo can be public, and downloads of public repos are visible to anyone.)
       - name: Version from build number
         shell: bash
         run: |
