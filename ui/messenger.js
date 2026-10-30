@@ -409,7 +409,7 @@ window.HushMsg = function (A) {
       <p>Chat, share photos and files, and make group chats with other Hush users. Everything is end-to-end encrypted and always sent through <b>Tor</b> — no server ever sees what you say, who you are, or where you are. No phone number, no email, no account.</p>
       <input class=hm-in id=hm-name placeholder="Your name (what friends see)" maxlength=40 style="text-align:center">
       <button class=hm-btn id=hm-go>Start messaging</button></div>
-      <div class=hm-card><h3>How it stays private</h3><p>🔒 Only the people in a chat can read it — photos and files too.</p><p>🧅 Every connection goes through Tor — your IP address is never shown to anyone.</p><p>✉️ Each message is sealed in an outer envelope from a throwaway key, so relays can’t tell who sent it.</p><p style="margin:0">📱 Your contacts and chats stay on this device.</p></div></div></div>`;
+      <div class=hm-card><h3>How it stays private</h3><p>🔒 Only the people in a chat can read it — photos and files too.</p><p>🧅 Every connection goes through Tor — your IP address is never shown to anyone.</p><p>✉️ Each message is sealed in an outer envelope from a throwaway key, so relays can’t tell who sent it.</p><p>📱 Your contacts and chats stay on this device.</p><p style="margin:0">🎤 Mic and camera turn on only while you hold the record button. Recordings are made and encrypted on your device, and Hush keeps no copies.</p></div></div></div>`;
     wireCommon();
     view.el.querySelector('#hm-go').onclick = () => { createKey(); LS.set('profile', { name: view.el.querySelector('#hm-name').value.trim().slice(0, 40) });
       view.screen = 'list'; start(); repaint(); A.toast('You’re set up — share your Hush ID to start chatting'); };
@@ -511,6 +511,7 @@ window.HushMsg = function (A) {
   function recorder(btn, kind, key) {
     if (!btn) return;
     btn.onpointerdown = async e => { e.preventDefault(); if (rec) return;
+      if (!LS.get('avOk', false)) return avNotice(kind);       // explain first, then the system asks for permission
       const sx = e.clientX, sy = e.clientY, t0 = Date.now(); let st, down = true;
       const early = () => { down = false; removeEventListener('pointerup', early); }; addEventListener('pointerup', early);
       try { st = await navigator.mediaDevices.getUserMedia(kind === 'voice' ? { audio: { echoCancellation: true, noiseSuppression: true } } : { audio: true, video: { facingMode: 'user', width: 480, height: 480 } }); }
@@ -544,6 +545,23 @@ window.HushMsg = function (A) {
     return new Promise(res => { const v = document.createElement('video'), u = URL.createObjectURL(blob); v.preload = 'metadata'; v.src = u;
       v.onloadedmetadata = () => { if (isFinite(v.duration)) { res(v.duration); URL.revokeObjectURL(u); } else { v.currentTime = 1e7; v.ontimeupdate = () => { v.ontimeupdate = null; res(v.duration); URL.revokeObjectURL(u); }; } };
       v.onerror = () => res(0); setTimeout(() => res(0), 4000); });
+  }
+  // Shown once, before Hush asks for the microphone / camera for the first time.
+  function avNotice(kind) {
+    const v = document.createElement('div'); v.className = 'hm-view';
+    v.innerHTML = `<div class=hm-card style="max-width:420px;margin:16px;color:var(--ink)"><div style="font-size:34px;text-align:center">${kind === 'voice' ? '🎤' : '📹'}</div>
+      <h3 style="text-align:center;font-size:17px">Your ${kind === 'voice' ? 'microphone stays' : 'camera and microphone stay'} private</h3>
+      <p>• Hush only turns on the ${kind === 'voice' ? 'microphone' : 'camera and microphone'} <b>while you hold the button</b> (or until you tap send / 🗑). Never in the background, and the light/indicator on your device shows when it’s on.</p>
+      <p>• The recording is made <b>on this device</b> and encrypted here. Only the people in this chat can play it.</p>
+      <p>• Hush has no servers and <b>keeps nothing</b>: no copies, no transcripts, no analysis. The encrypted message passes through relays${kind === 'vmsg' ? ' and a file host' : ''} that can’t open it.</p>
+      <p style="margin-bottom:14px">• Next, ${A.mobile ? 'Android' : 'your computer'} will ask for permission — you can turn it off any time in its settings.</p>
+      <div style="display:flex;gap:8px;justify-content:center"><button class="hm-btn ghost" data-a=no>Not now</button><button class=hm-btn data-a=ok>Continue</button></div></div>`;
+    document.body.append(v);
+    v.onclick = async e => { const a = e.target.dataset?.a; if (e.target === v || a === 'no') return v.remove();
+      if (a === 'ok') { v.remove(); LS.set('avOk', true);
+        try { const st = await navigator.mediaDevices.getUserMedia(kind === 'voice' ? { audio: true } : { audio: true, video: true }); st.getTracks().forEach(t => t.stop());
+          A.toast(kind === 'voice' ? 'Ready — hold the mic button to record' : 'Ready — hold the camera button to record'); }
+        catch { A.toast('Permission wasn’t given — you can allow it later in settings'); } } };
   }
   function recUI(kind, stream) {
     const el = document.createElement('div'); el.className = 'hm-rec ' + kind;
@@ -650,6 +668,7 @@ window.HushMsg = function (A) {
         <div class=hm-opt><div>Read receipts<small>Show ✓✓ / “Seen” — if off, you won’t see theirs either</small></div><button class="hm-sw ${p.receipts ? 'on' : ''}" data-pref=receipts aria-label="Read receipts"></button></div>
         <div class=hm-opt><div>Typing indicator<small>Let people see when you’re typing</small></div><button class="hm-sw ${p.typing ? 'on' : ''}" data-pref=typing aria-label="Typing indicator"></button></div></div>
       <div class=hm-card><h3>Privacy</h3><p><span class=hm-tor>🧅 Tor only</span> Every connection goes through Tor. Messages, photos and files are end-to-end encrypted (NIP-44), sealed and gift-wrapped (NIP-59), and relayed by ${relays().length} independent relays.</p>
+      <p>🎤 The mic and camera are used only while you hold a record button. Recordings are made and encrypted on this device; Hush keeps no copies and sends nothing anywhere else.</p>
       <p style="margin:0">Your secret key never leaves this device. If you uninstall Hush or clear its data, this ID and your chats are gone — there’s no account to recover.</p></div>
       <div class=hm-card><h3>Start over</h3><p>Deletes your ID, contacts, groups, photos and every message on this device.</p><button class="hm-btn ghost" id=hm-reset style="color:#ef4444">Delete everything</button></div></div></div>`;
     wireCommon();
