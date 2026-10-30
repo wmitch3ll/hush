@@ -49,7 +49,7 @@ jobs:
       # Uses the HUSH_KEYSTORE_B64 secret if you add one; otherwise one key is generated once and kept in the Actions cache.
       - name: Restore signing key
         if: github.ref == 'refs/heads/main'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with: { path: ~/.hush, key: hush-signing-v1 }
       - name: Prepare signing key
         if: github.ref == 'refs/heads/main'
