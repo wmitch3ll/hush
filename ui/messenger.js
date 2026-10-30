@@ -13,7 +13,10 @@ window.HushMsg = function (A) {
   const RELAYS_DEFAULT = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net', 'wss://offchain.pub'];
   const REACT = ['❤️', '👍', '😂', '😮', '😢', '🙏'];
   const K_TYPING = 20014, K_READ = 20015;        // Hush-only signals, sent inside the same encrypted gift wraps
-  const CHUNK = 24000, MAX_FILE = 3 * 1024 * 1024;
+  const CHUNK = 24000, SMALL = 2.5 * 1024 * 1024, MAX_BIG = 100 * 1024 * 1024, AUTO_DL = 25 * 1024 * 1024;
+  // Encrypted-file hosts (Blossom). Files are AES-256-GCM encrypted on this device before upload; uploads/downloads go through Tor.
+  const HOSTS_DEFAULT = ['https://blossom.primal.net', 'https://nostr.download', 'https://blossom.band'];
+  const hosts = () => LS.get('hosts', HOSTS_DEFAULT);
   const hex = N ? N.bytesToHex : null, unhex = N ? N.hexToBytes : null;
   const now = () => Math.floor(Date.now() / 1000);
 
@@ -103,6 +106,7 @@ window.HushMsg = function (A) {
       for (let j = 0; j <= i; j++) if (list[j].from === 'me') { list[j].read = [...new Set([...(list[j].read || []), r.pubkey])]; }
       if (typing[key]) delete typing[key][r.pubkey];
       all[key] = list; LS.set('chats', all); if (view.open && view.chat === key) repaint(); return; }
+    if (r.kind === 15) return receiveRemote(key, r, list, all);
     if (r.kind === 14) {
       const f = tag('hush-file');
       if (f.length) return receiveChunk(key, r, f);
@@ -139,7 +143,8 @@ window.HushMsg = function (A) {
     const all = chats(), list = all[key] || (all[key] = []);
     let m = list.find(x => x.file?.id === fid);
     if (!m) { m = { id: 'f' + fid, from: r.pubkey === me ? 'me' : r.pubkey, text: '', at: r.created_at * 1000, status: 'sent', reply: (r.tags.find(t => t[0] === 'e') || [])[1],
-      file: { id: fid, mime: String(mime).slice(0, 80), name: String(name).slice(0, 120), size: +size || 0, got: 0, total: n, have: [] } }; list.push(m); }
+      file: { id: fid, mime: String(mime).slice(0, 80), name: String(name).slice(0, 120), size: +size || 0, got: 0, total: n, have: [],
+        kind: ['voice', 'vmsg'].includes((r.tags.find(t => t[0] === 'hush-kind') || [])[1]) ? (r.tags.find(t => t[0] === 'hush-kind') || [])[1] : '', dur: +((r.tags.find(t => t[0] === 'dur') || [])[1]) || 0 } }; list.push(m); }
     if (m.file.done) return;
     m.file.have = [...new Set([...(m.file.have || []), i])]; m.file.got = m.file.have.length;
     if (m.file.got === n) {
@@ -149,6 +154,36 @@ window.HushMsg = function (A) {
         for (let j = 0; j < n; j++) idb('chunks', 'readwrite', s => s.delete(fid + ':' + j)).catch(() => {}); } catch (e) { m.file.error = true; }
       arrived(key, r, list, all, m.file.mime.startsWith('image/') ? '📷 Photo' : '📎 ' + m.file.name);
     } else { all[key] = list; LS.set('chats', all); if (view.open && view.chat === key) repaint(); }
+  }
+  // Kind 15 (NIP-17 file message): url + AES-GCM key/nonce; Hush adds hush-kind (voice/video/vmsg), dur, name.
+  async function receiveRemote(key, r, list, all) {
+    if (list.some(x => x.id === r.id)) return;
+    const t = n => (r.tags.find(x => x[0] === n) || [])[1];
+    const url = String(r.content || ''), k = t('decryption-key'), nonce = t('decryption-nonce'), x = t('x');
+    if (!/^https:\/\//.test(url) || !/^[0-9a-f]{64}$/.test(k || '') || !/^[0-9a-f]{24}$/.test(nonce || '') || !/^[0-9a-f]{64}$/.test(x || '')) return;
+    const m = { id: r.id, from: r.pubkey === me ? 'me' : r.pubkey, text: '', at: r.created_at * 1000, status: 'sent', reply: (r.tags.find(z => z[0] === 'e') || [])[1],
+      file: { id: x.slice(0, 32), mime: String(t('file-type') || 'application/octet-stream').slice(0, 80), name: String(t('name') || 'file').slice(0, 120), size: +t('size') || 0,
+        kind: t('hush-kind') || '', dur: +t('dur') || 0, remote: { url, k, nonce, x, alt: r.tags.filter(z => z[0] === 'fallback').map(z => z[1]).filter(u => /^https:\/\//.test(u)).slice(0, 3) } } };
+    list.push(m); arrived(key, r, list, all, m.file.kind === 'voice' ? '🎤 Voice message' : m.file.kind === 'vmsg' ? '📹 Video message' : m.file.mime.startsWith('image/') ? '📷 Photo' : m.file.mime.startsWith('video/') ? '🎬 Video' : '📎 ' + m.file.name);
+    if (m.file.size <= AUTO_DL || m.file.kind) fetchRemote(key, m.id);
+  }
+  const fetching = new Set();
+  async function fetchRemote(key, id) {
+    if (fetching.has(id)) return; fetching.add(id);
+    const get = () => (chats()[key] || []).find(z => z.id === id), upd = f => { const all = chats(), m = (all[key] || []).find(z => z.id === id); if (!m) return; f(m); LS.set('chats', all); if (view.open && view.chat === key) repaint(); };
+    const m = get(); if (!m || m.file.done) return fetching.delete(id);
+    upd(m => { m.file.loading = true; m.file.error = false; });
+    let err = '';
+    for (const u of [m.file.remote.url, ...(m.file.remote.alt || [])]) {
+      try { const buf = new Uint8Array(await A.inv('blob_get', { url: u }));
+        if (hex(new Uint8Array(await crypto.subtle.digest('SHA-256', buf))) !== m.file.remote.x) throw new Error('file was changed');
+        const ck = await crypto.subtle.importKey('raw', unhex(m.file.remote.k), 'AES-GCM', false, ['decrypt']);
+        const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unhex(m.file.remote.nonce) }, ck, buf);
+        await putFile(m.file.id, new Blob([plain], { type: m.file.mime }));
+        upd(m => { m.file.done = true; m.file.loading = false; }); fetching.delete(id); return;
+      } catch (e) { err = String(e.message || e); }
+    }
+    upd(m => { m.file.loading = false; m.file.error = err || 'download failed'; }); fetching.delete(id);
   }
   const unreadTotal = () => Object.values(LS.get('unread', {})).reduce((a, b) => a + b, 0);
   const badge = () => A.badge(unreadTotal());
@@ -177,24 +212,53 @@ window.HushMsg = function (A) {
     addLocal(key, { id: rumor.id, from: 'me', text, at: Date.now(), status: okRelays() ? 'sending' : 'queued', reply }, wrapId);
     lastTypingSent = 0;
   }
-  async function sendFile(key, file) {
+  async function sendFile(key, file, opt = {}) {
     let blob = file, mime = file.type || 'application/octet-stream', name = file.name || 'file';
     if (/^image\/(jpeg|png|webp|heic|heif|gif|bmp)$/.test(mime) && mime !== 'image/gif') {       // photos: resized + compressed so they travel fast over Tor
       try { blob = await shrink(file, 1600, 0.78); mime = 'image/jpeg'; name = name.replace(/\.\w+$/, '') + '.jpg'; } catch {} }
-    if (blob.size > MAX_FILE) return A.toast('That file is too big — up to 3 MB for now');
+    if (blob.size > SMALL || opt.kind === 'vmsg' || /^video\//.test(mime)) return sendBig(key, blob, { mime, name, ...opt });
+    if (opt.kind === 'voice') opt.extra = [['hush-kind', 'voice'], ['dur', String(Math.round(opt.dur || 0))]];
     const b64 = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1] || ''); fr.onerror = rej; fr.readAsDataURL(blob); });
     const fid = hex(N.generateSecretKey()).slice(0, 32), n = Math.max(1, Math.ceil(b64.length / CHUNK));
     await putFile(fid, blob);
     const reply = view.reply; view.reply = null;
-    const msg = { id: 'f' + fid, from: 'me', text: '', at: Date.now(), status: 'sending', reply, file: { id: fid, mime, name, size: blob.size, got: n, total: n, done: true, sent: 0 } };
+    const msg = { id: 'f' + fid, from: 'me', text: '', at: Date.now(), status: 'sending', reply, file: { id: fid, mime, name, size: blob.size, got: n, total: n, done: true, kind: opt.kind || '', dur: opt.dur || 0 } };
     addLocal(key, msg);
     for (let i = 0; i < n; i++) {
       const { wrapId } = publish(key, 14, b64.slice(i * CHUNK, (i + 1) * CHUNK),
-        [['hush-file', fid, String(i), String(n), mime, name, String(blob.size)], ...(reply && i === 0 ? [['e', reply, '', 'reply']] : [])], { noSelf: true });
+        [['hush-file', fid, String(i), String(n), mime, name, String(blob.size)], ...(opt.extra || []), ...(reply && i === 0 ? [['e', reply, '', 'reply']] : [])], { noSelf: true });
       if (i === n - 1) pending[wrapId] = { chat: key, msgId: msg.id };
       if (i % 4 === 3) await new Promise(r => setTimeout(r, 120));    // don't flood the relays
     }
     setTimeout(() => mark(key, msg.id, okRelays() ? 'sent' : 'queued'), 3000);
+  }
+  // Big files, videos and video messages: encrypt here (AES-256-GCM), upload the ciphertext through Tor to two hosts,
+  // then send the link + key in an encrypted kind-15 message. Hosts only ever see random bytes from an anonymous key.
+  async function sendBig(key, blob, o) {
+    if (blob.size > MAX_BIG) return A.toast('That file is too big — up to 100 MB');
+    const fid = hex(N.generateSecretKey()).slice(0, 32), reply = view.reply; view.reply = null;
+    await putFile(fid, blob);
+    const msg = { id: 'f' + fid, from: 'me', text: '', at: Date.now(), status: 'sending', reply, file: { id: fid, mime: o.mime, name: o.name, size: blob.size, done: true, kind: o.kind || '', dur: o.dur || 0, up: true } };
+    addLocal(key, msg);
+    try {
+      const plain = new Uint8Array(await blob.arrayBuffer()), kb = crypto.getRandomValues(new Uint8Array(32)), iv = crypto.getRandomValues(new Uint8Array(12));
+      const ck = await crypto.subtle.importKey('raw', kb, 'AES-GCM', false, ['encrypt']);
+      const enc = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, ck, plain));
+      const x = hex(new Uint8Array(await crypto.subtle.digest('SHA-256', enc))), ox = hex(new Uint8Array(await crypto.subtle.digest('SHA-256', plain)));
+      const got = [];
+      for (const h of hosts()) { if (got.length >= 2) break;
+        try { const t = N.finalizeEvent({ kind: 24242, created_at: now(), content: 'Upload', tags: [['t', 'upload'], ['x', x], ['expiration', String(now() + 900)]] }, N.generateSecretKey());
+          const auth = btoa(unescape(encodeURIComponent(JSON.stringify(t))));
+          const res = await A.invRaw('blob_put', enc, { 'x-hush-server': h, 'x-hush-auth': auth });
+          got.push(res && /^https:\/\//.test(res.url) ? res.url : h.replace(/\/$/, '') + '/' + x); } catch (e) { msg.lastErr = String(e); } }
+      if (!got.length) throw new Error(msg.lastErr || 'no host accepted the file');
+      const tags = [['file-type', o.mime], ['encryption-algorithm', 'aes-gcm'], ['decryption-key', hex(kb)], ['decryption-nonce', hex(iv)], ['x', x], ['ox', ox], ['size', String(blob.size)], ['name', o.name],
+        ...got.slice(1).map(u => ['fallback', u]), ...(o.kind ? [['hush-kind', o.kind]] : []), ...(o.dur ? [['dur', String(Math.round(o.dur))]] : []), ...(reply ? [['e', reply, '', 'reply']] : [])];
+      const { wrapId } = publish(key, 15, got[0], tags);
+      const all = chats(), m = (all[key] || []).find(z => z.id === msg.id); if (m) { m.file.up = false; m.status = okRelays() ? 'sending' : 'queued'; LS.set('chats', all); }
+      pending[wrapId] = { chat: key, msgId: msg.id }; repaint();
+    } catch (e) { const all = chats(), m = (all[key] || []).find(z => z.id === msg.id); if (m) { m.file.up = false; m.status = 'failed'; LS.set('chats', all); }
+      repaint(); A.toast('Couldn’t send the file: ' + String(e.message || e).slice(0, 120)); }
   }
   function shrink(file, max, q) { return new Promise((res, rej) => { const img = new Image(); img.onload = () => {
     const s = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement('canvas'); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
@@ -221,7 +285,7 @@ window.HushMsg = function (A) {
 
   // ---------------------------------------------------------------- UI
   const css = `
-.hm{display:flex;flex-direction:column;height:100%;min-height:0;color:var(--ink);font:14px/1.4 ui-sans-serif,system-ui,"Segoe UI",sans-serif}
+.hm{position:relative;display:flex;flex-direction:column;height:100%;min-height:0;color:var(--ink);font:14px/1.4 ui-sans-serif,system-ui,"Segoe UI",sans-serif}
 .hm *{box-sizing:border-box}:where(.hm) button{all:unset;cursor:pointer;box-sizing:border-box}
 .hm-h{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);flex:none}
 .hm-h h2{font:600 17px system-ui;margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -280,7 +344,19 @@ window.HushMsg = function (A) {
 .hm-pick{display:flex!important;gap:12px;align-items:center;padding:8px 14px;width:100%}.hm-pick input{width:20px;height:20px;accent-color:var(--acc)}
 .hm-sw{width:44px;height:26px;border-radius:99px;background:var(--line);position:relative;flex:none}.hm-sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .15s}.hm-sw.on{background:var(--acc)}.hm-sw.on::after{left:21px}
 .hm-opt{display:flex;align-items:center;gap:10px;margin-top:10px}.hm-opt div{flex:1}.hm-opt small{display:block;color:var(--mute);font-size:12px}
-.hm-drop{outline:3px dashed var(--acc);outline-offset:-8px}`;
+.hm-drop{outline:3px dashed var(--acc);outline-offset:-8px}
+.hm .hide{display:none!important}
+.hm-ind{width:35%!important;animation:hmind 1.1s ease-in-out infinite alternate}@keyframes hmind{from{margin-left:0}to{margin-left:65%}}
+.hm-voice{display:flex;align-items:center;gap:8px;min-width:220px}.hm-voice .pp{width:34px;height:34px;border-radius:50%;background:#0002;display:grid!important;place-items:center;font-size:13px;flex:none}
+.hm-m.me .hm-voice .pp{background:#fff3}.hm-voice canvas{flex:1;height:30px;width:150px;cursor:pointer}.hm-voice .d{font-size:11.5px;opacity:.8;min-width:30px}.hm-voice .sp{font:700 11px system-ui;padding:3px 7px;border-radius:99px;background:#0002}
+.hm-m.voice{padding:8px 10px}.hm-m.vmsgb{background:none!important;border:0!important;padding:0}.hm-m.vmsgb .tm{float:none;display:block;text-align:right;color:var(--mute)}
+.hm-vmsg{position:relative;width:200px;height:200px;border-radius:50%;overflow:hidden;cursor:pointer;background:#000}.hm-vmsg video{width:100%;height:100%;object-fit:cover}
+.hm-vmsg .d,.hm-vmsg .snd{position:absolute;bottom:14px;font:600 11px system-ui;color:#fff;background:#0008;border-radius:99px;padding:2px 7px}.hm-vmsg .d{left:22px}.hm-vmsg .snd{right:22px}.hm-vmsg.on{outline:3px solid var(--acc)}
+.hm-c .hm-mic{background:var(--acc)}.hm-rec{position:absolute;left:0;right:0;bottom:0;z-index:30;display:flex;flex-direction:column;align-items:center;pointer-events:none}
+.hm-rec .hm-recbar{pointer-events:auto;width:100%;display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--bg);border-top:1px solid var(--line);font:600 14px system-ui;min-height:57px}
+.hm-rec .dot{width:10px;height:10px;border-radius:50%;background:#ef4444;animation:hmp .8s infinite alternate}.hm-rec .hint{flex:1;color:var(--mute);font-weight:500;transition:opacity .1s}.hm-rec .lockh{color:var(--mute);font-size:12px;font-weight:500}
+.hm-rec .cx{font-size:18px;padding:6px}.hm-cv{position:relative;width:min(70vw,300px);aspect-ratio:1;border-radius:50%;overflow:hidden;margin-bottom:24px;box-shadow:0 12px 50px #0006}
+.hm-cv video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}.hm-cv .ring{position:absolute;inset:0;border-radius:50%;background:conic-gradient(#ef4444 calc(var(--p,0)*360deg),transparent 0);-webkit-mask:radial-gradient(circle,transparent 66%,#000 67%);mask:radial-gradient(circle,transparent 66%,#000 67%)}`;
   if (!document.getElementById('hm-css')) { const s = document.createElement('style'); s.id = 'hm-css'; s.textContent = css + css2; document.head.append(s); }
   const I = {
     back: '<svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>', plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
@@ -288,18 +364,21 @@ window.HushMsg = function (A) {
     link: '<svg viewBox="0 0 24 24"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>',
     clip: '<svg viewBox="0 0 24 24"><path d="M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7"/></svg>',
     group: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6M16 4.5a3.5 3.5 0 0 1 0 7M22 20c0-3-1.5-5-4-5.7"/></svg>',
+    mic: '<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+    cam: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>',
     qr: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3M21 14v7h-4M14 21v-3"/></svg>' };
   const view = { open: false, el: null, screen: 'list', chat: null, reply: null, q: '', pick: new Set() };
   const time = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const day = t => { const d = new Date(t), n = new Date(); const y = new Date(); y.setDate(n.getDate() - 1);
     return d.toDateString() === n.toDateString() ? 'Today' : d.toDateString() === y.toDateString() ? 'Yesterday' : d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }); };
   const short = t => { const d = new Date(t), n = new Date(); return d.toDateString() === n.toDateString() ? time(t) : (n - d < 6 * 864e5 ? d.toLocaleDateString([], { weekday: 'short' }) : d.toLocaleDateString([], { month: 'short', day: 'numeric' })); };
+  const dur = s => { s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
   const size = b => b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
   const linkify = s => esc(s).replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)"'\]]/g, u => `<a href="#" data-u="${u}">${u.length > 60 ? u.slice(0, 57) + '…' : u}</a>`);
   const avatar = (key, sz = 44) => isGroup(key)
     ? `<div class=hm-av style="background:${colorOf(key)};width:${sz}px;height:${sz}px">${I.group.replace('<svg', `<svg style="width:${sz / 2}px;height:${sz / 2}px;stroke:#fff;fill:none;stroke-width:1.8"`)}</div>`
     : `<div class=hm-av style="background:${colorOf(key)};width:${sz}px;height:${sz}px;font-size:${Math.round(sz / 2.9)}px">${esc(initials(nameOf(key)))}</div>`;
-  const preview = m => m.file ? (m.file.mime.startsWith('image/') ? '📷 Photo' : '📎 ' + m.file.name) : m.text;
+  const preview = m => m.file ? (m.file.kind === 'voice' ? '🎤 Voice message' : m.file.kind === 'vmsg' ? '📹 Video message' : m.file.mime.startsWith('image/') ? '📷 Photo' : m.file.mime.startsWith('video/') ? '🎬 Video' : '📎 ' + m.file.name) : m.text;
   function paintStatus() { const e = view.el && view.el.querySelector('.hm-st'); if (!e) return;
     if (view.screen === 'chat' && typingNames().length) return paintTyping();
     const s = status.startsWith('error') ? 'error' : status; e.className = 'hm-st ' + s;
@@ -312,6 +391,7 @@ window.HushMsg = function (A) {
     if (!loadKey()) view.screen = 'welcome'; else start(); repaint(); if (view.screen === 'chat') sendRead(view.chat); }
   function close() { view.open = false; view.el = null; document.querySelector('.hm-menu')?.remove(); }
   function repaint() { if (!view.open || !view.el) return;
+    if (rec) { view.dirty = true; return; }      // never tear down the screen while recording
     const ta = view.el.querySelector('textarea'), keep = ta?.value, focused = document.activeElement === ta, scr = view.screen;
     const sc = view.el.querySelector('#hm-scroll'), atBottom = !sc || sc.scrollHeight - sc.scrollTop - sc.clientHeight < 80, top = sc?.scrollTop;
     ({ welcome: drawWelcome, list: drawList, chat: drawChat, add: drawAdd, group: drawGroup, me: drawMe }[scr] || drawList)();
@@ -359,13 +439,20 @@ window.HushMsg = function (A) {
     const rx = m.react && Object.entries(m.react).filter(([, w]) => w.length).map(([e, w]) => e + (w.length > 1 ? w.length : '')).join(' ');
     const who = m.from === 'me' ? 'me' : 'them', showName = isGroup(key) && who === 'them' && (!prev || prev.from !== m.from);
     let body = '';
-    if (m.file) { const f = m.file, img = f.mime.startsWith('image/');
-      body = !f.done ? `<div class=hm-file><i>${img ? '📷' : '📎'}</i><div><b>${esc(f.name)}</b><small>Receiving… ${Math.round(100 * f.got / f.total)}%</small><div class=hm-prog><i style="width:${Math.round(100 * f.got / f.total)}%"></i></div></div></div>`
-        : img ? `<img class=hm-img data-img="${f.id}" alt="Photo">` : `<div class=hm-file data-dl="${f.id}"><i>📎</i><div><b>${esc(f.name)}</b><small>${size(f.size)} · tap to open</small></div></div>`; }
+    let cls = '';
+    if (m.file) { const f = m.file, img = f.mime.startsWith('image/'), vid = f.mime.startsWith('video/'), icon = f.kind === 'voice' ? '🎤' : f.kind === 'vmsg' ? '📹' : img ? '📷' : vid ? '🎬' : '📎';
+      if (!f.done) body = f.remote ? `<div class=hm-file data-fetch="${m.id}"><i>${icon}</i><div><b>${esc(f.kind === 'voice' ? 'Voice message' : f.kind === 'vmsg' ? 'Video message' : f.name)}</b><small>${f.loading ? 'Downloading through Tor…' : f.error ? '⚠ ' + esc(String(f.error).slice(0, 60)) + ' · tap to retry' : size(f.size) + ' · tap to download'}</small>${f.loading ? '<div class=hm-prog><i class=hm-ind></i></div>' : ''}</div></div>`
+        : `<div class=hm-file><i>${icon}</i><div><b>${esc(f.name)}</b><small>Receiving… ${Math.round(100 * f.got / f.total)}%</small><div class=hm-prog><i style="width:${Math.round(100 * f.got / f.total)}%"></i></div></div></div>`;
+      else if (f.kind === 'voice') { body = `<div class=hm-voice data-voice="${f.id}"><button class=pp aria-label=Play>▶</button><canvas width=150 height=30></canvas><span class=d>${dur(f.dur)}</span><button class=sp aria-label=Speed>1×</button></div>`; cls = 'voice'; }
+      else if (f.kind === 'vmsg') { body = `<div class=hm-vmsg data-vmsg="${f.id}"><video muted loop playsinline></video><span class=d>${dur(f.dur)}</span><span class=snd>🔇</span></div>`; cls = 'vmsgb'; }
+      else if (img) { body = `<img class=hm-img data-img="${f.id}" alt="Photo">`; cls = 'img'; }
+      else if (vid) { body = `<video class=hm-img data-vid="${f.id}" controls playsinline preload=metadata></video>`; cls = 'img'; }
+      else body = `<div class=hm-file data-dl="${f.id}"><i>📎</i><div><b>${esc(f.name)}</b><small>${size(f.size)} · tap to open</small></div></div>`;
+      if (f.up) body += `<div class=hm-prog><i class=hm-ind></i></div><small style="opacity:.75">Encrypting & sending through Tor…</small>`; }
     else { const url = (m.text.match(/https?:\/\/\S+/) || [])[0];
       body = linkify(m.text) + (url && m.text.trim() === url.trim() ? `<a href=# class=hm-link data-u="${esc(url)}">🔗 ${esc((() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } })())}</a>` : ''); }
     const st = m.from === 'me' ? ' ' + ({ sent: (m.read?.length ? '✓✓' : '✓'), sending: '…', queued: '◷', failed: '⚠ tap to retry' }[m.status] || '') : '';
-    return `<div class="hm-m ${who} ${m.file?.done && m.file.mime.startsWith('image/') ? 'img' : ''} ${rx ? 'hasrx' : ''} ${m.status === 'failed' ? 'failed' : ''}" data-m="${m.id}">${showName ? `<span class=hm-who style="color:${colorOf(m.from)}">${esc(nameOf(m.from))}</span>` : ''}${q ? `<span class=q>${esc(preview(q).slice(0, 80))}</span>` : ''}${body}<span class=tm>${time(m.at)}${st}</span>${rx ? `<span class=rx>${rx}</span>` : ''}</div>`;
+    return `<div class="hm-m ${who} ${cls} ${rx ? 'hasrx' : ''} ${m.status === 'failed' ? 'failed' : ''}" data-m="${m.id}">${showName ? `<span class=hm-who style="color:${colorOf(m.from)}">${esc(nameOf(m.from))}</span>` : ''}${q ? `<span class=q>${esc(preview(q).slice(0, 80))}</span>` : ''}${body}<span class=tm>${time(m.at)}${st}</span>${rx ? `<span class=rx>${rx}</span>` : ''}</div>`;
   }
   function drawChat() {
     const key = view.chat, list = (chats()[key] || []), c = contacts()[key] || {};
@@ -379,14 +466,16 @@ window.HushMsg = function (A) {
       <div class=hm-msgs>${html || `<div class=hm-empty style="padding:30px"><b>Start the conversation</b>Messages, photos and files are end-to-end encrypted and sent through Tor.</div>`}</div></div>
       ${view.reply ? `<div class=hm-rep>↩ <span>${esc(preview(list.find(x => x.id === view.reply) || { text: '' }))}</span><button class=hm-ib id=hm-rx aria-label="Cancel reply">${I.x}</button></div>` : ''}
       <div class=hm-c><button class=hm-ib id=hm-att title="Photo or file" aria-label="Send a photo or file">${I.clip}</button>${A.page && A.page() ? `<button class=hm-ib id=hm-share title="Share the page you’re on" aria-label="Share page">${I.link}</button>` : ''}
-      <textarea rows=1 placeholder="Message" aria-label="Message"></textarea><button class=hm-send aria-label=Send>${I.send}</button>
+      <textarea rows=1 placeholder="Message" aria-label="Message"></textarea><button class=hm-ib id=hm-cam title="Hold to record a video message" aria-label="Video message">${I.cam}</button><button class="hm-send hm-mic" id=hm-mic title="Hold to record a voice message (tap to keep recording)" aria-label="Voice message">${I.mic}</button><button class="hm-send hide" id=hm-go aria-label=Send>${I.send}</button>
       <input type=file id=hm-file hidden multiple></div></div>`;
     wireCommon();
     const sc = view.el.querySelector('#hm-scroll'); sc.scrollTop = sc.scrollHeight;
     const ta = view.el.querySelector('textarea'), go = () => { const v = ta.value; if (!v.trim()) return; ta.value = ''; ta.oninput(); const r = view.reply; view.reply = null; sendText(key, v, r); };
-    ta.oninput = e => { ta.style.height = 'auto'; ta.style.height = Math.min(140, ta.scrollHeight) + 'px'; if (e && ta.value.trim()) sendTyping(key); };
+    const swap = () => { const t = !!ta.value.trim(); view.el.querySelector('#hm-go').classList.toggle('hide', !t); view.el.querySelector('#hm-mic').classList.toggle('hide', t); view.el.querySelector('#hm-cam').classList.toggle('hide', t); };
+    ta.oninput = e => { ta.style.height = 'auto'; ta.style.height = Math.min(140, ta.scrollHeight) + 'px'; swap(); if (e && ta.value.trim()) sendTyping(key); };
+    recorder(view.el.querySelector('#hm-mic'), 'voice', key); recorder(view.el.querySelector('#hm-cam'), 'vmsg', key);
     ta.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !A.mobile) { e.preventDefault(); go(); } };
-    view.el.querySelector('.hm-send').onclick = go; if (!A.mobile) setTimeout(() => ta.focus(), 30);
+    view.el.querySelector('#hm-go').onclick = go; if (!A.mobile) setTimeout(() => ta.focus(), 30);
     const fi = view.el.querySelector('#hm-file'); view.el.querySelector('#hm-att').onclick = () => fi.click();
     fi.onchange = () => { [...fi.files].slice(0, 10).forEach(f => sendFile(key, f)); fi.value = ''; };
     ta.addEventListener('paste', e => { const fs = [...(e.clipboardData?.files || [])]; if (fs.length) { e.preventDefault(); fs.slice(0, 10).forEach(f => sendFile(key, f)); } });
@@ -399,6 +488,13 @@ window.HushMsg = function (A) {
     view.el.querySelector('#hm-cm').onclick = e => chatMenu(e.clientX, e.clientY, key);
     view.el.querySelectorAll('[data-u]').forEach(a => a.onclick = e => { e.preventDefault(); e.stopPropagation(); A.open(a.dataset.u); });
     view.el.querySelectorAll('[data-img]').forEach(async im => { const u = await fileUrl(im.dataset.img); if (u) im.src = u; im.onclick = e => { e.stopPropagation(); viewer(im.dataset.img); }; });
+    view.el.querySelectorAll('[data-fetch]').forEach(d => d.onclick = e => { e.stopPropagation(); fetchRemote(key, d.dataset.fetch); });
+    view.el.querySelectorAll('[data-vid]').forEach(async v => { const u = await fileUrl(v.dataset.vid); if (u) v.src = u; });
+    view.el.querySelectorAll('[data-voice]').forEach(v => voicePlayer(v, list.find(x => x.file?.id === v.dataset.voice), key));
+    view.el.querySelectorAll('[data-vmsg]').forEach(async v => { const vid = v.querySelector('video'), u = await fileUrl(v.dataset.vmsg); if (!u) return; vid.src = u; vid.play().catch(() => {});
+      v.onclick = e => { e.stopPropagation(); if (vid.muted) { vid.muted = false; vid.loop = false; vid.currentTime = 0; vid.play(); v.classList.add('on'); v.querySelector('.snd').textContent = '🔊'; }
+        else { vid.muted = true; vid.loop = true; v.classList.remove('on'); v.querySelector('.snd').textContent = '🔇'; } };
+      vid.onended = () => { vid.muted = true; vid.loop = true; vid.play(); v.classList.remove('on'); v.querySelector('.snd').textContent = '🔇'; }; });
     view.el.querySelectorAll('[data-dl]').forEach(d => d.onclick = e => { e.stopPropagation(); const m = list.find(x => x.file?.id === d.dataset.dl); if (m) saveFile(m.file); });
     view.el.querySelectorAll('[data-m]').forEach(b => { const m = list.find(x => x.id === b.dataset.m); if (!m) return;
       b.onclick = () => { if (m.status === 'failed') resend(key, m); };
@@ -408,6 +504,73 @@ window.HushMsg = function (A) {
       b.addEventListener('touchmove', e => { clearTimeout(t); const dx = e.touches[0].clientX - sx; if (dx > 0) b.style.transform = `translateX(${Math.min(dx, 70)}px)`; }, { passive: true });
       b.addEventListener('touchend', e => { clearTimeout(t); const dx = (e.changedTouches[0]?.clientX || sx) - sx; b.style.transform = ''; if (dx > 60) { view.reply = m.id; repaint(); } });   // swipe right = reply
     });
+  }
+  // ---------------------------------------------------------------- recording: hold to record, release to send,
+  // slide left to cancel, slide up to lock (hands-free). A quick tap also locks. Voice: Opus ~24 kbps. Video message: 480×480, ≤ 60 s.
+  let rec = null;
+  function recorder(btn, kind, key) {
+    if (!btn) return;
+    btn.onpointerdown = async e => { e.preventDefault(); if (rec) return;
+      const sx = e.clientX, sy = e.clientY, t0 = Date.now(); let st, down = true;
+      const early = () => { down = false; removeEventListener('pointerup', early); }; addEventListener('pointerup', early);
+      try { st = await navigator.mediaDevices.getUserMedia(kind === 'voice' ? { audio: { echoCancellation: true, noiseSuppression: true } } : { audio: true, video: { facingMode: 'user', width: 480, height: 480 } }); }
+      catch (err) { return A.toast(kind === 'voice' ? 'Hush needs the microphone for voice messages — allow it and try again' : 'Hush needs the camera and microphone for video messages — allow them and try again'); }
+      const mt = kind === 'voice' ? ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/webm', 'audio/mp4'] : ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
+      const mime = mt.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
+      const mr = new MediaRecorder(st, { mimeType: mime || undefined, audioBitsPerSecond: kind === 'voice' ? 24000 : 32000, videoBitsPerSecond: 380000 });
+      const chunks = []; mr.ondataavailable = ev => ev.data.size && chunks.push(ev.data);
+      rec = { mr, st, kind, key, chunks, start: Date.now(), locked: false, cancel: false, ui: recUI(kind, st) };
+      const max = kind === 'voice' ? 300 : 60, tick = setInterval(() => { if (!rec) return clearInterval(tick); const s = (Date.now() - rec.start) / 1000; rec.ui.time(s); if (s >= max) finish(true); }, 200);
+      mr.onstop = async () => { clearInterval(tick); st.getTracks().forEach(t => t.stop()); const r = rec; rec = null; r.ui.close(); if (view.dirty) { view.dirty = false; repaint(); } if (r.cancel) return;
+        const secs = (Date.now() - r.start) / 1000; if (secs < 0.8) return A.toast(kind === 'voice' ? 'Hold to record — release to send' : 'Hold to record a video message');
+        const type = (mr.mimeType || mime || (kind === 'voice' ? 'audio/webm' : 'video/webm')).split(';')[0], ext = type.split('/')[1] || 'webm';
+        const blob = new Blob(r.chunks, { type });
+        const real = await mediaDuration(blob, kind).catch(() => 0);
+        sendFile(key, new File([blob], (kind === 'voice' ? 'Voice message.' : 'Video message.') + ext, { type }), { kind, dur: real || secs }); };
+      mr.start(250);
+      if (!down) { rec.locked = true; rec.ui.lock(() => finish(true), () => { rec.cancel = true; finish(); }); return; }   // released while the permission prompt was up
+      removeEventListener('pointerup', early);
+      const move = ev => { if (!rec || rec.locked) return; const dx = ev.clientX - sx, dy = ev.clientY - sy;
+        rec.ui.drag(dx, dy); if (dx < -90) { rec.cancel = true; finish(); } else if (dy < -70) { rec.locked = true; rec.ui.lock(() => finish(true), () => { rec.cancel = true; finish(); }); } };
+      const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); removeEventListener('pointercancel', up);
+        if (!rec || rec.locked) return; if (Date.now() - t0 < 350) { rec.locked = true; rec.ui.lock(() => finish(true), () => { rec.cancel = true; finish(); }); return; } finish(true); };
+      addEventListener('pointermove', move); addEventListener('pointerup', up); addEventListener('pointercancel', up);
+    };
+    function finish() { if (rec && rec.mr.state !== 'inactive') rec.mr.stop(); }
+  }
+  // Recorded WebM has no duration in its header; measure it by decoding (audio) or seeking to the end (video).
+  async function mediaDuration(blob, kind) {
+    if (kind === 'voice') { const ac = new (window.AudioContext || window.webkitAudioContext)(); try { return (await ac.decodeAudioData(await blob.arrayBuffer())).duration; } finally { ac.close(); } }
+    return new Promise(res => { const v = document.createElement('video'), u = URL.createObjectURL(blob); v.preload = 'metadata'; v.src = u;
+      v.onloadedmetadata = () => { if (isFinite(v.duration)) { res(v.duration); URL.revokeObjectURL(u); } else { v.currentTime = 1e7; v.ontimeupdate = () => { v.ontimeupdate = null; res(v.duration); URL.revokeObjectURL(u); }; } };
+      v.onerror = () => res(0); setTimeout(() => res(0), 4000); });
+  }
+  function recUI(kind, stream) {
+    const el = document.createElement('div'); el.className = 'hm-rec ' + kind;
+    el.innerHTML = `${kind === 'vmsg' ? '<div class=hm-cv><video autoplay muted playsinline></video><i class=ring></i></div>' : ''}<div class=hm-recbar><i class=dot></i><span class=t>0:00</span><span class=hint>‹ slide to cancel</span><span class=lockh>⇡ slide up to lock</span>
+      <button class=cx aria-label="Cancel" style="display:none">🗑</button><button class="hm-send ok" aria-label="Send" style="display:none">${I.send}</button></div>`;
+    (view.el?.querySelector('.hm') || document.body).append(el);
+    if (kind === 'vmsg') el.querySelector('video').srcObject = stream;
+    return { time: s => { el.querySelector('.t').textContent = dur(s); const r = el.querySelector('.ring'); if (r) r.style.setProperty('--p', Math.min(1, s / 60)); },
+      drag: (dx, dy) => { el.querySelector('.hint').style.transform = `translateX(${Math.min(0, dx)}px)`; el.querySelector('.hint').style.opacity = 1 + Math.min(0, dx) / 120; el.querySelector('.lockh').style.opacity = 1 + Math.min(0, dy) / 90; },
+      lock: (send, cancel) => { el.classList.add('locked'); el.querySelector('.hint').style.display = el.querySelector('.lockh').style.display = 'none';
+        const c = el.querySelector('.cx'), o = el.querySelector('.ok'); c.style.display = o.style.display = ''; c.onclick = cancel; o.onclick = send; },
+      close: () => el.remove() };
+  }
+  function voicePlayer(v, m, key) {
+    if (!m) return; const pp = v.querySelector('.pp'), sp = v.querySelector('.sp'), cv = v.querySelector('canvas'), d = v.querySelector('.d'); let au = null, raf = 0;
+    const draw = (p = 0) => { const g = cv.getContext('2d'), w = cv.width, h = cv.height, bars = m.file.wave || Array(30).fill(0.3), bw = w / bars.length;
+      g.clearRect(0, 0, w, h); bars.forEach((b, i) => { g.fillStyle = i / bars.length <= p ? getComputedStyle(v).color : 'rgba(128,128,128,.45)'; const bh = Math.max(3, b * h); g.fillRect(i * bw + 1, (h - bh) / 2, bw - 2, bh); }); };
+    draw();
+    if (!m.file.wave) fileUrl(m.file.id).then(async u => { if (!u) return; try { const ac = new (window.AudioContext || window.webkitAudioContext)(); const buf = await ac.decodeAudioData(await (await fetch(u)).arrayBuffer());
+      const ch = buf.getChannelData(0), n = 30, step = Math.floor(ch.length / n), out = []; for (let i = 0; i < n; i++) { let s = 0; for (let j = 0; j < step; j += 16) s = Math.max(s, Math.abs(ch[i * step + j] || 0)); out.push(s); }
+      const mx = Math.max(...out, 0.01); m.file.wave = out.map(x => +(x / mx).toFixed(2)); const all = chats(), z = (all[key] || []).find(y => y.id === m.id); if (z) { z.file.wave = m.file.wave; LS.set('chats', all); } ac.close(); draw(); } catch {} });
+    const loop = () => { if (!au) return; draw(au.currentTime / (au.duration || m.file.dur || 1)); d.textContent = dur(au.currentTime); raf = requestAnimationFrame(loop); };
+    pp.onclick = async e => { e.stopPropagation(); if (!au) { const u = await fileUrl(m.file.id); if (!u) return; au = new Audio(u); au.playbackRate = parseFloat(sp.textContent);
+        au.onended = () => { pp.textContent = '▶'; cancelAnimationFrame(raf); draw(0); d.textContent = dur(m.file.dur); au = null; }; }
+      if (au.paused) { document.querySelectorAll('audio').forEach(a => a.pause()); au.play(); pp.textContent = '❚❚'; loop(); } else { au.pause(); pp.textContent = '▶'; cancelAnimationFrame(raf); } };
+    sp.onclick = e => { e.stopPropagation(); const r = { '1×': '1.5×', '1.5×': '2×', '2×': '1×' }[sp.textContent]; sp.textContent = r; if (au) au.playbackRate = parseFloat(r); };
+    cv.onclick = e => { e.stopPropagation(); if (au && au.duration) { au.currentTime = au.duration * (e.offsetX / cv.clientWidth); } };
   }
   async function viewer(fid) { const u = await fileUrl(fid); if (!u) return; const v = document.createElement('div'); v.className = 'hm-view';
     v.innerHTML = `<img src="${u}" alt="Photo"><div class=bar><button data-a=save>Save</button>${navigator.share ? '<button data-a=share>Share</button>' : ''}<button data-a=x>Close</button></div>`;

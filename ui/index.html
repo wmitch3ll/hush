@@ -488,7 +488,7 @@ $('#np-mini').onclick=()=>bgMedia&&miniPlayer(bgMedia);$('#np-x').onclick=()=>{i
 T.event.listen('float-action',({payload:p})=>{if(p.a=='open'){floating=null;select(p.tab)}else if(p.a=='close')floating=null;
   else if(p.a=='moved')setPref('float_pos',[p.x,p.y,p.w].map(Math.round).join(','))});
 // ---------- Hush Messenger ----------
-const HM=HushMsg({inv,listen:(e,f)=>T.event.listen(e,f),toast,mobile:false,open:u=>{closePanel();openTab(u)},page:()=>{const t=tab(cur);return t&&/^https?:/.test(t.url)&&!t.priv?{url:t.url}:null},
+const HM=HushMsg({inv,invRaw:(c,d,h)=>T.core.invoke(c,d,{headers:h}),listen:(e,f)=>T.event.listen(e,f),toast,mobile:false,open:u=>{closePanel();openTab(u)},page:()=>{const t=tab(cur);return t&&/^https?:/.test(t.url)&&!t.priv?{url:t.url}:null},
   badge:n=>{$('#msgcnt').textContent=n>99?'99+':n;$('#msgcnt').style.display=n?'grid':'none'},qr:s=>{try{return hushQR.svg(s)}catch(e){return ''}},close:()=>closePanel()});
 $('#msgb').onclick=()=>panel=='msg'?closePanel():openPanel('msg');setTimeout(()=>HM.boot(),1500);
 let peeking=false;

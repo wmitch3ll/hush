@@ -356,7 +356,7 @@ function qrSheet(u){const el=$("#site");el.innerHTML=head("Scan to open")+`<div 
 let listenSt="",lRate=1,torOn=false,floating=null;
 function torInfo(){$("#xs").innerHTML=head("What is Tor?")+'<div style="padding:0 6px 24px">'+HX.TOR_INFO+'</div>';wire($("#xs"));show("xs")}
 // Hush Messenger (full-screen sheet). Stays connected through Tor in the background once set up.
-const HM=HushMsg({inv,listen:(e,f)=>window.__TAURI__.event.listen(e,f),toast,mobile:true,open:u=>{show(null);newTab(false,true);go(u)},
+const HM=HushMsg({inv,invRaw:(c,d,h)=>window.__TAURI__.core.invoke(c,d,{headers:h}),listen:(e,f)=>window.__TAURI__.event.listen(e,f),toast,mobile:true,open:u=>{show(null);newTab(false,true);go(u)},
   page:()=>{const t=T();return t&&t.native&&!t.priv&&/^https?:/.test(t.url)?{url:t.url}:null},
   badge:n=>{const b=$("#menu-btn");b.classList.toggle("msgdot",n>0);b.dataset.n=n>99?"99+":n},qr:s=>{try{return hushQR.svg(s)}catch(e){return ""}},close:()=>{HM.close();show(null)},
   saveImage:d=>native("saveImage",{data:d}).then(()=>toast("Saved to Photos")).catch(e=>toast(String(e)))});
