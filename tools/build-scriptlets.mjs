@@ -7,7 +7,7 @@
 // Usage: node tools/build-scriptlets.mjs <uBlock checkout> <uAssets gh-pages checkout>
 import fs from 'fs';
 import path from 'path';
-import { pathToFileURL } from 'url';
+import { pathToFileURL, fileURLToPath } from 'url';
 
 const [ublock, uassets] = process.argv.slice(2);
 if (!ublock || !uassets) { console.error('usage: node tools/build-scriptlets.mjs <uBlock> <uAssets gh-pages>'); process.exit(1); }
@@ -88,6 +88,6 @@ const F = { ${callable.map(k => JSON.stringify(k) + ': ' + fns.get(k).call).join
 for (const j of run) { if (skip.has(j)) continue; try { const a = JSON.parse(j); const f = F[a[0]]; if (f) f(...a.slice(1)); } catch (e) {} }
 })();
 `;
-const dest = path.join(path.dirname(new URL(import.meta.url).pathname), '../src-tauri/lists/scriptlets.js');
+const dest = path.join(path.dirname(fileURLToPath(import.meta.url)), '../src-tauri/lists/scriptlets.js');   // works on Windows too
 fs.writeFileSync(dest, out);
 console.log(`${n} scriptlet rules on ${rules.size} hosts, ${used.size} functions -> ${dest} (${(out.length / 1024).toFixed(0)} KB)`);
