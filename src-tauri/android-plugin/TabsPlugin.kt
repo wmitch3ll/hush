@@ -5,8 +5,14 @@ import android.app.DownloadManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.webkit.*
 import android.view.ViewGroup
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import androidx.webkit.ProfileStore
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import app.tauri.annotation.Command
@@ -17,11 +23,13 @@ import app.tauri.plugin.*
 /**
  * Each tab is a native Android WebView placed over the chrome page (mobile.html), between its bars.
  * Events to the chrome UI are delivered by calling window.__hushEvent(name, data) in the chrome page:
- *   tabUrl {id, url, state: started|finished, canBack, canFwd}   download {name, state, error?}   back {}
+ *   tabUrl {id, url, title, state: started|finished, canBack, canFwd}   download {name, state, error?}   back {}
+ *   find {index, count}   longpress {url, kind: link|image}
  */
 @TauriPlugin
 class TabsPlugin(private val act: Activity) : Plugin(act) {
-    private class Tab(val id: String, var url: String, var wv: WebView?, var saved: Bundle? = null) {
+    private class Tab(val id: String, var url: String, var wv: WebView?, var saved: Bundle? = null, val priv: Boolean = false) {
+        var box: SwipeRefreshLayout? = null   // pull-to-refresh container around the WebView
         /** Current page URL, readable from WebView's network thread (WebView methods like getUrl() are UI-thread only). */
         @Volatile var page: String = url
     }
@@ -29,7 +37,8 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     private var active: String? = null
     private var visible = true
     private var topPx = 0; private var bottomPx = 0
-    private var textZoom = 100; private var desktop = false
+    private var textZoom = 100; private var desktop = false; private var pullRefresh = true
+    private var findQuery = ""
     private var defaultUa: String? = null
     private var chrome: WebView? = null
     private val empty get() = WebResourceResponse("text/plain", "utf-8", 403, "Blocked", emptyMap(), "".byteInputStream())
@@ -68,7 +77,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     }
 
     private fun emitUrl(t: Tab, w: WebView, state: String) = emit("tabUrl", JSObject().apply {
-        put("id", t.id); put("url", t.url); put("state", state); put("canBack", w.canGoBack()); put("canFwd", w.canGoForward())
+        put("id", t.id); put("url", t.url); put("title", w.title ?: ""); put("state", state); put("canBack", w.canGoBack()); put("canFwd", w.canGoForward())
     })
 
     private fun applyPrefs(w: WebView) {
@@ -78,13 +87,20 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         w.settings.useWideViewPort = true; w.settings.loadWithOverviewMode = desktop
     }
 
+    /** True private browsing needs WebView's multi-profile support (WebView 123+). */
+    private fun privateSupported() = try { WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE) } catch (e: Throwable) { false }
+
     private fun make(t: Tab): WebView = WebView(act).also { w ->
+        // Private tabs live in a separate, throw-away profile: own cookies, storage and cache, deleted with the last private tab.
+        // This must be the first call on the WebView.
+        if (t.priv && privateSupported()) try { WebViewCompat.setProfile(w, PRIVATE) } catch (e: Throwable) {}
         w.settings.apply {
             javaScriptEnabled = true; domStorageEnabled = true
             setSupportMultipleWindows(false); javaScriptCanOpenWindowsAutomatically = false   // popup deny
             safeBrowsingEnabled = true; allowFileAccess = false; allowContentAccess = false
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW; setGeolocationEnabled(false)
             builtInZoomControls = true; displayZoomControls = false
+            if (t.priv) { cacheMode = WebSettings.LOAD_NO_CACHE; saveFormData = false }
         }
         applyPrefs(w)
         CookieManager.getInstance().setAcceptThirdPartyCookies(w, false)
@@ -108,14 +124,44 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                 try { v.evaluateJavascript(Native.cosmeticJs(u), null) } catch (e: Throwable) {}
                 emitUrl(t, v, "started")
             }
-            override fun onPageFinished(v: WebView, u: String) { t.url = u; emitUrl(t, v, "finished") }
+            override fun onPageFinished(v: WebView, u: String) {
+                t.url = u; t.box?.isRefreshing = false
+                try { val d = Native.darkJs(u); if (d.isNotEmpty()) v.evaluateJavascript(d, null) } catch (e: Throwable) {}
+                emitUrl(t, v, "finished")
+            }
             override fun doUpdateVisitedHistory(v: WebView, u: String, reload: Boolean) { t.url = u; emitUrl(t, v, "finished") }
         }
         w.webChromeClient = object : WebChromeClient() {
             override fun onCreateWindow(v: WebView, d: Boolean, g: Boolean, m: android.os.Message?) = false
             override fun onPermissionRequest(r: PermissionRequest) { r.deny() }   // camera/mic: deny by default (R-55)
         }
-        w.setDownloadListener { url, ua, cd, mime, _ -> download(url, ua, cd, mime) }
+        w.setDownloadListener { url, ua, cd, mime, _ -> if (!t.priv) download(url, ua, cd, mime) else emit("download", JSObject().apply {
+            put("name", URLUtil.guessFileName(url, cd, mime)); put("state", "failed"); put("error", "downloads are off in private tabs") }) }
+        w.setFindListener { index, count, done -> if (done) emit("find", JSObject().apply { put("index", if (count == 0) 0 else index + 1); put("count", count) }) }
+        // Long-press a link or image: let the chrome UI show its own menu (open in new tab, copy, share...).
+        w.setOnLongClickListener {
+            val h = w.hitTestResult
+            when (h.type) {
+                WebView.HitTestResult.SRC_ANCHOR_TYPE -> { emit("longpress", JSObject().apply { put("url", h.extra ?: ""); put("kind", "link") }); true }
+                WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> {
+                    val msg = Handler(Looper.getMainLooper()) { m -> emit("longpress", JSObject().apply {
+                        put("url", m.data.getString("url") ?: h.extra ?: ""); put("kind", "link") }); true }.obtainMessage()
+                    w.requestFocusNodeHref(msg); true }
+                WebView.HitTestResult.IMAGE_TYPE -> { emit("longpress", JSObject().apply { put("url", h.extra ?: ""); put("kind", "image") }); true }
+                else -> false
+            }
+        }
+    }
+
+    /** The view that goes on screen: the WebView inside a pull-to-refresh container. */
+    private fun boxFor(t: Tab, w: WebView): SwipeRefreshLayout = t.box ?: SwipeRefreshLayout(act).also { b ->
+        b.addView(w, ViewGroup.LayoutParams(-1, -1))
+        b.setOnRefreshListener { w.reload() }
+        b.isEnabled = pullRefresh
+        t.box = b
+    }
+    private fun dropPrivateProfileIfUnused() {
+        if (tabs.values.none { it.priv }) try { ProfileStore.getInstance().deleteProfile(PRIVATE) } catch (e: Throwable) {}
     }
 
     private fun download(url: String, ua: String?, cd: String?, mime: String?) {
@@ -135,7 +181,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         }
     }
 
-    private fun layout(w: WebView) {
+    private fun layout(w: android.view.View) {
         val lp = (w.layoutParams as? android.widget.FrameLayout.LayoutParams) ?: android.widget.FrameLayout.LayoutParams(-1, -1)
         lp.topMargin = topPx; lp.bottomMargin = bottomPx; w.layoutParams = lp
     }
@@ -143,19 +189,21 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     /** Show the active tab's view (or none while a chrome sheet is open). */
     private fun render() = act.runOnUiThread {
         val root = act.findViewById<ViewGroup>(android.R.id.content)
-        tabs.values.forEach { t -> t.wv?.let { if (it.parent != null && (t.id != active || !visible)) root.removeView(it) } }
+        tabs.values.forEach { t -> t.box?.let { if (it.parent != null && (t.id != active || !visible)) root.removeView(it) } }
         val t = active?.let { tabs[it] } ?: return@runOnUiThread
         if (!visible) return@runOnUiThread
-        if (t.wv == null) t.wv = make(t).also { w -> if (t.saved != null) w.restoreState(t.saved!!) else w.loadUrl(t.url) }
-        val w = t.wv!!
-        if (w.parent == null) root.addView(w, android.widget.FrameLayout.LayoutParams(-1, -1))
-        layout(w)
+        if (t.wv == null) { t.box = null; t.wv = make(t).also { w -> if (t.saved != null) w.restoreState(t.saved!!) else w.loadUrl(t.url) } }
+        val b = boxFor(t, t.wv!!)
+        if (b.parent == null) root.addView(b, android.widget.FrameLayout.LayoutParams(-1, -1))
+        layout(b)
     }
 
     @Command fun openTab(i: Invoke) {
         val id = "t" + java.util.UUID.randomUUID().toString().take(8)
-        tabs[id] = Tab(id, i.parseArgs(Args::class.java).url, null); active = id; visible = true; render()
-        i.resolve(JSObject().put("id", id))
+        val a = i.parseArgs(Args::class.java)
+        val priv = a.isPrivate && privateSupported()
+        tabs[id] = Tab(id, a.url, null, priv = priv); active = id; visible = true; render()
+        i.resolve(JSObject().put("id", id).put("private", priv))
     }
     /** id = "none" hides every tab (a chrome sheet is open); any other id shows that tab. */
     @Command fun switchTab(i: Invoke) {
@@ -166,14 +214,15 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     @Command fun closeTab(i: Invoke) {
         val id = i.parseArgs(IdArgs::class.java).id
         act.runOnUiThread {
-            tabs.remove(id)?.wv?.let { w -> (w.parent as? ViewGroup)?.removeView(w); w.destroy() }
+            tabs.remove(id)?.let { t -> t.box?.let { (it.parent as? ViewGroup)?.removeView(it) }; t.wv?.destroy()
+                if (t.priv) dropPrivateProfileIfUnused() }
             if (active == id) active = null
         }
         i.resolve()
     }
     /** Battery/RAM: destroy every background WebView, keep URL + navigation state, restore lazily. */
     @Command fun discardBackground(i: Invoke) { act.runOnUiThread {
-        tabs.forEach { (id, t) -> if (id != active) t.wv?.let { w -> t.saved = Bundle().also(w::saveState); w.destroy(); t.wv = null } } }
+        tabs.forEach { (id, t) -> if (id != active && !t.priv) t.wv?.let { w -> t.saved = Bundle().also(w::saveState); t.box?.removeAllViews(); t.box = null; w.destroy(); t.wv = null } } }
         i.resolve() }
     @Command fun navigate(i: Invoke) { val u = i.parseArgs(Args::class.java).url
         act.runOnUiThread { active?.let { tabs[it]?.url = u; tabs[it]?.wv?.loadUrl(u) } }; i.resolve() }
@@ -188,17 +237,33 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     @Command fun setTopInset(i: Invoke) { val a = i.parseArgs(InsetArgs::class.java); topPx = a.px; bottomPx = a.bottom; render(); i.resolve() }
     /** Page preferences from Settings: text size (%) and "desktop site". Applied to every open tab. */
     @Command fun setPrefs(i: Invoke) { val a = i.parseArgs(PrefArgs::class.java)
-        textZoom = a.textZoom.coerceIn(50, 200); val reload = desktop != a.desktop; desktop = a.desktop
-        act.runOnUiThread { tabs.values.forEach { t -> t.wv?.let { w -> applyPrefs(w); if (reload) w.reload() } } }
+        textZoom = a.textZoom.coerceIn(50, 200); val reload = desktop != a.desktop; desktop = a.desktop; pullRefresh = a.pullRefresh
+        act.runOnUiThread { tabs.values.forEach { t -> t.box?.isEnabled = pullRefresh; t.wv?.let { w -> applyPrefs(w); if (reload) w.reload() } } }
         i.resolve() }
 
+    /** Native find in page; results arrive as a `find` event. */
+    @Command fun find(i: Invoke) { val a = i.parseArgs(FindArgs::class.java)
+        act.runOnUiThread { val w = active?.let { tabs[it]?.wv } ?: return@runOnUiThread
+            when {
+                a.action == "find-clear" || a.query.isEmpty() -> { w.clearMatches(); findQuery = "" }
+                a.query != findQuery -> { findQuery = a.query; w.findAllAsync(a.query) }
+                else -> w.findNext(a.action != "find-back")
+            } }
+        i.resolve() }
+    /** Run a page tool script (built by Rust from a fixed list of actions) in the active tab. */
+    @Command fun evalJs(i: Invoke) { val js = i.parseArgs(JsArgs::class.java).js
+        act.runOnUiThread { active?.let { tabs[it]?.wv }?.evaluateJavascript(js, null) }; i.resolve() }
+
+    @InvokeArg class FindArgs { var query: String = ""; var action: String = "find" }
+    @InvokeArg class JsArgs { var js: String = "" }
     @InvokeArg class InsetArgs { var px: Int = 0; var bottom: Int = 0 }
-    @InvokeArg class PrefArgs { var textZoom: Int = 100; var desktop: Boolean = false }
+    @InvokeArg class PrefArgs { var textZoom: Int = 100; var desktop: Boolean = false; var pullRefresh: Boolean = true }
     @InvokeArg class NavArgs { var action: String = "" }
-    @InvokeArg class Args { var url: String = "" }
+    @InvokeArg class Args { var url: String = ""; var isPrivate: Boolean = false }
     @InvokeArg class IdArgs { var id: String = "" }
 
     companion object {
+        private const val PRIVATE = "hush-private"
         private val IMG = Regex(".*\\.(png|jpe?g|gif|webp|svg|ico|avif)$")
         private val FONT = Regex(".*\\.(woff2?|ttf|otf)$")
         private val MEDIA = Regex(".*\\.(mp4|webm|mp3|m4a|ogg)$")

@@ -27,8 +27,8 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tauri::command]
-pub async fn open_tab(app: AppHandle, input: String) -> Result<String, String> {
-    let v = call(&app, "openTab", json!({ "url": resolve_app(&app, &input), "isPrivate": false }))?;
+pub async fn open_tab(app: AppHandle, input: String, private: Option<bool>) -> Result<String, String> {
+    let v = call(&app, "openTab", json!({ "url": resolve_app(&app, &input), "isPrivate": private.unwrap_or(false) }))?;
     Ok(v["id"].as_str().unwrap_or_default().to_string())
 }
 #[tauri::command] pub async fn switch_tab(app: AppHandle, label: String) { let _ = call(&app, "switchTab", json!({ "id": label })); }
@@ -41,6 +41,18 @@ pub async fn open_tab(app: AppHandle, input: String) -> Result<String, String> {
     let _ = call(&app, "setTopInset", json!({ "px": px.clamp(0, 4000), "bottom": bottom.unwrap_or(0).clamp(0, 4000) }));
 }
 /// Page text size (percent) and "desktop site" for every tab.
-#[tauri::command] pub async fn set_web_prefs(app: AppHandle, text_zoom: i32, desktop: bool) {
-    let _ = call(&app, "setPrefs", json!({ "textZoom": text_zoom.clamp(50, 200), "desktop": desktop }));
+#[tauri::command] pub async fn set_web_prefs(app: AppHandle, text_zoom: i32, desktop: bool, pull_refresh: Option<bool>) {
+    let _ = call(&app, "setPrefs", json!({ "textZoom": text_zoom.clamp(50, 200), "desktop": desktop, "pullRefresh": pull_refresh.unwrap_or(true) }));
+}
+
+/// Page tools in the active tab. Find uses Android's native find (match counts come back as a `find` event);
+/// everything else runs the shared page script.
+#[tauri::command]
+pub async fn page_action(app: AppHandle, action: String, arg: Option<String>) -> Result<(), String> {
+    let q = arg.unwrap_or_default();
+    if action.starts_with("find") {
+        call(&app, "find", json!({ "query": q, "action": action })).map(|_| ())
+    } else {
+        call(&app, "evalJs", json!({ "js": crate::page_action_js(&action, &q)? })).map(|_| ())
+    }
 }

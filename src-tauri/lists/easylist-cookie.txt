@@ -1,0 +1,2 @@
+! Cookie-banner list placeholder. Run tools/fetch-lists.sh (or Settings > Update filter lists) to fill it:
+! https://secure.fanboy.co.nz/fanboy-cookiemonster.txt

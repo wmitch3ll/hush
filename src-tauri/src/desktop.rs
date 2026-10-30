@@ -33,8 +33,15 @@ fn relayout(win: &Window) {
     let Ok(sz) = win.inner_size() else { return };
     let s = sz.to_logical::<f64>(win.scale_factor().unwrap_or(1.0));
     let (cx, cy, cw, ch) = content_rect(win);
+    let st = win.app_handle().state::<AppState>();
+    let split = st.split.lock().clone();
+    let half = ((cw - 1.0) / 2.0).max(1.0);
     for wv in win.webviews() {
-        let (x, y, w, h) = if wv.label() == "chrome" { (0.0, 0.0, s.width, s.height) } else { (cx, cy, cw, ch) };
+        let l = wv.label();
+        let (x, y, w, h) = if l == "chrome" { (0.0, 0.0, s.width, s.height) }
+            else if split.as_deref() == Some(l) { (cx + half + 1.0, cy, half, ch) }       // split view: right half
+            else if split.is_some() { (cx, cy, half, ch) }                                  // split view: left half
+            else { (cx, cy, cw, ch) };
         let _ = wv.set_position(LogicalPosition::new(x, y));
         let _ = wv.set_size(LogicalSize::new(w, h));
     }
@@ -43,10 +50,30 @@ fn relayout(win: &Window) {
 fn show_only(app: &AppHandle, label: &str) {
     let st = app.state::<AppState>();
     let panel = st.panel_open.load(Ordering::Relaxed);
+    let split = st.split.lock().clone().filter(|s| s != label);
     for t in st.tabs.lock().iter() {
-        if let Some(w) = app.get_webview(t) { if t == label && !panel { let _ = w.show(); } else { let _ = w.hide(); } }
+        let on = !panel && (t == label || split.as_deref() == Some(t.as_str()));
+        if let Some(w) = app.get_webview(t) { if on { let _ = w.show(); } else { let _ = w.hide(); } }
     }
     *st.active.lock() = Some(label.into());
+    if let Some(win) = app.get_window("main") { relayout(&win); }
+}
+
+/// Split view: show `label` on the right half next to the active tab (None = back to one tab).
+#[tauri::command]
+pub async fn set_split(app: AppHandle, label: Option<String>) {
+    let st = app.state::<AppState>();
+    *st.split.lock() = label.filter(|l| st.tabs.lock().contains(l));
+    let active = st.active.lock().clone();
+    if let Some(a) = active { show_only(&app, &a); }
+}
+
+/// Run a named page tool (dark mode, reader, find) in the active tab — or in `tab` if given.
+#[tauri::command]
+pub async fn page_action(app: AppHandle, action: String, arg: Option<String>, tab: Option<String>) -> Result<(), String> {
+    let js = crate::page_action_js(&action, arg.as_deref().unwrap_or(""))?;
+    let l = tab.or_else(|| app.state::<AppState>().active.lock().clone()).ok_or("no tab")?;
+    app.get_webview(&l).ok_or("no tab")?.eval(&js).map_err(|e| e.to_string())
 }
 
 /// The chrome UI reports how much space its bars take on each side (logical px). Clamped so a bad value
@@ -153,7 +180,7 @@ fn handle_pick(app: &AppHandle, tab: &str, u: &url::Url) {
 }
 
 #[tauri::command]
-pub async fn open_tab(app: AppHandle, input: String) -> Result<String, String> {
+pub async fn open_tab(app: AppHandle, input: String, private: Option<bool>) -> Result<String, String> {
     let st = app.state::<AppState>();
     let win = app.get_window("main").ok_or("no window")?;
     let label = format!("tab-{}", st.next_id.fetch_add(1, Ordering::Relaxed));
@@ -197,7 +224,9 @@ pub async fn open_tab(app: AppHandle, input: String) -> Result<String, String> {
                 let l = wv.label().to_string();
                 b_load.counts.lock().insert(l.clone(), 0);
                 let _ = wv.app_handle().emit("blocked", serde_json::json!({ "tab": l, "count": 0 }));
-                let _ = wv.eval(&b_load.cosmetic_js(p.url().as_str()));
+                let _ = wv.eval(&crate::page_start_js(p.url().as_str()));
+            } else if crate::dark_for(p.url().as_str()) {
+                let _ = wv.eval(&format!("{};__hushPage.dark(true);", crate::PAGE_JS));
             }
             // R-31: tell the chrome UI where this tab actually is (redirects, link clicks, back/forward).
             let ev = if matches!(p.event(), PageLoadEvent::Started) { "started" } else { upgrade_reset.lock().clear(); "finished" };
@@ -205,6 +234,8 @@ pub async fn open_tab(app: AppHandle, input: String) -> Result<String, String> {
                 serde_json::json!({ "tab": wv.label(), "url": p.url().as_str(), "state": ev }));
         })
         .on_download(move |_wv, ev| on_download(&app_dl, &lbl_dl, ev))
+        // Private tabs: in-memory profile, nothing written to disk, gone when the tab closes.
+        .incognito(private.unwrap_or(false))
         .initialization_script(include_str!("harden.js"));
     #[cfg(feature = "new-window-api")]
     let builder = builder.on_new_window(|_url, _features| tauri::webview::NewWindowResponse::Deny);
@@ -232,6 +263,7 @@ pub async fn close_tab(app: AppHandle, label: String) -> Option<String> {
     let st = app.state::<AppState>();
     st.tabs.lock().retain(|t| t != &label);
     st.blocker.counts.lock().remove(&label);
+    { let mut sp = st.split.lock(); if sp.as_deref() == Some(label.as_str()) { *sp = None; } }
     let was_active = st.active.lock().as_deref() == Some(label.as_str());
     if was_active {
         let next = st.tabs.lock().last().cloned();

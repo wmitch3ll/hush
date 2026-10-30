@@ -10,7 +10,9 @@ pub struct Blocker { engine: RwLock<Engine>, pub allow_sites: RwLock<Vec<String>
     /// Generic `##selector` rules as one CSS block (one rule per selector, so one bad selector can't kill the rest).
     /// adblock-rust only returns generic class/id hides via a DOM scan, which tab webviews can't call back for.
     generic_css: RwLock<String>,
-    pub counts: parking_lot::Mutex<std::collections::HashMap<String, u32>> }
+    pub counts: parking_lot::Mutex<std::collections::HashMap<String, u32>>,
+    /// Blocked requests since the stats were last saved (all tabs, all platforms).
+    pub total: std::sync::atomic::AtomicU64 }
 
 impl Blocker {
     /// Build from raw list text (EasyList, EasyPrivacy, uBO...) + user's custom filters.
@@ -19,7 +21,7 @@ impl Blocker {
         for l in lists { fs.add_filter_list(l, ParseOptions::default()); }
         fs.add_filters(custom, ParseOptions::default());
         Self { engine: RwLock::new(Engine::from_filter_set(fs, true)), allow_sites: Default::default(), counts: Default::default(),
-               generic_css: RwLock::new(generic_css(lists, custom)) }
+               generic_css: RwLock::new(generic_css(lists, custom)), total: Default::default() }
     }
 
     /// Hot-swap engine after a user-triggered list update.
@@ -136,6 +138,7 @@ mod tests {
 impl Blocker {
     /// Increment and return the blocked-request count for a tab label (R-22).
     pub fn bump(&self, label: &str) -> u32 {
+        self.total.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let mut m = self.counts.lock();
         let c = m.entry(label.to_string()).or_insert(0);
         *c += 1;
