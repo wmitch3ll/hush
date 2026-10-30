@@ -358,7 +358,8 @@ function torInfo(){$("#xs").innerHTML=head("What is Tor?")+'<div style="padding:
 // Hush Messenger (full-screen sheet). Stays connected through Tor in the background once set up.
 const HM=HushMsg({inv,listen:(e,f)=>window.__TAURI__.event.listen(e,f),toast,mobile:true,open:u=>{show(null);newTab(false,true);go(u)},
   page:()=>{const t=T();return t&&t.native&&!t.priv&&/^https?:/.test(t.url)?{url:t.url}:null},
-  badge:n=>{const b=$("#menu-btn");b.classList.toggle("msgdot",n>0);b.dataset.n=n>99?"99+":n},qr:s=>{try{return hushQR.svg(s)}catch(e){return ""}},close:()=>{HM.close();show(null)}});
+  badge:n=>{const b=$("#menu-btn");b.classList.toggle("msgdot",n>0);b.dataset.n=n>99?"99+":n},qr:s=>{try{return hushQR.svg(s)}catch(e){return ""}},close:()=>{HM.close();show(null)},
+  saveImage:d=>native("saveImage",{data:d}).then(()=>toast("Saved to Photos")).catch(e=>toast(String(e)))});
 function openMsgs(chat){show("msgs");HM.open($("#msgs"),typeof chat==="string"?chat:null)}
 setTimeout(()=>HM.boot(),2000);
 // Floating video: leave a tab that's playing and it keeps going in a small player you can drag and resize.
