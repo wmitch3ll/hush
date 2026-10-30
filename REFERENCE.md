@@ -10,7 +10,7 @@ For the published demo page, change it with the Artifact tool, action "edit" (ol
 | Path | What it is | Size/Touch when |
 |---|---|---|
 | ui/index.html | Desktop chrome (left tab rail + top bar). Talks to Rust via window.__TAURI__ | desktop UI changes |
-| ui/mobile.html | Mobile chrome + simulated demo pages (published artifact) | mobile UI / visual changes |
+| ui/mobile.html | Mobile chrome (real app UI, no demo): bar top/bottom, tabs sheet, menu, settings, downloads. Receives native events via `window.__hushEvent(name,data)` (tabUrl, download, back) called by TabsPlugin.kt | mobile UI |
 | src-tauri/src/blocker.rs | Shared blocking engine (adblock-rust wrapper) | filter logic, cosmetic JS, iOS rule shards |
 | src-tauri/src/lib.rs | Entry point: AppState, `resolve()`, `toggle_shield`, builder wiring (desktop vs mobile via cfg) | new shared commands, state |
 | src-tauri/src/desktop.rs | Desktop shell: window + chrome webview + tab child webviews, resize `relayout()`, all tab commands, nav gate, popup deny | desktop tab behaviour |
@@ -18,7 +18,6 @@ For the published demo page, change it with the Artifact tool, action "edit" (ol
 | src-tauri/src/store.rs | Persistent JSON store: settings, bookmarks, custom filters, allow list; list overrides dir | persistence, new settings |
 | src-tauri/src/picker.js | Element picker injected on demand (desktop); returns via `hush-pick://` navigation | picker UX |
 | src-tauri/src/ios_ffi.rs | C ABI used by Swift for cosmetic JS | iOS bridge |
-| ui/bridge.js | Wires mobile.html to Rust commands (no-op outside Tauri) | mobile UI ↔ Rust |
 | src-tauri/src/harden.js | Injected into every page: popup/open guard, param stripping, fingerprint tweaks | page-level hardening |
 | src-tauri/src/intercept_win.rs | WebView2 subresource blocking (WebResourceRequested) | Windows blocking |
 | src-tauri/src/android_jni.rs | JNI exports shouldBlock/cosmeticJs, global BLOCKER | Android blocking bridge |

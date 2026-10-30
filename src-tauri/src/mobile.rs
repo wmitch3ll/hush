@@ -36,5 +36,11 @@ pub async fn open_tab(app: AppHandle, input: String) -> Result<String, String> {
 #[tauri::command] pub async fn navigate(app: AppHandle, input: String) { let _ = call(&app, "navigate", json!({ "url": resolve_app(&app, &input) })); }
 #[tauri::command] pub async fn nav(app: AppHandle, action: String) { let _ = call(&app, "nav", json!({ "action": action })); }
 #[tauri::command] pub async fn clear_data(app: AppHandle) { let _ = call(&app, "clearData", json!({})); }
-/// Space (px) the chrome bar occupies; native tab views start below it. Android = device px, iOS = points.
-#[tauri::command] pub async fn set_chrome_inset(app: AppHandle, px: i32) { let _ = call(&app, "setTopInset", json!({ "px": px })); }
+/// Space the chrome bars occupy at the top and bottom; native tab views sit between. Android = device px, iOS = points.
+#[tauri::command] pub async fn set_chrome_inset(app: AppHandle, px: i32, bottom: Option<i32>) {
+    let _ = call(&app, "setTopInset", json!({ "px": px.clamp(0, 4000), "bottom": bottom.unwrap_or(0).clamp(0, 4000) }));
+}
+/// Page text size (percent) and "desktop site" for every tab.
+#[tauri::command] pub async fn set_web_prefs(app: AppHandle, text_zoom: i32, desktop: bool) {
+    let _ = call(&app, "setPrefs", json!({ "textZoom": text_zoom.clamp(50, 200), "desktop": desktop }));
+}

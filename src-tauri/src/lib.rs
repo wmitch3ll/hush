@@ -217,7 +217,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![toggle_shield, get_state, set_setting, bookmark_add, bookmark_remove,
             add_custom_filter, export_data, import_data, update_lists,
             mobile::open_tab, mobile::switch_tab, mobile::close_tab, mobile::navigate, mobile::nav,
-            mobile::clear_data, mobile::set_chrome_inset])
+            mobile::clear_data, mobile::set_chrome_inset, mobile::set_web_prefs])
         .setup(mobile::setup);
     b.run(tauri::generate_context!()).expect("hush failed to start");
 }

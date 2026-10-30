@@ -1,142 +1,223 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Hush — mobile</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<title>Hush</title>
 <style>
-:root{--bg:#f2f2f2;--ink:#111;--mute:#8c8c8c;--card:#fff;--line:#e0e0e0;--acc:#111;--glow:#00000014;--bad:#999;color-scheme:light dark;
-box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e0e0e;--ink:#eee;--mute:#808080;--card:#1a1a1a;--line:#2a2a2a;--acc:#eee;--glow:#ffffff14;--bad:#777}}
-:root[data-theme="dark"]{--bg:#0e0e0e;--ink:#eee;--mute:#808080;--card:#1a1a1a;--line:#2a2a2a;--acc:#eee;--glow:#ffffff14;--bad:#777}
+/* Grayscale tokens — same names as ui/index.html. Light / dark (system) / forced via [data-theme]. */
+:root{--bg:#f2f2f2;--ink:#111;--mute:#8c8c8c;--card:#fff;--line:#e0e0e0;--acc:#111;--glow:#00000014;color-scheme:light}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e0e0e;--ink:#eee;--mute:#808080;--card:#1a1a1a;--line:#2a2a2a;--acc:#eee;--glow:#ffffff14;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0e0e0e;--ink:#eee;--mute:#808080;--card:#1a1a1a;--line:#2a2a2a;--acc:#eee;--glow:#ffffff14;color-scheme:dark}
 *{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
-html,body{height:100%;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,"SF Pro Text",Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;letter-spacing:-.01em;overflow:hidden}
-body.priv{--bg:#000;--card:#141414;--line:#262626;--acc:#ddd;--glow:#ffffff14;--ink:#e6e6e6;--mute:#777}
-#app{height:100%;display:flex;flex-direction:column;position:relative}
-#top{display:flex;gap:6px;align-items:center;padding:6px 10px 8px;position:relative;z-index:5;border-bottom:1px solid var(--line)}
-#pill{flex:1;display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:0 3px;height:34px;transition:.2s;min-width:0;box-shadow:0 1px 2px #0000000d}
+html,body{height:100%;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Roboto,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+#app{position:fixed;inset:0;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0);display:flex;flex-direction:column}
+body.bottom #app{flex-direction:column-reverse}
+button{font:inherit;color:var(--ink);background:none;border:0;cursor:pointer;padding:0}
+#top{display:flex;gap:6px;align-items:center;padding:8px 10px;position:relative;z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
+body.bottom #top{border-bottom:0;border-top:1px solid var(--line)}
+#pill{flex:1;display:flex;align-items:center;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:0 3px;height:38px;min-width:0}
 #pill:focus-within{border-color:var(--mute);box-shadow:0 0 0 3px var(--glow)}
-#url{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--ink);font:inherit;font-size:14px;height:100%;text-overflow:ellipsis}
-button{font:inherit;color:var(--ink);background:none;border:0;cursor:pointer}
-.ib{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;font-size:15px;position:relative;flex:none}.ib svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.ib:active{background:var(--line)}
-#shield.off{opacity:.4} #cnt{position:absolute;top:-2px;right:-2px;background:var(--acc);color:var(--bg);font-size:9px;font-weight:600;border-radius:7px;padding:0 3px;min-width:14px;line-height:14px;text-align:center}
-#tabs-btn{width:28px;height:28px;border:1.5px solid var(--ink);border-radius:8px;font-weight:600;font-size:12px}
-#bar{height:1px;background:var(--acc);width:0;position:absolute;left:0;bottom:-1px;transition:width .35s}
-#view{flex:1;overflow:auto;position:relative;-webkit-overflow-scrolling:touch}
-.page{padding:18px 18px 60px;max-width:640px;margin:auto}
-h1{font:500 28px/1.12 ui-serif,Georgia,serif;letter-spacing:-.02em;margin:6px 0 10px}
-.mute{color:var(--mute)}#url::placeholder{color:var(--mute)}button{transition:background .15s,transform .1s}.btn:active,.menu button:active{transform:scale(.98)}.bm:active i{transform:scale(.93)}
-.home{display:grid;place-items:center;text-align:center;padding-top:8vh}
-.home h1{font:200 64px ui-serif,Georgia,serif;letter-spacing:-3px}
-.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:28px;width:100%}
-.bm{display:grid;gap:6px;justify-items:center;font-size:12px;color:var(--mute)}
-.bm i{width:52px;height:52px;border-radius:50%;background:var(--card);border:1px solid var(--line);display:grid;place-items:center;font-style:normal;font-size:18px;font-weight:600;transition:.15s}
-.ad{background:repeating-linear-gradient(45deg,#bbb,#bbb 10px,#ccc 10px,#ccc 20px);color:#222;border-radius:10px;padding:26px 10px;text-align:center;font-weight:700;margin:14px 0}
-.cta{display:inline-block;background:var(--acc);color:var(--bg);padding:9px 16px;border-radius:999px;font-weight:600;margin:8px 0}
-.fake-modal{position:fixed;inset:0;background:#000b;z-index:20;display:grid;place-items:center}
-.fake-modal div{background:#fff;color:#000;padding:24px;border-radius:14px;max-width:80%;text-align:center}
-.sheet{position:absolute;inset:0;background:var(--bg);z-index:10;padding:calc(env(safe-area-inset-top,0px) + 12px) 14px 20px;display:none;flex-direction:column;gap:12px;overflow:auto}
-.sheet.on{display:flex;animation:up .22s ease-out}@keyframes up{from{opacity:0;transform:translateY(14px)}}
+#url{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--ink);font:inherit;font-size:15px;height:100%;text-overflow:ellipsis}
+#url::placeholder{color:var(--mute)}
+.ib{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;position:relative;flex:none}
+.ib svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.ib:active{background:var(--line)}.ib:disabled{opacity:.3}
+#shield.off{opacity:.4}
+#tabs-btn span{width:22px;height:22px;border:1.6px solid var(--ink);border-radius:7px;font-weight:600;font-size:12px;display:grid;place-items:center}
+#bar{height:2px;background:var(--acc);width:0;position:absolute;left:0;bottom:-1px;transition:width .4s,opacity .3s;opacity:0}
+body.bottom #bar{bottom:auto;top:-1px}
+#bar.on{opacity:1;width:70%;transition:width 6s cubic-bezier(.1,.6,.2,1)}
+#bar.done{opacity:0;width:100%}
+#view{flex:1;overflow:auto;position:relative}
+.home{display:grid;place-items:center;text-align:center;padding:12vh 18px 40px}
+.home h1{font-weight:200;font-size:64px;letter-spacing:-3px}.home p{color:var(--mute)}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px 10px;margin-top:32px;width:100%;max-width:420px}
+.bm{display:grid;gap:6px;justify-items:center;font-size:12px;color:var(--mute);min-width:0}
+.bm i{width:54px;height:54px;border-radius:50%;background:var(--card);border:1px solid var(--line);display:grid;place-items:center;font-style:normal;font-size:19px;font-weight:600;color:var(--ink);text-transform:uppercase}
+.bm span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sheet{position:fixed;inset:0;background:var(--bg);z-index:10;padding:calc(env(safe-area-inset-top,0px) + 12px) 14px calc(env(safe-area-inset-bottom,0px) + 20px);display:none;flex-direction:column;gap:8px;overflow:auto}
+.sheet.on{display:flex;animation:up .2s ease-out}@keyframes up{from{opacity:0;transform:translateY(12px)}}
+.sheet h2{font-weight:300;font-size:28px;letter-spacing:-.5px;display:flex;justify-content:space-between;align-items:center;margin:4px 0 6px}
+.sheet h3{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute);margin:16px 2px 2px;font-weight:600}
 .cards{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 12px 10px;min-height:120px;transition:.15s;position:relative;display:flex;flex-direction:column;justify-content:flex-end}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;min-height:110px;position:relative;display:flex;flex-direction:column;justify-content:flex-end;text-align:left;min-width:0}
 .card.cur{border-color:var(--acc);box-shadow:0 0 0 3px var(--glow)}
-.card b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.card .x{position:absolute;top:6px;right:6px;width:28px;height:28px;color:var(--mute)}
-.zz{position:absolute;top:10px;left:12px;font-size:12px;color:var(--mute)}
-.row{display:flex;gap:10px}
+.card b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.card small{color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .x{position:absolute;top:4px;right:4px;width:34px;height:34px;color:var(--mute);font-size:16px}
+.row{display:flex;gap:8px}
 .btn{flex:1;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px;font-size:14px;text-align:center}
 .btn.acc{background:var(--acc);color:var(--bg);border-color:var(--acc);font-weight:600}
-.menu button{display:flex;justify-content:space-between;width:100%;padding:13px 14px;font-size:14px;background:var(--card);border:1px solid var(--line);border-radius:12px}
-#toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);transform:translate(-50%,30px);opacity:0;background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:999px;font-size:13px;transition:.25s;z-index:30;pointer-events:none;white-space:nowrap}
+.sheet>.btn,.sheet>textarea{flex:none}
+.btn.sm{flex:none;padding:7px 12px;font-size:13px}
+.item{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;padding:12px 14px;font-size:15px;background:var(--card);border:1px solid var(--line);border-radius:12px;text-align:left;min-height:52px}
+.item>div{min-width:0}.item small{display:block;color:var(--mute);font-size:12px;overflow:hidden;text-overflow:ellipsis}
+.seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:2px;flex:none}
+.seg button{height:30px;padding:0 10px;border-radius:8px;font-size:13px;color:var(--mute)}
+.seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 2px #0002}
+.sw{width:42px;height:24px;border-radius:12px;background:var(--line);position:relative;flex:none}
+.sw::after{content:"";position:absolute;left:2px;top:2px;width:20px;height:20px;border-radius:50%;background:var(--card);transition:.15s}
+.sw.on{background:var(--ink)}.sw.on::after{left:20px}
+select,textarea,input.txt{font:inherit;font-size:14px;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px}
+textarea,input.txt{width:100%}
+.empty{color:var(--mute);text-align:center;padding:40px 10px}
+#toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 80px);transform:translate(-50%,20px);opacity:0;background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:999px;font-size:13px;transition:.25s;z-index:30;pointer-events:none;max-width:90%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #toast.on{opacity:1;transform:translate(-50%,0)}
-.sr{display:grid;gap:3px;margin:16px 0}.sr b{color:var(--acc)}
 </style></head><body>
 <div id="app">
   <div id="top">
     <div id="pill">
-      <button class="ib" id="shield" title="Shield for this site"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/></svg><span id="cnt">0</span></button>
-      <input id="url" inputmode="url" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="Search or enter address">
-      <button class="ib" id="reload" title="Reload"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.5-5.8M20 4v4h-4"/></svg></button>
+      <button class="ib" id="shield" aria-label="Shield for this site"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/></svg></button>
+      <input id="url" inputmode="url" enterkeyhint="go" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="Search or enter address">
+      <button class="ib" id="reload" aria-label="Reload"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.5-5.8M20 4v4h-4"/></svg></button>
     </div>
-    <button id="tabs-btn" class="ib" title="Tabs">1</button>
-    <button id="menu-btn" class="ib" title="Menu"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="19" cy="12" r="1" fill="currentColor"/></svg></button>
+    <button id="tabs-btn" class="ib" aria-label="Tabs"><span>1</span></button>
+    <button id="menu-btn" class="ib" aria-label="Menu"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg></button>
     <div id="bar"></div>
   </div>
   <div id="view"></div>
-
-  <div class="sheet" id="switcher">
-    <div class="row"><button class="btn" id="priv-toggle">Private: off</button><button class="btn acc" id="new-tab">＋ New tab</button><button class="btn" id="close-sw">Done</button></div>
-    <div class="cards" id="cards"></div>
-  </div>
-  <div class="sheet menu" id="menu">
-    <div class="row"><button class="btn" id="m-back">‹ Back</button><button class="btn" id="m-fwd">Forward ›</button></div>
-    <button id="m-priv">New private tab <span class="mute">leaves no trace</span></button>
-    <button id="m-clear">Clear data <span class="mute">cookies · cache · history</span></button>
-    <button id="m-theme">Theme <span class="mute" id="theme-lbl">system</span></button>
-    <button id="m-sound">Popup test page <span class="mute">try to open one</span></button>
-    <button id="m-close">Close menu</button>
-    <p class="mute" style="padding:6px">Demo: pages are simulated. In the real app each tab is a native web view. Swipe from the left edge to go back.</p>
-  </div>
 </div>
-<div id="toast"></div>
+<div class="sheet" id="switcher"></div>
+<div class="sheet" id="menu"></div>
+<div class="sheet" id="settings"></div>
+<div class="sheet" id="downloads"></div>
+<div id="toast" role="status"></div>
 <script>
-const $=s=>document.querySelector(s);
-const BM=[["🦆","DuckDuckGo","duckduckgo.com"],["📰","Daily","daily-example.com"],["📚","Wiki","wikipedia.org"],["🗺️","Maps","maps.example.com"],["🎵","Music","music.example.com"],["💬","Chat","chat.example.com"],["🧰","Tools","tools.example.com"],["✉️","Mail","mail.example.com"]];
-let tabs=[],cur=null,nid=1,priv=false,shieldOff=new Set(),themeI=0;
-const THEMES=["system","light","dark"];
-const hostOf=u=>{try{return new URL(u).host}catch{return ""}};
-const esc=s=>s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-function toast(t){const e=$("#toast");e.textContent=t;e.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove("on"),1800)}
-function newTab(url,isPriv){const t={id:nid++,url:url||"hush://new",hist:[],idx:-1,priv:!!isPriv,blocked:0,last:Date.now()};t.hist.push(t.url);t.idx=0;tabs.push(t);select(t.id);return t}
+const TA=window.__TAURI__, $=s=>document.querySelector(s);
+const inv=(c,a)=>TA?TA.core.invoke(c,a||{}):Promise.reject("not in app");
+const ANDROID=/Android/i.test(navigator.userAgent);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const hostOf=u=>{try{return new URL(u).hostname}catch{return""}};
+let state={settings:{search:"duckduckgo",ui:{}},bookmarks:[],allow_sites:[]}, allow=new Set();
+// tabs: {id, native (label of the native WebView, null = start page), url, canBack, canFwd}
+let tabs=[], cur=null, nid=1, sheet=null, downloads=[];
 const T=()=>tabs.find(t=>t.id===cur);
-function select(id){cur=id;const t=T();t.last=Date.now();document.body.classList.toggle("priv",t.priv);show(null);load()}
-function resolve(v){v=v.trim();if(!v)return"hush://new";if(/^https?:\/\//.test(v))return v.replace(/^http:/,"https:");if(!/\s/.test(v)&&v.includes("."))return"https://"+v;return"https://duckduckgo.com/?q="+encodeURIComponent(v)}
-function go(v,push=true){const t=T(),u=resolve(v);if(push){t.hist=t.hist.slice(0,t.idx+1);t.hist.push(u);t.idx++}t.url=u;t.blocked=0;load()}
-function step(d){const t=T(),i=t.idx+d;if(i<0||i>=t.hist.length)return toast(d<0?"Nothing to go back to":"Nothing ahead");t.idx=i;t.url=t.hist[i];t.blocked=0;load()}
-function progress(){const b=$("#bar");b.style.transition="none";b.style.width="0";requestAnimationFrame(()=>{b.style.transition="width .35s";b.style.width="100%";setTimeout(()=>{b.style.opacity=0;setTimeout(()=>{b.style.width="0";b.style.opacity=1},200)},380)})}
-function load(){const t=T(),h=hostOf(t.url),on=!shieldOff.has(h);progress();
- const v=$("#view");v.scrollTop=0;
- if(t.url==="hush://new"){v.innerHTML=`<div class="page home"><h1>hush.</h1><p class="mute">nothing here but you.</p><div class="grid">${BM.map(b=>`<a class="bm" data-go="https://${b[2]}"><i>${b[1][0]}</i>${b[1]}</a>`).join("")}</div></div>`;$("#url").value="";}
- else if(h.includes("daily")||h.includes("news")){
-  const ads=on?"":`<div class="ad">SPONSORED · You won’t believe this one trick</div>`;
-  t.blocked=on?4:0;
-  v.innerHTML=`<div class="page"><p class="mute">daily-example.com</p>${ads}<h1>Local library extends hours after record turnout</h1><p>Officials said the change takes effect Monday, with weekend hours doubling at all branches.</p>${ads}<p class="mute" style="margin-top:12px">Readers can still find the full schedule on the city website.</p>${on?"":`<div class="ad">ENORMOUS DISCOUNT — CLICK NOW</div>`}<a class="cta" id="popbtn">Continue reading →</a><p class="mute">Shield ${on?"on: 4 ads and a popup blocked":"off: ads and popups allowed"}.</p></div>`;
-  $("#popbtn").onclick=()=>popup();
- }else if(h.includes("duckduckgo")&&t.url.includes("?q=")){const q=decodeURIComponent(t.url.split("?q=")[1]||"");
-  v.innerHTML=`<div class="page"><p class="mute">Search · no tracking</p><h1>${esc(q)}</h1>${[1,2,3].map(i=>`<div class="sr"><b>${esc(q)} — result ${i}</b><span class="mute">example${i}.org</span><span>A short, plain snippet about ${esc(q)}. Demo content only.</span></div>`).join("")}</div>`}
- else{v.innerHTML=`<div class="page"><p class="mute">${esc(h)}</p><h1>${esc(h||t.url)}</h1><p>This is a demo page. In the real app, the system web view loads the live site here, with the blocker running on every request.</p><p class="mute" style="margin-top:12px">Try the Daily bookmark to see the shield in action.</p></div>`;}
- if(t.url!=="hush://new")$("#url").value=h+(t.url.includes("?q=")?"":"");
- $("#shield").classList.toggle("off",!on);$("#cnt").textContent=t.blocked;$("#cnt").style.display=t.blocked?"block":"none";
- $("#tabs-btn").textContent=tabs.length;
- v.querySelectorAll("[data-go]").forEach(a=>a.onclick=()=>go(a.dataset.go));
+
+// ---------- preferences (stored in Rust as ui.<name>) ----------
+const DEF={bar_pos:"top",theme:"system",text_zoom:"100",desktop:"false"};
+const pref=k=>state.settings.ui?.[k]??DEF[k];
+async function setPref(k,v){state.settings.ui[k]=String(v);applyPrefs();try{await inv("set_setting",{key:"ui."+k,value:String(v)})}catch(e){}}
+function applyPrefs(){
+  const t=pref("theme");if(t==="system")document.documentElement.removeAttribute("data-theme");else document.documentElement.dataset.theme=t;
+  document.body.classList.toggle("bottom",pref("bar_pos")==="bottom");
+  inv("set_web_prefs",{textZoom:+pref("text_zoom"),desktop:pref("desktop")==="true"}).catch(()=>{});
+  requestAnimationFrame(insets);
 }
-function popup(){const t=T(),h=hostOf(t.url);
- if(!shieldOff.has(h)){t.blocked++;$("#cnt").textContent=t.blocked;$("#cnt").style.display="block";toast("Popup blocked");return}
- const m=document.createElement("div");m.className="fake-modal";m.innerHTML=`<div><h2>You’re the 1,000,000th visitor!</h2><p>(this is what the shield stops)</p><br><button class="btn" id="mx">Close</button></div>`;document.body.append(m);m.querySelector("#mx").onclick=()=>m.remove()}
-function show(id){["switcher","menu"].forEach(s=>$("#"+s).classList.toggle("on",s===id))}
-function drawCards(){const now=Date.now();$("#cards").innerHTML=tabs.map(t=>{const sleep=t.id!==cur&&now-t.last>15000;return`<div class="card ${t.id===cur?"cur":""}" data-id="${t.id}">${sleep?`<span class="zz">asleep</span>`:""}${t.priv?`<span class="zz" style="left:auto;right:40px">private</span>`:""}<button class="x" data-x="${t.id}">✕</button><b>${esc(hostOf(t.url)||"New tab")}</b><span class="mute">${t.url==="hush://new"?"Start page":esc(t.url.slice(8,40))}</span></div>`}).join("");
- $("#cards").querySelectorAll(".card").forEach(c=>c.onclick=e=>{if(e.target.dataset.x)return;select(+c.dataset.id)});
- $("#cards").querySelectorAll("[data-x]").forEach(b=>b.onclick=()=>closeTab(+b.dataset.x))}
-function closeTab(id){tabs=tabs.filter(t=>t.id!==id);if(!tabs.length)newTab();else if(cur===id)select(tabs.at(-1).id);$("#tabs-btn").textContent=tabs.length;drawCards()}
-$("#url").addEventListener("focus",e=>{const t=T();e.target.value=t.url==="hush://new"?"":t.url;setTimeout(()=>e.target.select(),0)});
-$("#url").addEventListener("blur",()=>load.noprog=1);
-$("#url").addEventListener("keydown",e=>{if(e.key==="Enter"){go(e.target.value);e.target.blur()}});
-$("#reload").onclick=()=>{T().blocked=0;load()};
-$("#shield").onclick=()=>{const h=hostOf(T().url);if(!h)return toast("Nothing to shield here");shieldOff.has(h)?shieldOff.delete(h):shieldOff.add(h);toast(shieldOff.has(h)?"Shield off for "+h:"Shield on for "+h);load()};
-$("#tabs-btn").onclick=()=>{drawCards();show("switcher")};
-$("#close-sw").onclick=()=>show(null);
-$("#new-tab").onclick=()=>{newTab(null,priv)};
-$("#priv-toggle").onclick=e=>{priv=!priv;e.target.textContent="Private: "+(priv?"on":"off")};
-$("#menu-btn").onclick=()=>show("menu");$("#m-close").onclick=()=>show(null);
-$("#m-back").onclick=()=>{show(null);step(-1)};$("#m-fwd").onclick=()=>{show(null);step(1)};
-$("#m-priv").onclick=()=>newTab(null,true);
-$("#m-clear").onclick=()=>{if(confirm("Clear cookies, cache, history and site data?")){tabs.forEach(t=>{t.hist=[t.url];t.idx=0});shieldOff.clear();show(null);toast("Cleared")}};
-$("#m-theme").onclick=()=>{themeI=(themeI+1)%3;const v=THEMES[themeI];document.documentElement.removeAttribute("data-theme");if(v!=="system")document.documentElement.setAttribute("data-theme",v);$("#theme-lbl").textContent=v};
-$("#m-sound").onclick=()=>{show(null);go("https://daily-example.com")};
-// Edge-swipe back (touch)
-let sx=null,sy=0;addEventListener("touchstart",e=>{const p=e.touches[0];sx=p.clientX<24?p.clientX:null;sy=p.clientY},{passive:true});
-addEventListener("touchend",e=>{if(sx===null)return;const p=e.changedTouches[0];if(p.clientX-sx>70&&Math.abs(p.clientY-sy)<60)step(-1);sx=null},{passive:true});
-// Keyboard: Ctrl/Cmd+L
-addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&e.key==="l"){e.preventDefault();$("#url").focus()}});
-newTab();
+// Native tab views sit between the bars. Android wants device pixels.
+function insets(){
+  const a=$("#app").getBoundingClientRect(), b=$("#top").getBoundingClientRect(), k=ANDROID?devicePixelRatio:1, bottom=pref("bar_pos")==="bottom";
+  const top=bottom?a.top+parseFloat(getComputedStyle($("#app")).paddingTop):b.bottom;
+  const bot=bottom?innerHeight-b.top:innerHeight-a.bottom+parseFloat(getComputedStyle($("#app")).paddingBottom);
+  inv("set_chrome_inset",{px:Math.round(top*k),bottom:Math.round(Math.max(0,bot)*k)}).catch(()=>{});
+}
+addEventListener("resize",()=>insets());
+
+// ---------- tabs ----------
+function newTab(){const t={id:nid++,native:null,url:"",canBack:false,canFwd:false};tabs.push(t);select(t.id);setTimeout(()=>$("#url").focus(),60);return t}
+function select(id){cur=id;show(null);render()}
+function syncNative(){const t=T();inv("switch_tab",{label:!sheet&&t&&t.native?t.native:"none"}).catch(()=>{})}
+async function closeTab(id){const t=tabs.find(x=>x.id===id);if(t&&t.native)inv("close_tab",{label:t.native}).catch(()=>{});
+  tabs=tabs.filter(x=>x.id!==id);if(!tabs.length){newTab();return}if(cur===id)cur=tabs.at(-1).id;render();if(sheet==="switcher")drawSwitcher()}
+async function go(v){
+  v=v.trim();if(!v)return;const t=T();$("#url").blur();progress(true);
+  try{ if(t.native) await inv("navigate",{input:v}); else { t.native=await inv("open_tab",{input:v}); } }
+  catch(e){progress(false);return toast("Couldn’t open that page")}
+  t.url=v.includes(".")&&!v.includes(" ")?(/^https?:/.test(v)?v:"https://"+v):v; render();
+}
+function render(){
+  const t=T(), h=t?hostOf(t.url):"";
+  if(document.activeElement!==$("#url"))$("#url").value=t&&t.native?h.replace(/^www\./,""):"";
+  $("#shield").classList.toggle("off",allow.has(h));$("#shield").disabled=!h;
+  $("#tabs-btn span").textContent=tabs.length;
+  $("#view").innerHTML=t&&t.native?"":`<div class="home"><h1>hush.</h1><p>nothing here but you.</p><div class="grid">${
+    state.bookmarks.slice(0,12).map((b,i)=>`<button class="bm" data-bm="${i}"><i>${esc((hostOf(b.url).replace(/^www\./,"")||"?")[0])}</i><span>${esc(b.title||hostOf(b.url))}</span></button>`).join("")}</div></div>`;
+  $("#view").querySelectorAll("[data-bm]").forEach(b=>{const bm=state.bookmarks[b.dataset.bm];b.onclick=()=>go(bm.url);
+    let lp;b.ontouchstart=()=>{lp=setTimeout(async()=>{if(confirm("Remove bookmark "+(bm.title||bm.url)+"?")){await inv("bookmark_remove",{url:bm.url});await loadState()}},600)};b.ontouchend=b.ontouchmove=()=>clearTimeout(lp)});
+  syncNative();
+}
+function progress(on){const b=$("#bar");b.classList.remove("done");if(on){b.classList.remove("on");void b.offsetWidth;b.classList.add("on")}else{b.classList.remove("on");b.classList.add("done")}}
+
+// ---------- events from the Android plugin (window.__hushEvent) ----------
+window.__hushEvent=(name,d)=>{
+  if(name==="tabUrl"){const t=tabs.find(x=>x.native===d.id);if(!t)return;t.url=d.url;t.canBack=d.canBack;t.canFwd=d.canFwd;
+    if(t.id===cur){progress(d.state==="started");render()}}
+  else if(name==="download"){
+    if(d.state==="started"){downloads.unshift({name:d.name,state:"started"});toast("Downloading "+d.name+" — see notifications")}
+    else{downloads.unshift({name:d.name,state:"failed"});toast("Download failed"+(d.error?": "+d.error:""))}
+    if(sheet==="downloads")drawDownloads()}
+  else if(name==="back"){if(sheet)show(null);else if(T()?.native&&tabs.length>1)closeTab(cur)}
+};
+
+// ---------- sheets ----------
+function show(id){sheet=id;["switcher","menu","settings","downloads"].forEach(s=>$("#"+s).classList.toggle("on",s===id));syncNative()}
+const head=(title)=>`<h2>${title}<button class="btn sm" data-done>Done</button></h2>`;
+const wire=el=>el.querySelectorAll("[data-done]").forEach(b=>b.onclick=()=>show(null));
+const item=(label,sub,right="")=>`<div class="item"><div>${label}${sub?`<small>${sub}</small>`:""}</div>${right}</div>`;
+const seg=(k,opts)=>`<div class="seg">${opts.map(([v,l])=>`<button data-k="${k}" data-v="${v}" class="${pref(k)===v?"on":""}">${l}</button>`).join("")}</div>`;
+
+function drawSwitcher(){const el=$("#switcher");
+  el.innerHTML=head("Tabs")+`<button class="btn acc" id="sw-new">＋ New tab</button><div class="cards">${tabs.map(t=>{const h=hostOf(t.url).replace(/^www\./,"");
+    return`<div class="card ${t.id===cur?"cur":""}" data-id="${t.id}"><button class="x" data-x="${t.id}" aria-label="Close tab">✕</button><b>${esc(h||"New tab")}</b><small>${t.native?esc(t.url.replace(/^https:\/\//,"")):"Start page"}</small></div>`}).join("")}</div>`;
+  wire(el);$("#sw-new").onclick=newTab;
+  el.querySelectorAll(".card").forEach(c=>c.onclick=e=>{if(e.target.dataset.x)return;select(+c.dataset.id)});
+  el.querySelectorAll("[data-x]").forEach(b=>b.onclick=()=>closeTab(+b.dataset.x))}
+function drawMenu(){const el=$("#menu"),t=T(),live=!!(t&&t.native);
+  el.innerHTML=head("Menu")+`<div class="row"><button class="btn" id="m-back" ${live&&t.canBack?"":"disabled"}>‹ Back</button><button class="btn" id="m-fwd" ${live&&t.canFwd?"":"disabled"}>Forward ›</button></div>
+   <button class="item" id="m-bm" ${live?"":"disabled"}><div>Bookmark this page<small>shows on the start page</small></div></button>
+   <button class="item" id="m-dl"><div>Downloads<small>saved to your Downloads folder</small></div></button>
+   <button class="item" id="m-set"><div>Settings<small>layout · theme · text size · search · privacy</small></div></button>
+   <button class="item" id="m-clear"><div>Clear browsing data<small>cookies · cache · site storage</small></div></button>`;
+  wire(el);
+  $("#m-back").onclick=()=>{show(null);inv("nav",{action:"back"})};$("#m-fwd").onclick=()=>{show(null);inv("nav",{action:"fwd"})};
+  $("#m-bm").onclick=async()=>{try{await inv("bookmark_add",{title:hostOf(t.url).replace(/^www\./,""),url:t.url});await loadState();show(null);toast("Bookmarked")}catch(e){toast("Couldn’t save")}};
+  $("#m-dl").onclick=()=>{drawDownloads();show("downloads")};$("#m-set").onclick=()=>{drawSettings();show("settings")};
+  $("#m-clear").onclick=clearData}
+function drawDownloads(){const el=$("#downloads");
+  el.innerHTML=head("Downloads")+(downloads.length?downloads.map(d=>item(esc(d.name),d.state==="started"?"Downloading — open it from the notification or your Downloads folder":"Failed")).join("")
+    :`<div class="empty">Nothing downloaded yet.<br>Files go to your phone’s Downloads folder.</div>`);wire(el)}
+function drawSettings(){const el=$("#settings"),s=state.settings;
+  el.innerHTML=head("Settings")+`<h3>Layout</h3>
+   ${item("Address bar","",seg("bar_pos",[["top","Top"],["bottom","Bottom"]]))}
+   ${item("Theme","",seg("theme",[["system","Auto"],["light","Light"],["dark","Dark"]]))}
+   <h3>Pages</h3>
+   ${item("Text size","",seg("text_zoom",[["85","S"],["100","M"],["115","L"],["130","XL"]]))}
+   ${item("Desktop site","Ask sites for their full desktop layout",`<button class="sw ${pref("desktop")==="true"?"on":""}" id="s-desk" aria-label="Desktop site"></button>`)}
+   <h3>Search</h3>
+   ${item("Search engine","",`<select id="s-engine">${[["duckduckgo","DuckDuckGo"],["brave","Brave"],["startpage","Startpage"],["ecosia","Ecosia"],["custom","Custom…"]].map(([v,l])=>`<option value="${v}" ${s.search===v?"selected":""}>${l}</option>`).join("")}</select>`)}
+   ${s.search==="custom"?`<input class="txt" id="s-custom" placeholder="https://example.com/search?q=%s" value="${esc(s.custom_search)}">`:""}
+   <h3>Privacy</h3>
+   <button class="item" id="s-lists"><div>Update filter lists<small>download the latest EasyList + EasyPrivacy</small></div></button>
+   <button class="item" id="s-clear"><div>Clear browsing data<small>cookies · cache · site storage</small></div></button>
+   ${allow.size?[...allow].map(h=>item(esc(h),"Shield off on this site",`<button class="btn sm" data-allow="${esc(h)}">Turn on</button>`)).join(""):item("Shield exceptions","None — the shield is on everywhere")}
+   <h3>Your data</h3>
+   <button class="item" id="s-export"><div>Export<small>copy settings, bookmarks and filters as text</small></div></button>
+   <textarea id="s-json" rows="3" placeholder="Paste an export here to import it"></textarea>
+   <button class="btn" id="s-import">Import</button>
+   <p style="color:var(--mute);font-size:12px;text-align:center;margin-top:14px">Hush keeps everything on this device. No accounts, no tracking.</p>`;
+  wire(el);
+  el.querySelectorAll(".seg button").forEach(b=>b.onclick=async()=>{await setPref(b.dataset.k,b.dataset.v);drawSettings()});
+  $("#s-desk").onclick=async()=>{await setPref("desktop",pref("desktop")==="true"?"false":"true");drawSettings()};
+  $("#s-engine").onchange=async e=>{s.search=e.target.value;await inv("set_setting",{key:"search",value:s.search});drawSettings()};
+  const cs=$("#s-custom");if(cs)cs.onchange=async()=>{const v=cs.value.trim();if(!v.startsWith("https://")||!v.includes("%s"))return toast("Must start with https:// and contain %s");
+    s.custom_search=v;await inv("set_setting",{key:"custom_search",value:v});toast("Saved")};
+  $("#s-lists").onclick=async()=>{toast("Updating…");try{toast(await inv("update_lists"))}catch(e){toast("Update failed")}};
+  $("#s-clear").onclick=clearData;
+  el.querySelectorAll("[data-allow]").forEach(b=>b.onclick=async()=>{await inv("toggle_shield",{host:b.dataset.allow});allow.delete(b.dataset.allow);drawSettings();render()});
+  $("#s-export").onclick=async()=>{try{const j=await inv("export_data");try{await navigator.clipboard.writeText(j);toast("Copied")}catch(e){$("#s-json").value=j;toast("Select the text above to copy it")}}catch(e){toast("Export failed")}};
+  $("#s-import").onclick=async()=>{try{await inv("import_data",{json:$("#s-json").value});await loadState();drawSettings();toast("Imported")}catch(e){toast("Not a Hush export")}};
+}
+function clearData(){if(confirm("Clear cookies, cache and site data for every site?")){inv("clear_data");show(null);toast("Browsing data cleared")}}
+
+// ---------- bar ----------
+$("#url").addEventListener("focus",e=>{const t=T();e.target.value=t&&t.native?t.url:"";setTimeout(()=>e.target.select(),0)});
+$("#url").addEventListener("blur",()=>setTimeout(render,0));
+$("#url").addEventListener("keydown",e=>{if(e.key==="Enter")go(e.target.value)});
+$("#reload").onclick=()=>{const t=T();if(t&&t.native){progress(true);inv("nav",{action:"reload"})}};
+$("#shield").onclick=async()=>{const t=T(),h=hostOf(t?.url);if(!h)return;await inv("toggle_shield",{host:h});
+  allow.has(h)?allow.delete(h):allow.add(h);toast(allow.has(h)?"Shield off for "+h:"Shield on for "+h);render();inv("nav",{action:"reload"})};
+$("#tabs-btn").onclick=()=>{drawSwitcher();show("switcher")};
+$("#menu-btn").onclick=()=>{drawMenu();show("menu")};
+
+function toast(m){const e=$("#toast");e.textContent=m;e.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove("on"),2200)}
+async function loadState(){try{state=await inv("get_state");state.settings.ui=state.settings.ui||{};allow=new Set(state.allow_sites||[])}catch(e){}applyPrefs();render()}
+newTab();loadState();
 </script>
-<script src="bridge.js"></script></body></html>
+</body></html>
