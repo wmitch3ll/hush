@@ -68,6 +68,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     private var pendingPerm: PermissionRequest? = null
     private var pendingGeo: Pair<String, GeolocationPermissions.Callback>? = null
     private val keepIds = mutableSetOf<String>()
+    private val sunk = mutableSetOf<String>()
     /** Background media: keep | release | pause | play for one tab. */
     @Command fun media(i: Invoke) { val a = i.parseArgs(MediaArgs::class.java)
         act.runOnUiThread { val t = tabs[a.id]
@@ -435,10 +436,17 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         // Media keeps playing: a tab you chose to keep playing (or the tab you're watching while the tab list is open)
         // stays attached but moved off-screen, so the page isn't paused. Everything else is taken off screen.
         tabs.values.forEach { t -> t.box?.let { b -> val off = (t.id != active || !visible) && !(t.id == floatId && visible)
-            if (off && (t.id in keepIds || (t.id == active && !visible && t.audio))) { if (b.parent == null) root.addView(b, FrameLayout.LayoutParams(-1, -1)) else if (b.translationX == 0f) snap(t); b.translationX = -100000f; return@let }
-            if (!off) b.translationX = 0f
+            // Kept tabs sink BEHIND the app's own screen (lower Z): still attached and "visible" to the page so media
+            // keeps playing, but every touch goes to the tab list / sheets on top. (Moving them off-screen could leave
+            // video layers catching touches.)
+            if (off && (t.id in keepIds || (t.id == active && !visible && t.audio))) {
+                if (b.parent == null) root.addView(b, 0, FrameLayout.LayoutParams(-1, -1)) else if (t.id !in sunk) snap(t)
+                if (t.id !in sunk) { sunk += t.id; b.translationZ = -1000f; b.elevation = 0f
+                    b.importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS; b.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS; t.wv?.clearFocus() }
+                return@let }
+            if (t.id in sunk) { sunk -= t.id; b.translationZ = 0f; b.importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_AUTO; b.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS; if (!off) b.bringToFront() }
         } }
-        tabs.values.forEach { t -> t.box?.let { b -> if (b.parent != null && b.translationX == 0f && (t.id != active || !visible) && !(t.id == floatId && visible)) {
+        tabs.values.forEach { t -> t.box?.let { b -> if (b.parent != null && t.id !in sunk && (t.id != active || !visible) && !(t.id == floatId && visible)) {
             // Grab the preview first (it needs the tab on screen), then take it off one frame later (the new tab covers it).
             if (b.tag != "leaving") { b.tag = "leaving"; snap(t) { b.tag = null; if ((t.id != active || !visible) && !(t.id == floatId && visible)) (b.parent as? ViewGroup)?.removeView(b) } } } } }
         // Floating video: that tab's view stays on top in a small, movable, resizable frame.
