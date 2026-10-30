@@ -6,3 +6,6 @@ export * as nip44 from 'nostr-tools/nip44';
 export * as nip59 from 'nostr-tools/nip59';
 export const bytesToHex = b => Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
 export const hexToBytes = h => Uint8Array.from(h.match(/../g) || [], x => parseInt(x, 16));
+// Backup phrase: the 32-byte Hush ID secret as 24 standard BIP-39 words (and back).
+export { entropyToMnemonic, mnemonicToEntropy, validateMnemonic } from '@scure/bip39';
+export { wordlist as bip39English } from '@scure/bip39/wordlists/english';

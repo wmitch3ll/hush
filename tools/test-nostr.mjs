@@ -10,4 +10,5 @@ if (wrap.pubkey === N.getPublicKey(a)) throw new Error('sender visible');
 const r = N.nip59.unwrapEvent(wrap, b);
 if (r.content !== 'hello hush' || r.pubkey !== N.getPublicKey(a) || r.kind !== 14) throw new Error('bad rumor ' + JSON.stringify(r));
 let failed = false; try { N.nip59.unwrapEvent(wrap, c); } catch (e) { failed = true; } if (!failed) throw new Error('stranger could unwrap');
+const w = N.entropyToMnemonic(a, N.bip39English); if (w.split(' ').length !== 24) throw new Error('phrase'); if (N.bytesToHex(N.mnemonicToEntropy(w, N.bip39English)) !== N.bytesToHex(a)) throw new Error('phrase roundtrip');
 console.log('nostr bundle ok', N.nip19.npubEncode(N.getPublicKey(a)).slice(0, 12));

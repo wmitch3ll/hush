@@ -14,7 +14,7 @@ jobs:
         run: |
           set -o pipefail
           {
-          mkdir -p /tmp/b && cd /tmp/b && npm init -y >/dev/null && npm i nostr-tools@2 esbuild@0.24
+          mkdir -p /tmp/b && cd /tmp/b && npm init -y >/dev/null && npm i nostr-tools@2 @scure/bip39@1 esbuild@0.24
           cp "$GITHUB_WORKSPACE/tools/nostr-entry.mjs" entry.mjs
           npx esbuild entry.mjs --bundle --format=iife --global-name=NostrTools --minify --target=es2020 --legal-comments=inline \
             --footer:js='window.NostrTools=NostrTools;' --outfile="$GITHUB_WORKSPACE/ui/vendor/nostr.js"
