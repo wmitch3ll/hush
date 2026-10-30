@@ -134,7 +134,7 @@ const tab=id=>tabs.find(t=>t.id==id), hostOf=u=>{try{return new URL(u).hostname}
 
 // ---------- preferences (stored in Rust as ui.<name>) ----------
 const DEF={tabs_pos:'left',tabs_mode:'auto',hide_delay:'3',bar_pos:'top',density:'normal',theme:'system',tab_style:'auto',
-  bangs:'',memory_saver:'30',focus_sites:'youtube.com,reddit.com,x.com,instagram.com,tiktok.com,facebook.com',focus_until:'0',color:'graphite',force_dark:'false',history:'off',restore:'off',workspaces:'Personal',ws:'Personal'};
+  fp:'on',fp_off:'',bangs:'',memory_saver:'30',focus_sites:'youtube.com,reddit.com,x.com,instagram.com,tiktok.com,facebook.com',focus_until:'0',color:'graphite',force_dark:'false',history:'off',restore:'off',workspaces:'Personal',ws:'Personal'};
 const pref=k=>state.settings.ui?.[k]??DEF[k];
 async function setPref(k,v){state.settings.ui[k]=String(v);layout(true);try{await inv('set_setting',{key:'ui.'+k,value:String(v)})}catch(e){toast(String(e))}}
 
@@ -332,7 +332,7 @@ T.event.listen('download',({payload:p})=>{
   draw();if(panel=='downloads')renderDownloads()});
 
 // ---------- panels ----------
-const RENDER={reading:()=>renderReading(),focus:()=>renderFocus(),about:()=>renderAbout(),send:()=>renderSend(),settings:()=>renderSettings(),downloads:()=>renderDownloads(),suggest:()=>renderSuggest(),pal:()=>renderPalette(),
+const RENDER={ext:()=>renderExt(),reading:()=>renderReading(),focus:()=>renderFocus(),about:()=>renderAbout(),send:()=>renderSend(),settings:()=>renderSettings(),downloads:()=>renderDownloads(),suggest:()=>renderSuggest(),pal:()=>renderPalette(),
   history:()=>renderHistory(),site:()=>renderSite(),ws:()=>renderWs()};
 function openPanel(name){const was=panel;panel=name;sync();
   if(name!='suggest')$('#panel').classList.toggle('pal',name=='pal'||name=='ws');else $('#panel').classList.add('pal');
@@ -360,7 +360,7 @@ const ACTIONS=()=>[
   ['Toggle dark mode for websites','',async()=>{await setPref('force_dark',pref('force_dark')=='true'?'false':'true');applyDarkNow();closePanel()}],
   ['Read later','',async()=>{const t=tab(cur);if(!t)return;await inv('bookmark_add',{title:hostOf(t.url),url:t.url,folder:'reading'});await loadState();closePanel();toast('Added to reading list')}],
   ['Reading list','',()=>openPanel('reading')],['Save page as PDF / print','Ctrl+P',()=>{closePanel();tab(cur)&&inv('page_action',{action:'print'})}],
-  ['Focus mode','',()=>openPanel('focus')],['Send bookmarks to phone','',()=>openPanel('send')],['About Hush & updates','',()=>openPanel('about')],
+  ['Focus mode','',()=>openPanel('focus')],['Extensions','',()=>openPanel('ext')],['Send bookmarks to phone','',()=>openPanel('send')],['About Hush & updates','',()=>openPanel('about')],
   ['History','Ctrl+H',()=>openPanel('history')],['Downloads','Ctrl+J',()=>openPanel('downloads')],['Settings','Ctrl+,',()=>openPanel('settings')],
   ['New workspace…','',()=>openPanel('ws')],['Close tab','Ctrl+W',()=>{closePanel();cur&&closeTab(cur)}],['Clear browsing data','',()=>{closePanel();$('#s-wipe')?.click()||wipe()}],
   ...wsList().filter(w=>w!=curWs()).map(w=>['Switch to workspace: '+w,'',()=>{closePanel();switchWs(w)}]),
@@ -434,6 +434,22 @@ async function renderAbout(){const p=$('#panel');let info={build:'dev',platform:
    EasyList, EasyPrivacy — GPL v3 / CC BY-SA 3.0<br>Fanboy’s Cookie List — © Fanboy<br>Tauri, wry, tao, webview2-com, windows-rs — MIT / Apache 2.0<br>QR code generator after Project Nayuki — MIT</div>`;
   $('#a-chk').onclick=async()=>{$('#a-up').textContent='Checking…';try{const u=await inv('check_update');$('#a-up').textContent=u.newer?`Build ${u.latest} is available — run “git pull” in C:\\dev\\hush, then rebuild`:`You’re up to date (latest: ${u.latest})`}
     catch(e){$('#a-up').textContent=String(e).includes('private')?'Your GitHub repo is private, so Hush can’t see releases — run “git pull” to update':'Couldn’t check right now'}};wire(p)}
+const siteKey=h=>{const p=h.split('.');return p.length>2?p.slice(-2).join('.'):h};
+const fpOff=h=>pref('fp_off').split(',').filter(Boolean).some(x=>h==x||h.endsWith('.'+x));
+// Extensions (desktop): install from a Chrome Web Store link; each extension's popup and settings open as a tab.
+async function renderExt(){const p=$('#panel');let list=[];try{list=await inv('extension_list')}catch(e){}
+  p.innerHTML=`<h2>Extensions ${closeBtn}</h2><p style="color:var(--mute);margin:-8px 0 12px">Paste a link from the Chrome Web Store (chromewebstore.google.com). Extensions can see the pages you visit, so only add ones you trust.</p>
+  <div class=row><input class=txt id=x-url placeholder="https://chromewebstore.google.com/detail/…" style="margin:0"><button class=btn id=x-add>Add</button></div>
+  <div class=chips style="margin:8px 0 4px">${[['Bitwarden','nngceckbapebfimnlniiiahkandclblb'],['Dark Reader','eimadpbcbfnmbkopoojfekhnkhdbieeh'],['SponsorBlock','mnjggcdmjocbbbhaepdhchncahnbgone'],['Return YouTube Dislike','gebbhagfogifgggkldgodflihgfeippi']]
+    .map(([n,id])=>`<button data-sugg=${id}>${n}</button>`).join('')}</div>
+  ${list.length?list.map(x=>row(`<b>${esc(x.name||x.id)}</b>`,'Version '+esc(x.version||'?'),`<div class=acts style="display:flex;gap:6px">${x.popup?`<button class=btn data-open="chrome-extension://${x.id}/${esc(x.popup)}">Open</button>`:''}${x.options?`<button class=btn data-open="chrome-extension://${x.id}/${esc(x.options)}">Settings</button>`:''}<button class=btn data-rm=${x.id}>Remove</button></div>`)).join('')
+    :'<div class=empty>No extensions yet.</div>'}
+  <p style="color:var(--mute);font-size:12px;margin-top:10px">New extensions start working in tabs you open after adding them. Restart Hush if one doesn’t appear.</p>`;
+  const add=async v=>{if(!v)return;$('#x-add').textContent='Adding…';try{const r=await inv('extension_install',{input:v});toast('Added '+(r.name||'extension'))}catch(e){toast(String(e))}renderExt()};
+  $('#x-add').onclick=()=>add($('#x-url').value.trim());$('#x-url').onkeydown=e=>{if(e.key=='Enter')$('#x-add').click()};
+  p.querySelectorAll('[data-sugg]').forEach(b=>b.onclick=()=>add(b.dataset.sugg));
+  p.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openTab(b.dataset.open));
+  p.querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{await inv('extension_remove',{id:b.dataset.rm});toast('Removed — restart Hush to unload it completely');renderExt()});wire(p)}
 function siteDark(h){const v=state.site_dark?.[h];return v===true?'on':v===false?'off':'auto'}
 function applyDarkNow(){const t=tab(cur);if(!t)return;const h=hostOf(t.url),sd=siteDark(h),on=sd=='auto'?pref('force_dark')=='true':sd=='on';
   inv('page_action',{action:on?'dark-on':'dark-off'}).catch(()=>{})}
@@ -441,6 +457,7 @@ function renderSite(){const t=tab(cur),p=$('#panel');if(!t)return closePanel();c
   p.innerHTML=`<h2>${esc(h.replace(/^www\./,''))} ${closeBtn}</h2>
   ${row('Shield',off?'Off — ads and trackers are allowed here':`On — ${counts[cur]||0} blocked on this page`,`<button class="sw ${off?'':'on'}" id=st-shield></button>`)}
   ${row('Dark mode on this site','Auto follows your setting in Settings',`<div class=seg>${[['auto','Auto'],['on','On'],['off','Off']].map(([v,l])=>`<button data-d=${v} class="${sd==v?'on':''}">${l}</button>`).join('')}</div>`)}
+  ${pref('fp')!='off'?row('Fingerprint protection',fpOff(h)?'Off on this site':'On — this site sees randomized device details',`<button class="sw ${fpOff(h)?'':'on'}" id=st-fp></button>`):''}
   ${t.priv?row('Private tab','Nothing from this tab is saved',''):''}
   <h3>Page</h3>
   <div class=chips><button id=st-read>Reader view</button><button id=st-find>Find in page</button><button id=st-pick>Block an element</button>
@@ -448,6 +465,8 @@ function renderSite(){const t=tab(cur),p=$('#panel');if(!t)return closePanel();c
   <h3>Open on your phone</h3><div class=qr>${(()=>{try{return hushQR.svg(t.url)}catch(e){return ''}})()}</div>
   <p style="color:var(--mute);text-align:center;font-size:12px;margin-top:8px">Scan with your phone’s camera</p>`;
   $('#st-shield').onclick=async()=>{await inv('toggle_shield',{host:h});off?allow.delete(h):allow.add(h);inv('nav',{action:'reload'});renderSite();draw()};
+  if($('#st-fp'))$('#st-fp').onclick=async()=>{const site=siteKey(h),list=pref('fp_off').split(',').filter(Boolean);
+    await setPref('fp_off',(fpOff(h)?list.filter(x=>x!=site):[...list,site]).join(','));toast('Reload the page or open a new tab to apply');renderSite()};
   p.querySelectorAll('[data-d]').forEach(b=>b.onclick=async()=>{const v=b.dataset.d;await inv('site_dark',{host:h,value:v=='auto'?null:v=='on'});
     state.site_dark=state.site_dark||{};if(v=='auto')delete state.site_dark[h];else state.site_dark[h]=v=='on';applyDarkNow();renderSite()});
   $('#st-read').onclick=()=>{closePanel();inv('page_action',{action:'reader'})};$('#st-find').onclick=()=>{closePanel();findMode(true)};
@@ -485,6 +504,8 @@ function renderSettings(){
   ${s.search=='custom'?`<input class=txt id=s-custom placeholder="https://example.com/search?q=%s" value="${esc(s.custom_search)}">`:''}
   ${row('Search shortcuts','<kbd>!w</kbd> Wikipedia · <kbd>!yt</kbd> YouTube · <kbd>!a</kbd> Amazon · <kbd>!gh</kbd> GitHub · <kbd>!r</kbd> Reddit · <kbd>!m</kbd> maps · <kbd>!i</kbd> images'+(pref('bangs')?' · yours: '+esc(pref('bangs').split('|').map(x=>'!'+x.split('=')[0]).join(' ')):''),'<button class=btn id=s-bangs>Edit mine</button>')}
   <h3>Privacy</h3>
+  ${row('Fingerprint protection','Each site sees slightly different device details, so trackers can’t recognize you across sites. Turn it off per site from the shield if a page misbehaves.',sw('fp',pref('fp')!='off'))}
+  ${row('Extensions','Chrome Web Store extensions such as Bitwarden or Dark Reader','<button class=btn id=s-ext>Manage</button>')}
   ${row('Blocked counter','Badge on the shield showing what was blocked on this page',`<button class="sw ${s.counter!==false?'on':''}" id=s-counter aria-label="Blocked counter"></button>`)}
   ${row('Filter lists','Ads, trackers and cookie banners — download the latest',`<button class=btn id=s-lists>Update now</button>`)}
   ${row('Browsing data','Cookies, cache and site storage for every site',`<button class=btn id=s-wipe>Clear…</button>`)}
@@ -505,9 +526,9 @@ function renderSettings(){
   p.querySelectorAll('[data-color]').forEach(b=>b.onclick=async()=>{await setPref('color',b.dataset.color);renderSettings()});
   $('#s-color').oninput=e=>{state.settings.ui.color=e.target.value;applyColor()};$('#s-color').onchange=async e=>{await setPref('color',e.target.value);renderSettings()};
   p.querySelectorAll('[data-sw]').forEach(b=>b.onclick=async()=>{const k=b.dataset.sw,on=b.classList.contains('on');
-    await setPref(k,k=='force_dark'?String(!on):(on?'off':'on'));if(k=='force_dark')applyDarkNow();if(k=='restore')saveSession();renderSettings()});
+    await setPref(k,k=='force_dark'?String(!on):(on?'off':'on'));if(k=='fp')toast('Applies to tabs you open from now on');if(k=='force_dark')applyDarkNow();if(k=='restore')saveSession();renderSettings()});
   $('#s-hist').onclick=e=>{e.preventDefault();openPanel('history')};
-  $('#s-rl').onclick=()=>openPanel('reading');$('#s-focus').onclick=()=>openPanel('focus');$('#s-send').onclick=()=>openPanel('send');$('#s-about').onclick=()=>openPanel('about');
+  $('#s-ext').onclick=()=>openPanel('ext');$('#s-rl').onclick=()=>openPanel('reading');$('#s-focus').onclick=()=>openPanel('focus');$('#s-send').onclick=()=>openPanel('send');$('#s-about').onclick=()=>openPanel('about');
   $('#s-bangs').onclick=async()=>{const v=prompt('Your shortcuts, separated by | as  key=https://site.com/search?q=%s',pref('bangs'));if(v===null)return;
     const list=v.split(/\||\n/).map(x=>x.trim()).filter(x=>/^[a-z0-9]{1,12}=https:\/\/\S+$/i.test(x));await setPref('bangs',list.join('|'));renderSettings();toast(list.length+' shortcuts saved')};$('#s-ws').onclick=()=>openPanel('ws');
   $('#s-engine').onchange=async e=>{s.search=e.target.value;await inv('set_setting',{key:'search',value:s.search});renderSettings()};

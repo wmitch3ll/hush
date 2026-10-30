@@ -17,8 +17,5 @@
   try { const u = new URL(location.href);
     ["fbclid","gclid","utm_source","utm_medium","utm_campaign","utm_term","utm_content","mc_eid","msclkid"].forEach(k => u.searchParams.delete(k));
     if (u.href !== location.href) history.replaceState(null, "", u.href); } catch (_) {}
-  try {
-    Object.defineProperty(navigator, "hardwareConcurrency", { get: () => 4 });
-    Object.defineProperty(navigator, "deviceMemory", { get: () => 8 });
-  } catch (_) {}
+  // Hardware / canvas / WebGL / audio fingerprinting is handled by farble.js (per-site randomized values).
 })();

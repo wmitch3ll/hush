@@ -26,6 +26,12 @@ pub fn install(wv: &tauri::Webview, blocker: Arc<Blocker>) {
     let _ = wv.with_webview(move |p| unsafe {
         let Ok(core) = p.controller().CoreWebView2() else { return };
         let _ = core.AddWebResourceRequestedFilter(w!("*"), COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL);
+        // Strict tracking prevention: blocks third-party tracking cookies and storage (same profile for every tab).
+        if let Ok(c13) = core.cast::<ICoreWebView2_13>() {
+            if let Ok(p3) = c13.Profile().and_then(|p| p.cast::<ICoreWebView2Profile3>()) {
+                let _ = p3.SetPreferredTrackingPreventionLevel(COREWEBVIEW2_TRACKING_PREVENTION_LEVEL_STRICT);
+            }
+        }
         let core2 = core.clone();
         let handler = WebResourceRequestedEventHandler::create(Box::new(move |_, args| {
             let Some(args) = args else { return Ok(()) };

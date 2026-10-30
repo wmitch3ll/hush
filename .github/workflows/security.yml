@@ -1,0 +1,25 @@
+# Security scanning: known-vulnerable dependencies (cargo audit) and static analysis (CodeQL).
+name: security
+on:
+  push: { branches: [main] }
+  pull_request:
+  schedule: [{ cron: "23 6 * * 1" }]   # every Monday
+permissions: { contents: read, security-events: write }
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cargo-audit --locked
+      - name: cargo audit
+        working-directory: src-tauri
+        run: cargo audit
+  codeql:
+    runs-on: ubuntu-latest
+    strategy: { matrix: { language: [javascript-typescript, rust, actions] }, fail-fast: false }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with: { languages: "${{ matrix.language }}", build-mode: none }
+      - uses: github/codeql-action/analyze@v3

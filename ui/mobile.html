@@ -142,7 +142,7 @@ let tabs=[], cur=null, nid=1, sheet=null, downloads=[], typing=false, finding=fa
 const T=()=>tabs.find(t=>t.id===cur);
 
 // ---------- preferences (stored in Rust as ui.<name>) ----------
-const DEF={bg_play:"true",memory_saver:"10",bangs:"",focus_sites:"youtube.com,reddit.com,x.com,instagram.com,tiktok.com,facebook.com",focus_until:"0",color:"graphite",bar_pos:"top",theme:"system",text_zoom:"100",desktop:"false",pull_refresh:"true",force_dark:"false",history:"off",restore:"off",workspaces:"Personal",ws:"Personal"};
+const DEF={fp:"on",fp_off:"",bg_play:"true",memory_saver:"10",bangs:"",focus_sites:"youtube.com,reddit.com,x.com,instagram.com,tiktok.com,facebook.com",focus_until:"0",color:"graphite",bar_pos:"top",theme:"system",text_zoom:"100",desktop:"false",pull_refresh:"true",force_dark:"false",history:"off",restore:"off",workspaces:"Personal",ws:"Personal"};
 const pref=k=>state.settings.ui?.[k]??DEF[k];
 async function setPref(k,v){state.settings.ui[k]=String(v);applyPrefs();try{await inv("set_setting",{key:"ui."+k,value:String(v)})}catch(e){}}
 // Browser color: a hue/saturation tints every surface; light and dark variants are derived from it.
@@ -370,6 +370,8 @@ function drawMenu(){const el=$("#menu"),t=T(),live=!!(t&&t.native);
   $("#m-pdf").onclick=()=>{show(null);native("printPage")};$("#m-pip").onclick=()=>{show(null);toast("Start the video in fullscreen first for the best fit");native("pip")};
   $("#m-rl").onclick=()=>{drawReading();show("reading")};$("#m-focus").onclick=()=>{drawFocus();show("focus")};$("#m-about").onclick=()=>{drawAbout();show("about")}}
 
+const siteKey=h=>{const p=h.split(".");return p.length>2?p.slice(-2).join("."):h};
+const fpOff=h=>pref("fp_off").split(",").filter(Boolean).some(x=>h===x||h.endsWith("."+x));
 function siteDark(h){const v=state.site_dark?.[h];return v===true?"on":v===false?"off":"auto"}
 function applyDarkNow(){const t=T();if(!t?.native)return;const sd=siteDark(hostOf(t.url)),on=sd==="auto"?pref("force_dark")==="true":sd==="on";
   inv("page_action",{action:on?"dark-on":"dark-off"}).catch(()=>{})}
@@ -378,12 +380,15 @@ function drawSite(){const el=$("#site"),t=T(),h=hostOf(t.url),off=allow.has(h),s
    ${item("Shield",off?"Off — ads and trackers allowed here":"On — ads, trackers & cookie banners blocked",`<button class="sw ${off?"":"on"}" id="st-shield"></button>`)}
    ${item("Dark mode here","Auto follows Settings",`<div class="seg">${[["auto","Auto"],["on","On"],["off","Off"]].map(([v,l])=>`<button data-d="${v}" class="${sd===v?"on":""}">${l}</button>`).join("")}</div>`)}
    ${t.priv?item("Private tab","Separate cookies & storage · nothing saved"):""}
+   ${pref("fp")!=="off"?item("Fingerprint protection",fpOff(h)?"Off on this site":"On — randomized device details",`<button class="sw ${fpOff(h)?"":"on"}" id="st-fp"></button>`):""}
    <div id="st-perms"></div>
    <div class="row"><button class="btn" id="st-read">Reader view</button><button class="btn" id="st-find">Find</button><button class="btn" id="st-copy">Copy link</button></div>
    <h3>Open on another device</h3><div class="qr">${(()=>{try{return hushQR.svg(t.url)}catch(e){return""}})()}</div>
    <p class="hint" style="text-align:center;margin-top:4px">Tip: hold the shield to switch it on/off instantly</p>`;
   wire(el);
   $("#st-shield").onclick=async()=>{await quickShield();drawSite()};
+  if($("#st-fp"))$("#st-fp").onclick=async()=>{const site=siteKey(h),list=pref("fp_off").split(",").filter(Boolean);
+    await setPref("fp_off",(fpOff(h)?list.filter(x=>x!==site):[...list,site]).join(","));toast("Open the page in a new tab to apply");drawSite()};
   native("sitePerms",{host:h}).then(p=>{const k=Object.keys(p||{});if(!k.length)return;$("#st-perms").innerHTML=item("Permissions",k.map(x=>x+": "+(p[x]?"allowed":"blocked")).join(" · "),'<button class="btn sm" id="st-preset">Reset</button>');
     $("#st-preset").onclick=async()=>{await native("resetSitePerms",{host:h});drawSite();toast("Permissions reset")}}).catch(()=>{});
   el.querySelectorAll("[data-d]").forEach(b=>b.onclick=async()=>{const v=b.dataset.d;await inv("site_dark",{host:h,value:v==="auto"?null:v==="on"});
@@ -447,6 +452,7 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
    <button class="item" id="s-bangs"><div>Search shortcuts<small>type !w for Wikipedia, !yt YouTube, !a Amazon, !gh GitHub, !r Reddit, !m maps, !i images… ${pref("bangs")?"· yours: "+esc(pref("bangs").split("|").map(x=>"!"+x.split("=")[0]).join(" ")):"· tap to add your own"}</small></div></button>
    ${s.search==="custom"?`<input class="txt" id="s-custom" placeholder="https://example.com/search?q=%s" value="${esc(s.custom_search)}">`:""}
    <h3>Privacy</h3>
+   ${item("Fingerprint protection","Each site sees slightly different device details, so trackers can’t follow you between sites",`<button class="sw ${pref("fp")!=="off"?"on":""}" id="s-fp"></button>`)}
    <button class="item" id="s-lists"><div>Update filter lists<small>ads, trackers and cookie banners</small></div></button>
    <button class="item" id="s-clear"><div>Clear browsing data<small>cookies · cache · site storage</small></div></button>
    ${allow.size?[...allow].map(h=>item(esc(h),"Shield off on this site",`<button class="btn sm" data-allow="${esc(h)}">Turn on</button>`)).join(""):item("Shield exceptions","None — the shield is on everywhere")}
@@ -473,6 +479,7 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
     s.custom_search=v;await inv("set_setting",{key:"custom_search",value:v});toast("Saved")};
   $("#s-lists").onclick=async()=>{toast("Updating…");try{toast(await inv("update_lists"))}catch(e){toast("Update failed")}};
   $("#s-clear").onclick=clearData;
+  $("#s-fp").onclick=async()=>{await setPref("fp",pref("fp")==="off"?"on":"off");toast("Applies to tabs you open from now on");drawSettings()};
   $("#s-bangs").onclick=async()=>{const v=prompt("Your shortcuts, one per line as  key=https://site.com/search?q=%s",pref("bangs").split("|").join("\n"));if(v===null)return;
     const list=v.split(/\n|\|/).map(x=>x.trim()).filter(x=>/^[a-z0-9]{1,12}=https:\/\/\S+$/i.test(x));await setPref("bangs",list.join("|"));drawSettings();toast(list.length+" shortcuts saved")};
   el.querySelectorAll("[data-allow]").forEach(b=>b.onclick=async()=>{await inv("toggle_shield",{host:b.dataset.allow});allow.delete(b.dataset.allow);drawSettings();render()});

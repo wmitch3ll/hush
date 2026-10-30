@@ -3,6 +3,7 @@
 mod blocker;
 mod store;
 #[cfg(desktop)] mod desktop;
+#[cfg(desktop)] mod extensions;
 #[cfg(mobile)] mod mobile;
 #[cfg(windows)] mod intercept_win;
 #[cfg(target_os = "android")] mod android_jni;
@@ -40,19 +41,37 @@ pub struct AppState {
 pub const PAGE_JS: &str = include_str!("page.js");
 /// uBlock Origin scriptlets + rules (YouTube, anti-adblock), built by tools/build-scriptlets.mjs. Runs at document start.
 pub const SCRIPTLETS_JS: &str = include_str!("../lists/scriptlets.js");
-/// Document-start script for a new tab: scriptlets, skipped on sites where the user turned the shield off.
+pub const FARBLE_JS: &str = include_str!("farble.js");
+/// Per-session secret for fingerprint randomization: a new value every time Hush starts (like Brave's default).
+static FP_SECRET: LazyLock<String> = LazyLock::new(|| {
+    use std::hash::{BuildHasher, Hasher};
+    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+    h.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0));
+    format!("{:016x}", h.finish())
+});
+/// Document-start script for a new tab: fingerprint protection, then uBlock scriptlets.
+/// Both are skipped on sites the user excluded (shield off, or fingerprint protection off for that site).
 pub fn scriptlets_init_js() -> String {
     let off = BLOCKER.get().map(|b| b.allow_sites.read().clone()).unwrap_or_default();
-    format!("window.__hushOff={};\n{}", serde_json::to_string(&off).unwrap_or("[]".into()), SCRIPTLETS_JS)
+    let p = PAGE_PREFS.read();
+    let fp = if p.fp_on {
+        let fp_off: Vec<&String> = p.fp_off.iter().chain(off.iter()).collect();
+        format!("const __HUSH_FP={};\n{}\n", json!({ "secret": *FP_SECRET, "off": fp_off }), FARBLE_JS)
+    } else { String::new() };
+    format!("{fp}window.__hushOff={};\n{}", serde_json::to_string(&off).unwrap_or("[]".into()), SCRIPTLETS_JS)
 }
 /// What every page gets when it starts loading; readable from JNI threads without the AppHandle.
 #[derive(Default)]
-pub struct PagePrefs { pub dark: bool, pub site_dark: std::collections::BTreeMap<String, bool> }
+pub struct PagePrefs { pub dark: bool, pub site_dark: std::collections::BTreeMap<String, bool>,
+    /// Fingerprint protection on/off, and sites where it's turned off.
+    pub fp_on: bool, pub fp_off: Vec<String> }
 pub static PAGE_PREFS: LazyLock<parking_lot::RwLock<PagePrefs>> = LazyLock::new(Default::default);
 fn refresh_page_prefs(s: &store::Store) {
     let mut p = PAGE_PREFS.write();
     p.dark = s.settings.ui.get("force_dark").map(|v| v == "true").unwrap_or(false);
     p.site_dark = s.site_dark.clone();
+    p.fp_on = s.settings.ui.get("fp").map(|v| v != "off").unwrap_or(true);
+    p.fp_off = s.settings.ui.get("fp_off").map(|v| v.split(',').map(|x| x.trim().to_lowercase()).filter(|x| !x.is_empty()).collect()).unwrap_or_default();
     let until = s.settings.ui.get("focus_until").and_then(|v| v.parse().ok()).unwrap_or(0);
     let sites = s.settings.ui.get("focus_sites").map(|v| v.split(',').map(|x| x.trim().trim_start_matches("www.").to_lowercase()).filter(|x| !x.is_empty()).collect()).unwrap_or_default();
     *FOCUS.write() = (until, sites);
@@ -211,7 +230,7 @@ async fn set_setting(app: AppHandle, key: String, value: String) -> Result<(), S
         // Free-form UI preferences (layout, auto-hide, density...). The UI owns their meaning; Rust only stores them.
         k if k.starts_with("ui.") => {
             let name = &k[3..];
-            let max = if matches!(name, "bangs" | "focus_sites" | "workspaces") { 4000 } else { 200 };
+            let max = if matches!(name, "bangs" | "focus_sites" | "workspaces" | "fp_off") { 4000 } else { 200 };
             if name.is_empty() || name.len() > 40 || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') || value.len() > max {
                 return Err("invalid ui setting".into());
             }
@@ -418,6 +437,7 @@ pub fn run() {
             site_dark, get_stats, history_add, history_list, history_clear, suggest, session_save,
             check_update, app_info, import_bookmarks,
             desktop::page_action, desktop::set_split,
+            extensions::extension_list, extensions::extension_install, extensions::extension_remove,
             desktop::open_tab, desktop::switch_tab, desktop::close_tab, desktop::navigate, desktop::nav,
             desktop::clear_data, desktop::start_picker, desktop::set_layout, desktop::show_content,
             desktop::download_open, desktop::download_reveal])
@@ -432,4 +452,50 @@ pub fn run() {
             mobile::clear_data, mobile::set_chrome_inset, mobile::set_web_prefs])
         .setup(mobile::setup);
     b.run(tauri::generate_context!()).expect("hush failed to start");
+}
+
+/// Security regression tests (run in CI on Windows, macOS and Linux).
+#[cfg(test)]
+mod security_tests {
+    use super::*;
+    fn cap(name: &str) -> Value { serde_json::from_str(&std::fs::read_to_string(format!("capabilities/{name}.json")).unwrap()).unwrap() }
+
+    #[test] fn only_the_chrome_ui_can_call_hush_on_desktop() {
+        // Web pages live in tab webviews; if a capability ever matched them, a website could call Hush commands.
+        let c = cap("default");
+        assert_eq!(c["webviews"], json!(["chrome"]));
+        assert!(c.get("windows").is_none(), "a window-wide capability would include every tab");
+        assert!(c.get("remote").is_none(), "remote URLs must never get IPC");
+    }
+    #[test] fn mobile_capability_is_the_local_chrome_only() {
+        let c = cap("mobile");
+        assert_eq!(c["windows"], json!(["main"]));
+        assert!(c.get("remote").is_none());
+    }
+    #[test] fn csp_is_set_for_the_chrome_ui() {
+        let conf: Value = serde_json::from_str(&std::fs::read_to_string("tauri.conf.json").unwrap()).unwrap();
+        let csp = conf["app"]["security"]["csp"].as_str().unwrap_or("");
+        assert!(csp.contains("default-src 'self'"), "chrome UI must not load remote code");
+        assert!(!csp.contains("unsafe-eval"));
+    }
+    #[test] fn address_bar_never_produces_dangerous_schemes() {
+        let s = store::Settings::default();
+        for input in ["javascript:alert(1)", "file:///C:/Windows/win.ini", "data:text/html,<script>x</script>", "intent://x#Intent;end", "chrome://settings"] {
+            let out = resolve_with(&s, input);
+            assert!(out.starts_with("https://"), "{input} -> {out}");
+        }
+        assert_eq!(resolve_with(&s, "http://example.com"), "https://example.com");
+    }
+    #[test] fn page_actions_are_a_fixed_list_and_args_cannot_break_out() {
+        assert!(page_action_js("eval", "x").is_err());
+        let js = page_action_js("find", "\");fetch('//evil');(\"").unwrap();
+        assert!(js.ends_with(r#"__hushPage.find("\");fetch('//evil');(\"",false);"#));
+    }
+    #[test] fn search_shortcuts() {
+        let mut s = store::Settings::default();
+        assert_eq!(resolve_with(&s, "!w hush browser"), "https://en.wikipedia.org/w/index.php?search=hush+browser");
+        s.ui.insert("bangs".into(), "x=javascript:alert(1)|my=https://example.com/?q=%s".into());
+        assert!(bang(&s, "!x hi").is_none(), "custom shortcuts must be https");
+        assert_eq!(bang(&s, "!my hi").unwrap(), "https://example.com/?q=hi");
+    }
 }

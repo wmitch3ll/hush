@@ -21,6 +21,9 @@ serde_json = "1"
 url = "2"
 parking_lot = "0.12"
 ureq = { version = "2", default-features = false, features = ["tls"] }  # user-triggered list updates only
+zip = { version = "2", default-features = false, features = ["deflate"] }   # desktop extensions (.crx unpack)
+sha2 = "0.10"
+base64 = "0.22"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

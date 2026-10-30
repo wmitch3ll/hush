@@ -1,0 +1,13 @@
+# Weekly pull requests when Hush's Rust libraries or GitHub Actions have updates (security fixes arrive this way).
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: adblock        # pinned on purpose (rmp-serde compatibility); upgrade deliberately
+      - dependency-name: rmp
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }

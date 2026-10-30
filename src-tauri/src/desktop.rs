@@ -13,8 +13,9 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     crate::init_state(app.handle());
     let win = WindowBuilder::new(app, "main").title("Hush").inner_size(1200.0, 800.0).build()?;
     let s = win.inner_size()?.to_logical::<f64>(win.scale_factor()?);
+    // Every webview shares one engine environment, so the chrome uses the same extension setting as the tabs.
     win.add_child(
-        WebviewBuilder::new("chrome", WebviewUrl::App("index.html".into())),
+        WebviewBuilder::new("chrome", WebviewUrl::App("index.html".into())).browser_extensions_enabled(true),
         LogicalPosition::new(0.0, 0.0), LogicalSize::new(s.width, s.height))?;
     let w2 = win.clone();
     win.on_window_event(move |e| { if let tauri::WindowEvent::Resized(_) = e { relayout(&w2); } });
@@ -184,7 +185,9 @@ pub async fn open_tab(app: AppHandle, input: String, private: Option<bool>) -> R
     let st = app.state::<AppState>();
     let win = app.get_window("main").ok_or("no window")?;
     let label = format!("tab-{}", st.next_id.fetch_add(1, Ordering::Relaxed));
-    let url: url::Url = resolve_app(&app, &input).parse().map_err(|e: url::ParseError| e.to_string())?;
+    // chrome-extension:// pages (an extension's popup or settings) open only for extensions the user installed.
+    let ext_page = input.strip_prefix("chrome-extension://").and_then(|r| r.split('/').next()).map(|id| crate::extensions::installed(&app, id)).unwrap_or(false);
+    let url: url::Url = if ext_page { input.parse() } else { resolve_app(&app, &input).parse() }.map_err(|e: url::ParseError| e.to_string())?;
     let (b_nav, b_load) = (st.blocker.clone(), st.blocker.clone());
     let (app_nav, lbl_nav) = (app.clone(), label.clone());
     let (app_dl, lbl_dl) = (app.clone(), label.clone());
@@ -223,6 +226,7 @@ pub async fn open_tab(app: AppHandle, input: String, private: Option<bool>) -> R
             // Scheme allowlist (R-55): everything else (file:, javascript:, intent:, tauri:, asset:, ipc:, custom app
             // schemes) is refused so a web page can never steer a tab into local files or the app's own origin.
             "about" | "blob" | "data" => true,
+            "chrome-extension" => u.host_str().map(|id| crate::extensions::installed(&app_nav, id)).unwrap_or(false),
             _ => false,
         })
         .on_page_load(move |wv, p| {
@@ -242,6 +246,8 @@ pub async fn open_tab(app: AppHandle, input: String, private: Option<bool>) -> R
         .on_download(move |_wv, ev| on_download(&app_dl, &lbl_dl, ev))
         // Private tabs: in-memory profile, nothing written to disk, gone when the tab closes.
         .incognito(private.unwrap_or(false))
+        .browser_extensions_enabled(true)
+        .extensions_path(crate::extensions::dir(&app))
         .initialization_script(include_str!("harden.js"))
         .initialization_script(&crate::scriptlets_init_js());
     #[cfg(feature = "new-window-api")]
