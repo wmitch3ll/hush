@@ -143,6 +143,7 @@ body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
 <div class="sheet" id="focus"></div>
 <div class="sheet" id="about"></div>
 <div class="sheet" id="xs"></div>
+<div class="sheet" id="echos" style="padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px);overflow:hidden"></div>
 <div class="sheet" id="msgs" style="padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px);overflow:hidden"></div>
 <div id="scrim"></div><div class="act" id="act"></div>
 <div id="toast" role="status"></div>
@@ -150,6 +151,7 @@ body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
 <script src="extras.js"></script>
 <script src="vendor/nostr.js"></script>
 <script src="messenger.js"></script>
+<script src="echo.js"></script>
 <script>
 const TA=window.__TAURI__, $=s=>document.querySelector(s);
 const inv=(c,a)=>TA?TA.core.invoke(c,a||{}):Promise.reject("not in app");
@@ -385,6 +387,9 @@ const HM=HushMsg({inv,secret:{get:n=>native('secretGet',{name:n}).then(r=>r&&typ
   badge:n=>{for(const b of [$("#menu-btn"),$("#tb-menu")]){b.classList.toggle("msgdot",n>0);b.dataset.n=n>99?"99+":n}},qr:s=>{try{return hushQR.svg(s)}catch(e){return ""}},close:()=>{HM.close();show(null)},
   saveImage:d=>native("saveImage",{data:d}).then(()=>toast("Saved to Photos")).catch(e=>toast(String(e)))});
 function openMsgs(chat){show("msgs");HM.open($("#msgs"),typeof chat==="string"?chat:null)}
+const EC=HushEcho({M:HM.api,toast,mobile:true,open:u=>{show(null);newTab(false,true);go(u)},close:()=>{EC.close();show(null)},openMurmur:pk=>{EC.close();openMsgs(pk||null)},badge:n=>{}});
+function openEcho(){show("echos");EC.open($("#echos"))}
+setTimeout(()=>EC.boot(),3000);
 setTimeout(()=>HM.boot(),2000);
 // Floating video: leave a tab that's playing and it keeps going in a small player you can drag and resize.
 // Leaving a tab that's playing: Ask / Mini player / Keep playing / Stop (Settings › When you leave a playing video).
@@ -425,7 +430,7 @@ function runAction(id){const t=T();const A={back:()=>inv("nav",{action:"back"}),
   copylink:()=>t&&copy(t.url),dark:async()=>{await setPref("force_dark",pref("force_dark")==="true"?"false":"true");applyDarkNow()},alltabs:()=>openSwitcher(),home:()=>newTab(false,true),
   private:()=>newTab(true),mute:()=>toggleMute(t),boosts:()=>{drawMenu();$("#m-boost")?.click()},destruct:()=>{if(!t)return;actions("Self-destruct this tab",HX.DESTRUCT.map(([l,m])=>[l,()=>{t.destruct=m?Date.now()+m*60000:0;toast(m?"Closes in "+l:"Off")}]))}};
   (A[id]||(()=>{}))()}
-function show(id){sheet=id;["switcher","menu","settings","downloads","site","history","cmd","reading","focus","about","xs","msgs"].forEach(s=>$("#"+s).classList.toggle("on",s===id));
+function show(id){sheet=id;["switcher","menu","settings","downloads","site","history","cmd","reading","focus","about","xs","msgs","echos"].forEach(s=>$("#"+s).classList.toggle("on",s===id));
   if(id!=="cmd"&&document.activeElement?.id==="cmdq")document.activeElement.blur();syncNative()}
 const head=title=>`<div class="grab"></div><h2>${title}<button class="btn sm" data-done>Done</button></h2>`;
 const wire=el=>{el.querySelectorAll("[data-done]").forEach(b=>b.onclick=()=>show(null));const h=el.querySelector("h2");if(h)sheetGestures(h)};
@@ -467,6 +472,7 @@ function drawMenu(){const el=$("#menu"),t=T(),live=!!(t&&t.native);
    <div class="row"><button class="btn" id="m-later" ${live?"":"disabled"}>Read later</button><button class="btn" id="m-pdf" ${live?"":"disabled"}>Save as PDF</button><button class="btn" id="m-pip" ${live?"":"disabled"}>Pop-out video</button></div>
    ${live?`<div class="row"><button class="btn" id="m-listen">${listenSt?"■ Stop reading":"▶ Listen"}</button><button class="btn" id="m-boost">Boosts</button><button class="btn" id="m-shot">Screenshot</button></div>`:""}
    ${listenSt?`<div class="row"><button class="btn" id="l-prev">‹ Prev</button><button class="btn" id="l-pp">${listenSt==="paused"?"Resume":"Pause"}</button><button class="btn" id="l-next">Next ›</button><button class="btn" id="l-rate">${lRate}×</button></div>`:""}
+   <button class="item" id="m-echo"><div>Echo<small>${EC.unread()?EC.unread()+" new · ":""}share with friends, privately</small></div></button>
    <button class="item" id="m-msg"><div>Murmur<small>${HM.unread()?HM.unread()+" unread · ":""}private chat through Tor</small></div></button>
    <div class="item"><div>Tor mode <button class="btn sm" id="m-tori" aria-label="What is Tor?" style="padding:0 8px;min-width:0">ⓘ</button><small>${torOn?"on — every tab goes through Tor":"hide your IP and location from every site"}</small></div><button class="sw ${torOn?"on":""}" id="m-tor"></button></div>
    ${torOn?'<button class="item" id="m-newid"><div>New Tor identity<small>fresh circuits and a new IP, then reload</small></div></button>':""}
@@ -495,7 +501,7 @@ function drawMenu(){const el=$("#menu"),t=T(),live=!!(t&&t.native);
   if($("#l-pp"))$("#l-pp").onclick=()=>{native("listen",{action:listenSt==="paused"?"resume":"pause"})};
   if($("#l-next"))$("#l-next").onclick=()=>native("listen",{action:"next"});if($("#l-prev"))$("#l-prev").onclick=()=>native("listen",{action:"prev"});
   if($("#l-rate"))$("#l-rate").onclick=()=>{const R=[1,1.25,1.5,1.75,2,0.75];lRate=R[(R.indexOf(lRate)+1)%R.length];native("listen",{action:"rate",rate:lRate});drawMenu()};
-  $("#m-tor").onclick=()=>setTor(!torOn);$("#m-tori").onclick=e=>{e.stopPropagation();torInfo()};$("#m-msg").onclick=openMsgs;if($("#m-newid"))$("#m-newid").onclick=async()=>{try{await inv("tor_new_identity");inv("nav",{action:"reload"}).catch(()=>{});toast("New identity")}catch(e){toast(String(e))}show(null)};
+  $("#m-tor").onclick=()=>setTor(!torOn);$("#m-tori").onclick=e=>{e.stopPropagation();torInfo()};$("#m-msg").onclick=openMsgs;$("#m-echo").onclick=openEcho;if($("#m-newid"))$("#m-newid").onclick=async()=>{try{await inv("tor_new_identity");inv("nav",{action:"reload"}).catch(()=>{});toast("New identity")}catch(e){toast(String(e))}show(null)};
   $("#m-arch").onclick=()=>{$("#xs").innerHTML=head("Archived tabs")+'<div id="arx" style="padding:0 4px 20px"></div>';wire($("#xs"));HX.archivePanel($("#arx"),u=>{newTab(false,true);go(u)});show("xs")};
   $("#m-rl").onclick=()=>{drawReading();show("reading")};$("#m-focus").onclick=()=>{drawFocus();show("focus")};$("#m-about").onclick=()=>{drawAbout();show("about")}}
 
