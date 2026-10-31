@@ -54,7 +54,8 @@ window.HushEcho = function (A) {
   function onPublic(e) {
     if (M.contacts()[e.pubkey]?.blocked) return;
     if (e.kind === K_PROFILE) { try { const j = JSON.parse(e.content); if (j.hidden) { setProfile(e.pubkey, { public: false }); return; }
-      setProfile(e.pubkey, { name: String(j.name || '').slice(0, 40), bio: String(j.bio || '').slice(0, 300), public: true, echo: true, at: e.created_at }); } catch {} return; }
+      const okm = m => m && /^[0-9a-f]{64}$/.test(m.x || '') && /^https:\/\//.test(m.url || '') ? m : null;
+      setProfile(e.pubkey, { name: String(j.name || '').slice(0, 40), bio: String(j.bio || '').slice(0, 300), public: true, echo: true, at: e.created_at, avatar: okm(j.avatar), banner: okm(j.banner) }); } catch {} return; }
     if (e.kind === 5) { const all = posts(); for (const t of e.tags) if (t[0] === 'e' && all[t[1]]?.pk === e.pubkey) delete all[t[1]]; LS.set('posts', all); if (view.open) paint(); return; }
     if (e.kind === K_POST) { const p = savePost(fromEvent(e, 'public')); if (p.replyTo === me()) notify({ k: 'r' + p.id, type: 'reply', from: p.pk, post: p.reply, reply: p.id }); if (view.open) paint(); return; }
     if (e.kind === K_LIKE) { const target = (e.tags.find(x => x[0] === 'e') || [])[1]; const all = posts(); const p = all[target]; if (!p) { (pendLikes[target] = pendLikes[target] || new Set()).add(e.pubkey); return; }
@@ -115,7 +116,7 @@ window.HushEcho = function (A) {
   function publishProfile() {
     const p = prof(); if (!p) return;
     M.wrapTo(audienceFriends(), K_PROFILE, JSON.stringify({ name: p.name, bio: p.bio, public: !!p.public }), [['d', 'echo']]);
-    if (p.public) M.broadcast(M.sign({ kind: K_PROFILE, content: JSON.stringify({ name: p.name, bio: p.bio }), tags: [['d', 'echo'], ...words(p.name).map(w => ['t', '@' + w])] }));
+    const mp = M.myProfile(); if (p.public) M.broadcast(M.sign({ kind: K_PROFILE, content: JSON.stringify({ name: p.name, bio: p.bio, avatar: mp.avatar || null, banner: mp.banner || null }), tags: [['d', 'echo'], ...words(p.name).map(w => ['t', '@' + w])] }));
     else if (p.wasPublic) M.broadcast(M.sign({ kind: K_PROFILE, content: JSON.stringify({ hidden: true }), tags: [['d', 'echo']] }));
     LS.set('shared', audienceFriends());
   }
@@ -148,23 +149,33 @@ window.HushEcho = function (A) {
 .ec-person{display:flex!important;gap:12px;align-items:center;padding:10px 14px;width:100%}.ec-person:hover{background:var(--card)}
 .ec-note{display:flex;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);font-size:14px;cursor:pointer}.ec-note.unread{background:color-mix(in srgb,var(--acc) 7%,transparent)}
 .ec-fab{position:absolute;right:18px;bottom:18px;width:56px;height:56px;border-radius:18px;background:var(--acc);color:var(--bg);display:grid!important;place-items:center;box-shadow:0 8px 24px #0003;font-size:24px;z-index:3}
+.ec-banner{height:130px;overflow:hidden}.ec-act svg,.ec-aud svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;vertical-align:-3px}.ec-act .on svg{fill:currentColor}
+.ec-fab svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.ec-aud{color:var(--mute)}
 .ec-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;font:600 11px system-ui;background:var(--card);border:1px solid var(--line)}`;
   if (!document.getElementById('ec-css')) { const s = document.createElement('style'); s.id = 'ec-css'; s.textContent = css; document.head.append(s); }
   const view = { open: false, el: null, tab: 'home', screen: null, q: '', results: null };
   const ago = t => { const s = (Date.now() - t) / 1000; return s < 60 ? 'now' : s < 3600 ? Math.floor(s / 60) + 'm' : s < 86400 ? Math.floor(s / 3600) + 'h' : s < 7 * 86400 ? Math.floor(s / 86400) + 'd' : new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric' }); };
   const left = e => { const s = e - now(); return s > 86400 ? Math.ceil(s / 86400) + 'd' : s > 3600 ? Math.ceil(s / 3600) + 'h' : Math.max(1, Math.ceil(s / 60)) + 'm'; };
   const linkify = s => esc(s).replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)"'\]]/g, u => `<a href="#" data-u="${u}">${u.length > 50 ? u.slice(0, 47) + '…' : u}</a>`).replace(/(^|\s)#(\w{2,30})/g, '$1<a href="#" data-tag="$2">#$2</a>');
-  const av = (pk, sz = 44) => `<div class=hm-av style="background:${M.colorOf(pk)};width:${sz}px;height:${sz}px;font-size:${Math.round(sz / 2.9)}px">${esc(M.initials(nameOf(pk)))}</div>`;
+  // Avatars: contacts & me via Murmur (encrypted photo + aura); public profiles carry their own public photo.
+  const av = (pk, sz = 44) => { if (pk === me() || M.contacts()[pk]) return M.avatarHTML(pk, sz);
+    const pr = profiles()[pk] || {}, img = pr.avatar && /^[0-9a-f]{64}$/.test(pr.avatar.x || '') ? `<img data-av='${esc(JSON.stringify(pr.avatar))}' alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%;opacity:0;transition:opacity .2s">` : '';
+    return `<div class=hm-av style="position:relative;background:${M.colorOf(pk)};width:${sz}px;height:${sz}px;font-size:${Math.round(sz / 2.9)}px">${esc(M.initials(nameOf(pk)))}${img}</div>`; };
+  const bannerOf = pk => pk === me() ? M.myProfile().banner : (M.contacts()[pk]?.banner || profiles()[pk]?.banner);
+  const banner = pk => { const b = bannerOf(pk); return `<div class=ec-banner style="background:linear-gradient(135deg,${M.colorOf(pk)},var(--card))">${b ? `<img data-av='${esc(JSON.stringify(b))}' alt="" style="width:100%;height:100%;object-fit:cover;opacity:0">` : ''}</div>`; };
+  const IC = { reply: '<svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>', repost: '<svg viewBox="0 0 24 24"><path d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3"/></svg>',
+    like: '<svg viewBox="0 0 24 24"><path d="M12 21s-7-4.4-9.3-9A5.4 5.4 0 0 1 12 6a5.4 5.4 0 0 1 9.3 6C19 16.6 12 21 12 21z"/></svg>', more: '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg>',
+    pen: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4"/></svg>', lock: '<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>', globe: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>' };
   const head = (title, right = '', left = '') => `<div class=hm-h>${left}<div style="flex:1;min-width:0"><h2>${title}</h2><div class=hm-st></div></div>${right}</div>`;
   const backB = `<button class=hm-ib data-back aria-label=Back><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>`;
   const closeB = () => A.close ? `<button class=hm-ib data-close aria-label=Close><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>` : '';
   function card(p) {
     const liked = (p.likes || []).includes(me()), likes = (p.likes || []).length, replies = Object.values(posts()).filter(x => x.reply === p.id && !expired(x)).length;
     return `${p.boostedBy ? `<div class=ec-boost>↻ ${esc(nameOf(p.boostedBy))} reposted</div>` : ''}<div class=ec-post data-p="${p.id}">${av(p.pk)}<div class=b>
-      <div class=h><b data-pk="${p.pk}">${esc(nameOf(p.pk))}</b><span>· ${tagOf(p.pk)}</span><span>· ${ago(p.at)}</span><span class=ec-aud title="${p.aud === 'public' ? 'Public' : 'Friends only — encrypted'}">${p.aud === 'public' ? '🌐' : '🔒'}</span>${p.exp ? `<span title="Disappears">⏲ ${left(p.exp)}</span>` : ''}</div>
+      <div class=h><b data-pk="${p.pk}">${esc(nameOf(p.pk))}</b><span>· ${tagOf(p.pk)}</span><span>· ${ago(p.at)}</span><span class=ec-aud title="${p.aud === 'public' ? 'Public' : 'Friends only — encrypted'}">${p.aud === 'public' ? IC.globe : IC.lock}</span>${p.exp ? `<span title="Disappears">⏲ ${left(p.exp)}</span>` : ''}</div>
       ${p.replyTo ? `<div class=ec-reply>Replying to ${esc(nameOf(p.replyTo))}</div>` : ''}
       ${p.text ? `<div class=t>${linkify(p.text)}</div>` : ''}${p.img ? `<img class=ec-img data-img='${esc(JSON.stringify(p.img))}' alt="Photo">` : ''}
-      <div class=ec-act><button data-a=reply aria-label=Reply>💬 ${replies || ''}</button>${p.aud === 'public' ? `<button data-a=repost aria-label=Repost>↻</button>` : ''}<button data-a=like class="${liked ? 'on' : ''}" aria-label=Like>${liked ? '♥' : '♡'} ${likes || ''}</button><button data-a=more aria-label=More>⋯</button></div></div></div>`;
+      <div class=ec-act><button data-a=reply aria-label=Reply>${IC.reply}<span>${replies || ''}</span></button>${p.aud === 'public' ? `<button data-a=repost aria-label=Repost>${IC.repost}</button>` : ''}<button data-a=like class="${liked ? 'on' : ''}" aria-label=Like>${IC.like}<span>${likes || ''}</span></button><button data-a=more aria-label=More>${IC.more}</button></div></div></div>`;
   }
   function feed() {
     const fr = new Set(M.friends()), fo = new Set(follows()), all = Object.values(posts());
@@ -180,7 +191,7 @@ window.HushEcho = function (A) {
     ({ nomurmur: drawNoMurmur, setup: drawSetup, compose: drawCompose, post: drawThread, person: drawPerson, edit: drawSetup }[view.screen] || drawMain)();
     const b = view.el.querySelector('.hm-body'); if (b && !view.jump) b.scrollTop = sc; view.jump = false; const t = view.el.querySelector('textarea'); if (t && ta && !t.value) t.value = ta;
     const st = view.el.querySelector('.hm-st'); if (st) { const s = M.status(); st.className = 'hm-st ' + (s.startsWith('error') ? 'error' : s); st.innerHTML = `<i></i>${s === 'on' ? 'Through Tor · ' + M.okRelays() + ' relays' : s === 'connecting' ? 'Connecting through Tor…' : 'Offline — retrying'}`; }
-    wire(); }
+    wire(); M.hydrate(view.el); }
   function go(screen, extra = {}) { Object.assign(view, { screen, jump: true }, extra); paint(); }
   function drawNoMurmur() {
     view.el.innerHTML = `<div class=hm>${head('echo.', closeB())}<div class=hm-body><div class=hm-card style="text-align:center"><div style="font-size:40px">📣</div><h3>Set up your Hush ID first</h3>
@@ -212,9 +223,9 @@ window.HushEcho = function (A) {
     else if (view.tab === 'alerts') { const l = LS.get('notif', []); body = l.map(n => `<div class="ec-note ${n.unread ? 'unread' : ''}" data-open="${esc(n.reply || n.post)}">${av(n.from, 36)}<div><b>${esc(nameOf(n.from))}</b> ${n.type === 'like' ? 'liked your post' : n.type === 'repost' ? 'reposted you' : 'replied to you'}<div style="color:var(--mute);font-size:12px">${ago(n.at)}</div></div></div>`).join('') || '<div class=hm-empty>Likes and replies on your posts show up here.</div>';
       setTimeout(() => { const l2 = LS.get('notif', []); if (l2.some(x => x.unread)) { l2.forEach(x => x.unread = false); LS.set('notif', l2); badge(); } }, 1500); }
     else { const p = prof(), mine = Object.values(posts()).filter(x => x.pk === me() && !expired(x)).sort((a, b) => b.at - a.at);
-      body = `<div class=ec-prof>${av(me(), 72).replace('class=hm-av', 'class=hm-av style="margin:auto"')}<h2>${esc(p.name)}</h2><p>${tagOf(me())} · ${p.public ? '<span class=ec-pill>🌐 Public</span>' : '<span class=ec-pill>🔒 Friends only</span>'}</p>${p.bio ? `<p>${esc(p.bio)}</p>` : ''}
+      body = `${banner(me())}<div class=ec-prof style="margin-top:-46px"><div style="display:flex;justify-content:center">${av(me(), 84)}</div><h2>${esc(p.name)}</h2>${M.myProfile().status ? `<p>${esc(M.myProfile().status)}</p>` : ''}<p>${tagOf(me())} · ${p.public ? '<span class=ec-pill>🌐 Public</span>' : '<span class=ec-pill>🔒 Friends only</span>'}</p>${p.bio ? `<p>${esc(p.bio)}</p>` : ''}
         <p style="font-size:12.5px">${M.friends().length} friends · ${follows().length} following</p><button class="hm-btn ghost" data-edit>Edit profile</button></div>` + (mine.map(card).join('') || '<div class=hm-empty>You haven’t posted yet.</div>'); }
-    view.el.innerHTML = `<div class=hm>${head('echo.', closeB())}${tabs()}<div class=hm-body>${body}</div><button class=ec-fab data-compose aria-label="New post">✎</button></div>`;
+    view.el.innerHTML = `<div class=hm>${head('echo.', closeB())}${tabs()}<div class=hm-body>${body}</div><button class=ec-fab data-compose aria-label="New post">${IC.pen}</button></div>`;
     const q = view.el.querySelector('#ec-q'); if (q) { q.onkeydown = e => { if (e.key === 'Enter') { view.q = q.value.trim(); if (!view.q) return; view.results = 'loading'; paint(); search(view.q, () => { view.results = 'done'; paint(); }); } }; if (!view.q) setTimeout(() => q.focus(), 50); }
     if (view.tab === 'explore' && !view.explored) { view.explored = true; explore(); }
   }
@@ -254,13 +265,13 @@ window.HushEcho = function (A) {
     const all = posts(), p = all[view.id]; if (!p) { view.screen = null; return drawMain(); }
     const parent = p.reply && all[p.reply], replies = Object.values(all).filter(x => x.reply === p.id && !expired(x)).sort((a, b) => a.at - b.at);
     view.el.innerHTML = `<div class=hm>${head('Post', '', backB)}<div class=hm-body>${parent ? card(parent) : ''}${card(p)}${replies.map(card).join('') || '<div class=hm-empty style="padding:20px">No replies yet</div>'}</div>
-      <button class=ec-fab data-replyto="${p.id}" aria-label=Reply>💬</button></div>`;
+      <button class=ec-fab data-replyto="${p.id}" aria-label=Reply>${IC.reply}</button></div>`;
   }
   function drawPerson() {
     const pk = view.pk, pr = profiles()[pk] || {}, friend = isFriend(pk), fo = follows().includes(pk);
     const list = Object.values(posts()).filter(x => x.pk === pk && !expired(x) && !x.reply).sort((a, b) => b.at - a.at);
-    view.el.innerHTML = `<div class=hm>${head(esc(nameOf(pk)), '', backB)}<div class=hm-body><div class=ec-prof>${av(pk, 72).replace('class=hm-av', 'class=hm-av style="margin:auto"')}
-      <h2>${esc(nameOf(pk))}</h2><p>${tagOf(pk)} · ${friend ? '<span class=ec-pill>Friend</span>' : pr.public ? '<span class=ec-pill>🌐 Public</span>' : ''}</p>${pr.bio ? `<p>${esc(pr.bio)}</p>` : ''}
+    view.el.innerHTML = `<div class=hm>${head(esc(nameOf(pk)), '', backB)}<div class=hm-body>${banner(pk)}<div class=ec-prof style="margin-top:-46px"><div style="display:flex;justify-content:center">${av(pk, 84)}</div>
+      <h2>${esc(nameOf(pk))}</h2>${M.contacts()[pk]?.status ? `<p>${esc(M.contacts()[pk].status)}</p>` : ''}<p>${tagOf(pk)} · ${friend ? '<span class=ec-pill>Friend</span>' : pr.public ? '<span class=ec-pill>🌐 Public</span>' : ''}</p>${pr.bio ? `<p>${esc(pr.bio)}</p>` : ''}
       <div style="display:flex;gap:8px;justify-content:center;margin-top:8px">${pk !== me() && pr.public && !friend ? `<button class="hm-btn ${fo ? 'ghost' : ''}" id=ec-fo>${fo ? 'Following' : 'Follow'}</button>` : ''}${pk !== me() ? '<button class="hm-btn ghost" id=ec-msg>Message</button>' : ''}</div></div>
       ${list.map(card).join('') || `<div class=hm-empty>${friend || pr.public ? 'No posts yet' : 'This profile is private'}</div>`}</div></div>`;
     const f = view.el.querySelector('#ec-fo'); if (f) f.onclick = () => { const l = follows(); LS.set('follow', fo ? l.filter(x => x !== pk) : [...l, pk]); subscribe(); paint(); A.toast(fo ? 'Unfollowed' : 'Following ' + nameOf(pk)); };

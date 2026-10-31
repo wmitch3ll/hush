@@ -430,7 +430,7 @@ function runAction(id){const t=T();const A={back:()=>inv("nav",{action:"back"}),
   copylink:()=>t&&copy(t.url),dark:async()=>{await setPref("force_dark",pref("force_dark")==="true"?"false":"true");applyDarkNow()},alltabs:()=>openSwitcher(),home:()=>newTab(false,true),
   private:()=>newTab(true),mute:()=>toggleMute(t),boosts:()=>{drawMenu();$("#m-boost")?.click()},destruct:()=>{if(!t)return;actions("Self-destruct this tab",HX.DESTRUCT.map(([l,m])=>[l,()=>{t.destruct=m?Date.now()+m*60000:0;toast(m?"Closes in "+l:"Off")}]))}};
   (A[id]||(()=>{}))()}
-function show(id){sheet=id;["switcher","menu","settings","downloads","site","history","cmd","reading","focus","about","xs","msgs","echos"].forEach(s=>$("#"+s).classList.toggle("on",s===id));
+function show(id){sheet=id;try{const cp=JSON.parse(localStorage.getItem("hush.msg.prefs")||"{}").curtain!==false;native("secure",{on:cp&&(id==="msgs"||id==="echos")}).catch(()=>{})}catch(e){}["switcher","menu","settings","downloads","site","history","cmd","reading","focus","about","xs","msgs","echos"].forEach(s=>$("#"+s).classList.toggle("on",s===id));
   if(id!=="cmd"&&document.activeElement?.id==="cmdq")document.activeElement.blur();syncNative()}
 const head=title=>`<div class="grab"></div><h2>${title}<button class="btn sm" data-done>Done</button></h2>`;
 const wire=el=>{el.querySelectorAll("[data-done]").forEach(b=>b.onclick=()=>show(null));const h=el.querySelector("h2");if(h)sheetGestures(h)};

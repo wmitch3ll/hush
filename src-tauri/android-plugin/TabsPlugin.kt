@@ -99,6 +99,9 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             override fun onAuthenticationError(code: Int, msg: CharSequence) { if (!done) { done = true; i.resolve(JSObject().put("ok", false).put("available", true)) } }
         }).authenticate(androidx.biometric.BiometricPrompt.PromptInfo.Builder().setTitle("Unlock Hush").setSubtitle("Murmur & Echo")
             .setAllowedAuthenticators(androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK).setNegativeButtonText("Use PIN").build()) } }
+    /** Privacy curtain: while Murmur/Echo is open, block screenshots and the recent-apps thumbnail. */
+    @Command fun secure(i: Invoke) { val on = i.parseArgs(SecureArgs::class.java).on
+        act.runOnUiThread { if (on) act.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE) else act.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE); i.resolve() } }
     private val keepIds = mutableSetOf<String>()
     private val sunk = mutableSetOf<String>()
     /** Background media: keep | release | pause | play for one tab. */
@@ -663,6 +666,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         act.runOnUiThread { active?.let { tabs[it]?.wv }?.evaluateJavascript(js, null) }; i.resolve() }
 
     @InvokeArg class PickArgs { var mode: String = "" }
+    @InvokeArg class SecureArgs { var on: Boolean = false }
     @InvokeArg class SecretArgs { var name: String = ""; var value: String = "" }
     @InvokeArg class MediaArgs { var id: String = ""; var action: String = "" }
     @InvokeArg class FloatArgs { var id: String = ""; var x: Int = -1; var y: Int = -1; var w: Int = 0; var stop: Boolean = true }
