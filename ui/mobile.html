@@ -433,7 +433,10 @@ setInterval(()=>HX.archiveSweep(tabs,cur,id=>closeTab(id)),5*60000);
 setInterval(()=>{HX.destructSweep(tabs,id=>closeTab(id));if(sheet==="switcher")drawSwitcher()},20000);
 setInterval(()=>HX.watchSweep(),5*60000);setTimeout(()=>HX.watchSweep(),20000);
 function openWatch(){$("#xs").innerHTML=head("Change watch")+'<div id="wx" style="padding:0 4px 20px"></div>';wire($("#xs"));HX.watchPanel($("#wx"),u=>{newTab(false,true);go(u)});show("xs")}
-function runAction(id){const t=T();const A={back:()=>inv("nav",{action:"back"}),forward:()=>inv("nav",{action:"fwd"}),reload:()=>inv("nav",{action:"reload"}),newtab:()=>newTab(),closetab:()=>closeTab(cur),
+async function panic(){show(null);try{HM.api.lockNow();EC.close()}catch(e){}
+  const gone=tabs.filter(t=>t.priv).map(t=>t.id);for(const id of gone)await closeTab(id).catch(()=>{});if(torOn)inv("tor_new_identity").catch(()=>{});
+  native("bubble",{show:false}).catch(()=>{});toast("🚨 Panic: private tabs closed, Murmur locked")}
+function runAction(id){const t=T();const A={panic,back:()=>inv("nav",{action:"back"}),forward:()=>inv("nav",{action:"fwd"}),reload:()=>inv("nav",{action:"reload"}),newtab:()=>newTab(),closetab:()=>closeTab(cur),
   reopen:()=>toast("Nothing to reopen"),nexttab:()=>step(1),prevtab:()=>step(-1),top:()=>inv("page_action",{action:"scroll-top"}),bottom:()=>inv("page_action",{action:"scroll-bottom"}),find:()=>findMode(true),
   reader:()=>inv("page_action",{action:"reader"}),listen:()=>{native("listen",{action:listenSt?"stop":"start",rate:lRate});listenSt=listenSt?"":"playing"},screenshot:()=>native("screenshot").catch(e=>toast(String(e))),
   tor:()=>setTor(!torOn),newid:()=>inv("tor_new_identity").then(()=>inv("nav",{action:"reload"})).catch(e=>toast(String(e))),bookmark:()=>t&&inv("bookmark_add",{title:t.title||bare(t.url),url:t.url}).then(loadState),

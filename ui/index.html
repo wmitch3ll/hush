@@ -387,6 +387,7 @@ function shortcut(k){
   else if(k=='shift+m')toggleDock('murmur');
   else if(k=='shift+e')toggleDock('echo');
   else if(k=='shift+h')dockTab?closeDock():openDock('murmur');
+  else if(k=='shift+x')panic();
   else if(k=='shift+s'){if(tab(cur))snapshot(true)} else if(k=='shift+r'){if(tab(cur))listenToggle()} else if(k=='shift+a'){if(tab(cur))panel=='boost'?closePanel():openPanel('boost')}
   else if(k=='shift+b')panel=='bookmarks'?closePanel():openPanel('bookmarks');
   else if(k=='\\'){const o=inWs().filter(t=>t.id!=cur).at(-1);if(split)toggleSplit(split);else if(o)toggleSplit(o.id)}
@@ -483,7 +484,11 @@ T.event.listen('tor-status',({payload:p})=>{if(p.state=='error')toast(p.msg)});
 function destructMenu(id){const t=tab(id);if(!t)return;openPanel('pal');const p=$('#panel');
   p.innerHTML=`<h2>Self-destruct this tab ${closeBtn}</h2><p style="color:var(--mute);margin:-8px 0 12px">It closes itself — and its history entry is not kept — when the time is up.</p>`+HX.DESTRUCT.map(([l,m])=>`<div class=row style="cursor:pointer" data-m=${m}><div>${l}</div></div>`).join('');
   p.querySelectorAll('[data-m]').forEach(r=>r.onclick=()=>{const m=+r.dataset.m;t.destruct=m?Date.now()+m*60000:0;closePanel();toast(m?'This tab closes in '+r.textContent.trim():'Self-destruct off');railState()});wire(p)}
-function runAction(id){const t=tab(cur);const A={back:()=>inv('nav',{action:'back'}),forward:()=>inv('nav',{action:'fwd'}),reload:()=>inv('nav',{action:'reload'}),newtab:()=>newTab(false),
+// Panic: every private and Tor tab closes, Murmur & Echo lock, Tor gets a new identity, and you land on a blank start page.
+async function panic(){closePanel(true);try{closeDock()}catch(e){}try{HM.api.lockNow()}catch(e){}
+  const gone=tabs.filter(t=>t.priv||t.tor).map(t=>t.id);for(const id of gone)await closeTab(id,true).catch(()=>{});
+  inv('tor_new_identity').catch(()=>{});if(!tabs.length||gone.includes(cur))await newTab(false);toast('🚨 Panic: private & Tor tabs closed, Murmur locked')}
+function runAction(id){const t=tab(cur);const A={panic,back:()=>inv('nav',{action:'back'}),forward:()=>inv('nav',{action:'fwd'}),reload:()=>inv('nav',{action:'reload'}),newtab:()=>newTab(false),
   closetab:()=>cur&&closeTab(cur),reopen:()=>shortcut('shift+t'),nexttab:()=>cycle(1),prevtab:()=>cycle(-1),top:()=>inv('page_action',{action:'scroll-top'}),bottom:()=>inv('page_action',{action:'scroll-bottom'}),
   find:()=>findMode(true),reader:()=>inv('page_action',{action:'reader'}),listen:()=>listenToggle(),screenshot:()=>snapshot(true),tor:()=>torTab(),newid:()=>newIdentity(),bookmark:()=>$('#star').click(),
   copylink:async()=>{if(t)try{await navigator.clipboard.writeText(t.url)}catch(e){}},dark:async()=>{await setPref('force_dark',pref('force_dark')=='true'?'false':'true');applyDarkNow()},

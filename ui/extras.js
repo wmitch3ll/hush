@@ -219,7 +219,7 @@ window.HushX = function (A) {
   const ACTIONS = { none: 'Do nothing', back: 'Back', forward: 'Forward', reload: 'Reload', newtab: 'New tab', closetab: 'Close tab', reopen: 'Reopen closed tab',
     nexttab: 'Next tab', prevtab: 'Previous tab', top: 'Scroll to top', bottom: 'Scroll to bottom', find: 'Find in page', reader: 'Reader view', listen: 'Listen to page',
     screenshot: 'Screenshot', tor: A.mobile ? 'Tor mode on/off' : 'Open in Tor tab', newid: 'New Tor identity', bookmark: 'Bookmark page', copylink: 'Copy link', dark: 'Dark mode on/off',
-    alltabs: 'All tabs', home: 'Start page', private: 'New private tab', mute: 'Mute tab', boosts: 'Boosts', destruct: 'Self-destruct tab…' };
+    alltabs: 'All tabs', home: 'Start page', private: 'New private tab', mute: 'Mute tab', boosts: 'Boosts', destruct: 'Self-destruct tab…', panic: 'Panic: close private & Tor tabs, lock Murmur' };
   const SLOTS = A.mobile
     ? [['TL', 'Two fingers ←', 'nexttab'], ['TR', 'Two fingers →', 'prevtab'], ['TD', 'Two fingers ↓', 'reload'], ['TU', 'Two fingers ↑', 'alltabs']]
     : [['L', 'Right-drag ←', 'back'], ['R', 'Right-drag →', 'forward'], ['D', 'Right-drag ↓', 'closetab'], ['U', 'Right-drag ↑', 'newtab'],
