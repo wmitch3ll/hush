@@ -343,6 +343,8 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         if (earlyScripts) try { WebViewCompat.addDocumentStartJavaScript(w, Native.scriptletJs(), setOf("*")) } catch (e: Throwable) {}
         // Tor mode: WebRTC could reveal your real IP outside the proxy, so it's removed from every page.
         if (torOn && earlyScripts) try { WebViewCompat.addDocumentStartJavaScript(w, NO_RTC_JS, setOf("*")) } catch (e: Throwable) {}
+        // Fingerprint protection: hidden GPU + canvas noise always; in Tor mode every phone also looks the same.
+        if (earlyScripts) try { WebViewCompat.addDocumentStartJavaScript(w, "var __HUSH_UNIFORM=" + (if (torOn) "'tor'" else "''") + ";" + Native.uniformJs(), setOf("*")) } catch (e: Throwable) {}
         // Audio indicator: the page reports (only) whether something is playing. Spoofing it can't do anything but flip an icon.
         val audioMsgs = try { WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) } catch (e: Throwable) { false }
         if (audioMsgs) try {

@@ -44,8 +44,9 @@
   for (const k of ['getHours', 'getMinutes', 'getDate', 'getDay', 'getMonth', 'getFullYear']) { const u = Date.prototype['getUTC' + k.slice(3)]; Date.prototype[k] = function () { return u.call(this); }; }
   // Language, hardware, platform.
   def(Navigator.prototype, 'language', 'en-US'); def(Navigator.prototype, 'languages', Object.freeze(['en-US', 'en']));
-  def(Navigator.prototype, 'hardwareConcurrency', 4); def(Navigator.prototype, 'deviceMemory', 8); def(Navigator.prototype, 'maxTouchPoints', 0);
-  def(Navigator.prototype, 'platform', 'Win32'); def(Navigator.prototype, 'getBattery', undefined); def(Navigator.prototype, 'connection', undefined);
+  const AND = /Android/.test(navigator.userAgent);
+  def(Navigator.prototype, 'hardwareConcurrency', 4); def(Navigator.prototype, 'deviceMemory', 8); def(Navigator.prototype, 'maxTouchPoints', AND ? 5 : 0);
+  def(Navigator.prototype, 'platform', AND ? 'Linux armv81' : 'Win32'); def(Navigator.prototype, 'getBattery', undefined); def(Navigator.prototype, 'connection', undefined);
   // Screen: letterboxed to 200×100 steps, no taskbar/DPR detail.
   const bw = () => Math.max(200, Math.floor(innerWidth / 200) * 200), bh = () => Math.max(100, Math.floor(innerHeight / 100) * 100);
   for (const k of ['width', 'availWidth']) def(Screen.prototype, k, bw); for (const k of ['height', 'availHeight']) def(Screen.prototype, k, bh);

@@ -492,7 +492,9 @@ fn make_tab_with(app: &AppHandle, input: String, private: bool, peek: bool, tor:
         .browser_extensions_enabled(true)
         .extensions_path(crate::extensions::dir(&app))
         .initialization_script(include_str!("harden.js"))
-        .initialization_script(&crate::scriptlets_init_js());
+        .initialization_script(&crate::scriptlets_init_js())
+        // Fingerprint protection: hidden GPU + canvas noise everywhere; Tor tabs also look identical (UTC, letterboxing…).
+        .initialization_script(&format!("var __HUSH_UNIFORM={};{}", if tor.is_some() { "'tor'" } else { "''" }, crate::UNIFORM_JS));
     let builder = match tor {
         Some(port) => builder
             .proxy_url(format!("socks5://127.0.0.1:{port}").parse().map_err(|e: url::ParseError| e.to_string())?)

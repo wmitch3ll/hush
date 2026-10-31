@@ -146,6 +146,8 @@ pub fn boost_js(url: &str) -> String {
         serde_json::to_string(&css).unwrap_or("''".into()))
 }
 /// Only these named actions can be run in a page; `arg` is JSON-encoded, so it can't break out of the string.
+/// Fingerprint protection page script (see uniform.js).
+pub const UNIFORM_JS: &str = include_str!("uniform.js");
 pub fn page_action_js(action: &str, arg: &str) -> Result<String, String> {
     let a = serde_json::to_string(arg).map_err(|e| e.to_string())?;
     let call = match action {
