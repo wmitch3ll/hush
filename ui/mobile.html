@@ -118,6 +118,7 @@ body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
         <button class="ib" id="finddn" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
         <button class="ib" id="findx" aria-label="Close find"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>
     </div>
+    <button id="tog" class="ib" aria-label="Watch together controls" style="display:none;font-size:18px">🎬</button><button id="mnote" class="ib" aria-label="Friends’ notes on this page" style="display:none;font-size:15px;width:auto;padding:0 6px">📌<b style="font-size:11px"></b></button>
     <button id="np" class="ib" aria-label="Now playing" style="display:none"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg></button>
     <button id="tabs-btn" class="ib" aria-label="Tabs"><span>1</span></button>
     <button id="menu-btn" class="ib" aria-label="Menu"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg></button>
@@ -387,12 +388,17 @@ const HM=HushMsg({inv,secret:{get:n=>native('secretGet',{name:n}).then(r=>r&&typ
   page:()=>{const t=T();return t&&t.native&&!t.priv&&/^https?:/.test(t.url)?{url:t.url}:null},
   badge:n=>{for(const b of [$("#menu-btn"),$("#tb-menu")]){b.classList.toggle("msgdot",n>0);b.dataset.n=n>99?"99+":n}},qr:s=>{try{return hushQR.svg(s)}catch(e){return ""}},close:()=>{HM.close();show(null)},
   onIncoming:(key,txt,color)=>{if(sheet==="msgs")return;bubbleKey=key;native("bubble",{show:true,text:txt,color}).catch(()=>{})},
-  saveImage:d=>native("saveImage",{data:d}).then(()=>toast("Saved to Photos")).catch(e=>toast(String(e)))});
+  saveImage:d=>native("saveImage",{data:d}).then(()=>toast("Saved to Photos")).catch(e=>toast(String(e))),
+  media:(a,v)=>inv("page_action",{action:"media-"+a,arg:v==null?undefined:String(v)}).catch(()=>{}),
+  togetherBar:(st,cb)=>{togSt=st?[st,cb]:null;$("#tog").style.display=st?"grid":"none"}});
+var togSt=null;$("#tog").onclick=()=>{if(!togSt)return;const [st,cb]=togSt;actions(st.title,st.items.map(([l,a])=>[l,()=>cb(a)]))};
+function noteDraw(){let n=0;try{const t=T();if(t&&t.native&&!t.priv&&/^https?:/.test(t.url))n=EC.notesFor(t.url).length}catch(e){}$("#mnote").style.display=n?"grid":"none";$("#mnote b").textContent=n||""}
+$("#mnote").onclick=()=>{show("echos");EC.openPage($("#echos"))};
 var bubbleKey=null;
 function openMsgs(chat){native("bubble",{show:false}).catch(()=>{});show("msgs");HM.open($("#msgs"),typeof chat==="string"?chat:null)}
-const EC=HushEcho({M:HM.api,toast,mobile:true,open:u=>{show(null);newTab(false,true);go(u)},close:()=>{EC.close();show(null)},openMurmur:pk=>{EC.close();openMsgs(pk||null)},badge:n=>{}});
+const EC=HushEcho({M:HM.api,toast,mobile:true,page:()=>{const t=T();return t&&t.native&&!t.priv&&/^https?:/.test(t.url)?{url:t.url}:null},open:u=>{show(null);newTab(false,true);go(u)},close:()=>{EC.close();show(null)},openMurmur:pk=>{EC.close();openMsgs(pk||null)},badge:n=>{}});
 function openEcho(){show("echos");EC.open($("#echos"))}
-setTimeout(()=>EC.boot(),3000);
+setTimeout(()=>{EC.boot();setInterval(noteDraw,4000)},3000);
 setTimeout(()=>HM.boot(),2000);
 // Floating video: leave a tab that's playing and it keeps going in a small player you can drag and resize.
 // Leaving a tab that's playing: Ask / Mini player / Keep playing / Stop (Settings › When you leave a playing video).

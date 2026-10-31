@@ -14,7 +14,7 @@ button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7
 
 #tabsbar{display:none!important}
 /* Positions/sizes of #addr, #tabsbar, #page are set by layout() in JS — one source of truth, also sent to Rust. */
-#np{display:none;align-items:center;gap:2px;height:30px;padding:0 4px 0 10px;border-radius:99px;background:var(--card);border:1px solid var(--line);color:var(--ink);font:600 11.5px system-ui;max-width:220px;flex:none}#np.on{display:flex}#np span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}#np button{width:26px;height:26px}
+#np{display:none;align-items:center;gap:2px;height:30px;padding:0 4px 0 10px;border-radius:99px;background:var(--card);border:1px solid var(--line);color:var(--ink);font:600 11.5px system-ui;max-width:220px;flex:none}#np.on{display:flex}#tog{display:none;align-items:center;gap:1px;height:30px;padding:0 4px 0 10px;border-radius:99px;background:color-mix(in srgb,var(--acc) 14%,var(--card));border:1px solid var(--line);color:var(--ink);font:600 11.5px system-ui;flex:none}#tog.on{display:flex}#tog span{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:4px}#tog button{min-width:26px;height:26px;padding:0 3px;font-size:13px;border-radius:8px}#tog button:hover{background:var(--line)}#mnote{display:none;height:30px;padding:0 10px;border-radius:99px;background:var(--card);border:1px solid var(--line);font:600 12px system-ui;flex:none}#mnote.on{display:inline-flex;align-items:center;gap:2px}#np span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}#np button{width:26px;height:26px}
 #addr .tbhide{display:none!important}.tools{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
 .tool{all:unset;cursor:pointer;display:flex!important;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border-radius:14px;background:var(--card);border:1px solid var(--line);width:auto!important;height:auto!important;color:var(--ink)!important;position:relative}
 .tool svg{width:22px!important;height:22px!important}.tool span{font-size:12.5px}.tool em{position:absolute;top:6px;right:8px;font:600 9.5px system-ui;color:var(--mute);font-style:normal}.tool:disabled{opacity:.35}
@@ -127,7 +127,7 @@ kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:
   </label>
   <span id=peekbar><button class=pb id=pk-open title="Keep it as a tab">Open as tab</button><button class=pb id=pk-close title="Close preview (Esc)">Close</button></span>
   <span id=lctl aria-label="Read aloud controls"><button id=l-prev title="Previous paragraph" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M6 5v14M18 6l-9 6 9 6z"/></svg></button><button id=l-pp title="Pause" aria-label="Pause"><svg viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></svg></button><button id=l-next title="Next paragraph" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M18 5v14M6 6l9 6-9 6z"/></svg></button><b id=l-rate title="Speed">1×</b><button id=l-stop title="Stop reading" aria-label="Stop"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>
-  <span id=np><span id=np-t title="Go to this tab"></span><button id=np-pp title="Pause / play" aria-label="Pause or play"></button><button id=np-mini title="Mini player" aria-label="Mini player"><svg viewBox="0 0 24 24"><rect x=3 y=5 width=18 height=14 rx=2 /><rect x=12 y=11 width=7 height=6 rx=1 /></svg></button><button id=np-x title="Stop" aria-label="Stop"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>
+  <span id=np><span id=np-t title="Go to this tab"></span><button id=np-pp title="Pause / play" aria-label="Pause or play"></button><button id=np-mini title="Mini player" aria-label="Mini player"><svg viewBox="0 0 24 24"><rect x=3 y=5 width=18 height=14 rx=2 /><rect x=12 y=11 width=7 height=6 rx=1 /></svg></button><button id=np-x title="Stop" aria-label="Stop"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span><span id=tog></span><button id=mnote title="Friends’ notes on this page" aria-label="Notes on this page">📌 <b></b></button>
   <button id=echob title="Echo — private-first social (Ctrl+Shift+E)" aria-label="Echo"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 8-8M8 12a4 4 0 0 1 4-4M20 12a8 8 0 0 1-8 8M16 12a4 4 0 0 1-4 4"/><circle cx=12 cy=12 r=1.5 /></svg><b id=echocnt class=badge></b></button>
   <button id=msgb title="Murmur — private messages through Tor (Ctrl+Shift+M)" aria-label="Murmur messages"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg><b id=msgcnt class=badge></b></button>
   <button id=newid title="New identity: fresh Tor circuits, then reload" aria-label="New Tor identity"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/><circle cx=12 cy=12 r=2 /></svg></button>
@@ -511,7 +511,13 @@ T.event.listen('float-action',({payload:p})=>{if(p.a=='open'){floating=null;sele
   else if(p.a=='moved')setPref('float_pos',[p.x,p.y,p.w].map(Math.round).join(','))});
 // ---------- Hush Messenger ----------
 const HM=HushMsg({inv,secret:{get:n=>inv('secret_get',{name:n}),set:(n,v)=>inv('secret_set',{name:n,value:v}),del:n=>inv('secret_del',{name:n})},invRaw:(c,d,h)=>T.core.invoke(c,d,{headers:h}),listen:(e,f)=>T.event.listen(e,f),toast,mobile:false,open:u=>{closePanel();openTab(u)},page:()=>{const t=tab(cur);return t&&/^https?:/.test(t.url)&&!t.priv?{url:t.url}:null},
-  badge:n=>{for(const id of ['#msgcnt','#dmc']){$(id).textContent=n>99?'99+':n;$(id).style.display=n?'grid':'none'}},qr:s=>{try{return hushQR.svg(s)}catch(e){return ''}},close:()=>{closePanel();closeDock()}});
+  badge:n=>{for(const id of ['#msgcnt','#dmc']){$(id).textContent=n>99?'99+':n;$(id).style.display=n?'grid':'none'}},qr:s=>{try{return hushQR.svg(s)}catch(e){return ''}},close:()=>{closePanel();closeDock()},
+  media:(a,v)=>inv('page_action',{action:'media-'+a,arg:v==null?undefined:String(v)}).catch(()=>{}),
+  togetherBar:(st,cb)=>{const e=$('#tog');if(!st){e.classList.remove('on');e.textContent='';return}e.innerHTML='';const t=document.createElement('span');t.textContent=st.title;e.append(t);
+    for(const [l,a] of st.items){const b=document.createElement('button');const ic=l.split(' ')[0];b.textContent=a=='go'?'🔗':ic;b.title=l.slice(ic.length+1)||l;b.setAttribute('aria-label',b.title);b.onclick=()=>cb(a);e.append(b)}e.classList.add('on')}});
+// Margin Notes: a 📌 chip appears when friends left Echo notes on the page you're on.
+function noteDraw(){let n=0;try{const t=tab(cur);if(t&&!t.priv&&/^https?:/.test(t.url))n=EC.notesFor(t.url).length}catch(e){}const b=$('#mnote');b.classList.toggle('on',n>0);b.querySelector('b').textContent=n||''}
+$('#mnote').onclick=()=>{window.__ecPage=1;closeDock();openDock('echo')};
 // ---------- Hush Hub dock ----------
 var dockTab=null;
 // ---------- customizable toolbar: pick which buttons sit next to the address bar; the rest live under ⋯ ----------
@@ -524,7 +530,7 @@ function openDock(t){if(t=='downloads'||t=='reading'){openPanel(t);return}closeP
   if(dockTab==t){return}HM.close();EC.close();dockTab=t;$('#dock').classList.add('on');
   document.querySelectorAll('#dockh [data-hub]').forEach(b=>b.classList.toggle('on',b.dataset.hub==t));
   const b=$('#dockb');b.innerHTML='<div id=dockv></div>';layout(true);
-  if(t=='echo')EC.open($('#dockv'));else{HM.open($('#dockv'));if(t=='notes')setTimeout(()=>HM.api.openChat('self'),250)}}
+  if(t=='echo'){if(window.__ecPage){window.__ecPage=0;EC.openPage($('#dockv'))}else EC.open($('#dockv'))}else{HM.open($('#dockv'));if(t=='notes')setTimeout(()=>HM.api.openChat('self'),250)}}
 function closeDock(){if(!dockTab)return;HM.close();EC.close();dockTab=null;$('#dock').classList.remove('on');$('#dockb').textContent='';layout(true)}
 function toggleDock(t){dockTab==t?closeDock():openDock(t)}
 $('#dockh').onclick=e=>{const b=e.target.closest('[data-hub]');if(!b)return;const h=b.dataset.hub;
@@ -532,9 +538,9 @@ $('#dockh').onclick=e=>{const b=e.target.closest('[data-hub]');if(!b)return;cons
 $('#dockr').onpointerdown=e=>{e.preventDefault();const x0=e.clientX,w0=+pref('dock_w')||380;const mv=m=>{state.settings.ui.dock_w=String(Math.max(300,Math.min(640,w0+(x0-m.clientX))));layout(true)};
   const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up);setPref('dock_w',state.settings.ui.dock_w)};addEventListener('pointermove',mv);addEventListener('pointerup',up)};
 $('#msgb').onclick=()=>toggleDock('murmur');setTimeout(()=>HM.boot(),1500);
-const EC=HushEcho({M:HM.api,toast,mobile:false,open:u=>{closePanel();openTab(u)},close:()=>{closePanel();closeDock()},openMurmur:pk=>{closePanel(true);closeDock();openDock('murmur');if(pk)setTimeout(()=>HM.api.openChat(pk),300)},
+const EC=HushEcho({M:HM.api,toast,mobile:false,page:()=>{const t=tab(cur);return t&&/^https?:/.test(t.url)&&!t.priv?{url:t.url}:null},open:u=>{closePanel();openTab(u)},close:()=>{closePanel();closeDock()},openMurmur:pk=>{closePanel(true);closeDock();openDock('murmur');if(pk)setTimeout(()=>HM.api.openChat(pk),300)},
   badge:n=>{for(const id of ['#echocnt','#dec']){$(id).textContent=n>99?'99+':n;$(id).style.display=n?'grid':'none'}}});
-$('#echob').onclick=()=>toggleDock('echo');setTimeout(()=>EC.boot(),3000);
+$('#echob').onclick=()=>toggleDock('echo');setTimeout(()=>{EC.boot();setInterval(noteDraw,4000)},3000);
 let peeking=false;
 function peekUI(u){$('#peekbar').classList.toggle('on',peeking);if(peeking){$('#bar').value=u||'';toast('Peeking — Esc to close')}else draw()}
 async function peekClose(){peeking=false;await inv('peek_close').catch(()=>{});peekUI()}

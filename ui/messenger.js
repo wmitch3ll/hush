@@ -12,7 +12,8 @@ window.HushMsg = function (A) {
                set(k, v) { try { localStorage.setItem('hush.msg.' + k, JSON.stringify(v)) } catch (e) { A.toast('Storage is full — delete some old chats'); } } };
   const RELAYS_DEFAULT = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net', 'wss://offchain.pub'];
   const REACT = ['❤️', '👍', '😂', '😮', '😢', '🙏'];
-  const K_TYPING = 20014, K_READ = 20015, K_PCARD = 10414;   // 10414: your profile card (name, photo, status, aura), sent privately to contacts        // Hush-only signals, sent inside the same encrypted gift wraps
+  const K_TYPING = 20014, K_READ = 20015, K_PCARD = 10414, K_TOG = 20016;   // 20016: Watch Together controls (play/pause/skip/start/go)
+    // 10414: your profile card (name, photo, status, aura), sent privately to contacts        // Hush-only signals, sent inside the same encrypted gift wraps
   const CHUNK = 24000, SMALL = 2.5 * 1024 * 1024, MAX_BIG = 100 * 1024 * 1024, AUTO_DL = 25 * 1024 * 1024;
   // Encrypted-file hosts (Blossom). Files are AES-256-GCM encrypted on this device before upload; uploads/downloads go through Tor.
   const HOSTS_DEFAULT = ['https://blossom.primal.net', 'https://nostr.download', 'https://blossom.band'];
@@ -108,7 +109,7 @@ window.HushMsg = function (A) {
   }
 
   // ---------------------------------------------------------------- shared API for Echo (social): subscriptions + signed events
-  const ECHO_KINDS = new Set([1414, 1416, 1417, 31414]);
+  const ECHO_KINDS = new Set([1414, 1416, 1417, 1418, 31414]);
   const hooks = { echo: [], reset: [], backup: [], restore: [] }, subs = {}, subSeen = new Set();
   function req(id, filters, onEvent, onEose) { subs[id] = { filters, onEvent, onEose, eose: 0 }; for (const u of relays()) send(u, ['REQ', id, ...filters]); }
   function unreq(id) { if (!subs[id]) return; delete subs[id]; for (const u of relays()) send(u, ['CLOSE', id]); }
@@ -168,6 +169,7 @@ window.HushMsg = function (A) {
       try { const j = JSON.parse(r.content); const okm = m => m && /^[0-9a-f]{64}$/.test(m.x || '') && /^https:\/\//.test(m.url || '') ? m : null;
         c[r.pubkey] = { ...c[r.pubkey], status: String(j.status || '').slice(0, 80), aura: /^#[0-9a-f]{6}$/i.test(j.aura || '') ? j.aura : '', avatar: okm(j.avatar), banner: okm(j.banner), cardAt: r.created_at,
           ...(c[r.pubkey].named || !j.name ? {} : { name: String(j.name).slice(0, 40) }) }; LS.set('contacts', c); if (view.open) repaint(); } catch {} return; }
+    if (r.kind === K_TOG) { if (mine || now() - r.created_at > 120) return; try { together.remote(key, r.pubkey, JSON.parse(r.content)); } catch {} return; }
     if (r.kind === K_TYPING) { if (!mine && now() - r.created_at < 20) { (typing[key] = typing[key] || {})[r.pubkey] = Date.now() + 7000; if (view.open && view.chat === key) paintTyping(); setTimeout(() => view.open && view.chat === key && paintTyping(), 7100); } return; }
     const all = chats(), list = all[key] || (all[key] = []);
     if (r.kind === K_READ) { if (mine) return; const upto = r.content; const i = list.findIndex(m => m.id === upto); if (i < 0) return;
@@ -185,7 +187,7 @@ window.HushMsg = function (A) {
       if (pin.length) { const cs = chatSet(key); cs.pin = pin[1] || null; saveChatSet(key, cs); if (view.open) repaint(); return; }
       if (ttlSet.length) { const cs = chatSet(key); cs.ttl = +ttlSet[1] || 0; saveChatSet(key, cs); list.push({ id: r.id, from: who, sys: true, text: (mine ? 'You' : first(r.pubkey)) + ' ' + (cs.ttl ? 'turned on disappearing messages — ' + ttlLabel(cs.ttl) : 'turned off disappearing messages'), at: r.created_at * 1000 }); all[key] = list; LS.set('chats', all); if (view.open) repaint(); return; }
       let poll = null; try { const pj = tag('hush-poll')[1]; if (pj) { const o = JSON.parse(pj); if (Array.isArray(o) && o.length >= 2) poll = o.slice(0, 10).map(x => String(x).slice(0, 80)); } } catch {}
-      list.push({ id: r.id, from: who, text: String(r.content).slice(0, 20000), at: r.created_at * 1000, status: 'sent', reply: tag('e')[1], ttl: +tag('hush-ttl')[1] || 0, poll, once: !!tag('hush-once').length });
+      list.push({ id: r.id, from: who, text: String(r.content).slice(0, 20000), at: r.created_at * 1000, status: 'sent', reply: tag('e')[1], ttl: +tag('hush-ttl')[1] || 0, poll, once: !!tag('hush-once').length, tog: /^https?:\/\//.test(tag('hush-together')[1] || '') ? tag('hush-together')[1].slice(0, 2000) : null });
       if (typing[key]) delete typing[key][r.pubkey];
       arrived(key, r, list, all, String(r.content));
     } else if (r.kind === 7) {
@@ -294,10 +296,41 @@ window.HushMsg = function (A) {
     for (const k in all) { const l = all[k], keep = l.filter(m => !(m.ttl && m.at + m.ttl * 1000 < n)); if (keep.length !== l.length) { all[k] = keep; ch = true; } }
     if (ch) { LS.set('chats', all); if (view.open) repaint(); } }
   setInterval(sweep, 60000);
+  // ---------------------------------------------------------------- Watch Together
+  // Everyone in the chat opens the same page; the 🎬 controls (play, pause, skip, start together, bring everyone here)
+  // apply on your screen and are sent to the others, encrypted like any message. Nothing is streamed — each person
+  // plays the page themselves, so it works with any site that has a video.
+  const together = (() => {
+    let s = null;
+    const label = { play: 'played', pause: 'paused', start: 'is starting it from the top', go: 'moved everyone to a new page' };
+    function bar() { if (!A.togetherBar) return; if (!s) return A.togetherBar(null);
+      A.togetherBar({ title: '🎬 ' + chatName(s.key), items: [['⏪ 10 s', 'skip:-10'], ['▶ Play', 'play'], ['⏸ Pause', 'pause'], ['⏩ 10 s', 'skip:10'], ['⟲ Start together', 'start'], ['🔗 Bring everyone to this page', 'go'], ['✕ Leave', 'end']] }, act); }
+    function apply(o) {
+      if (o.a === 'play' || o.a === 'pause') A.media(o.a);
+      else if (o.a === 'skip' && isFinite(o.v)) A.media('skip', Math.max(-600, Math.min(600, +o.v)));
+      else if (o.a === 'start') { A.media('pause'); A.media('seek', 0); setTimeout(() => A.media('play'), Math.max(0, Math.min(6000, (+o.at || 0) * 1000 - Date.now()))); }
+      else if (o.a === 'go' && /^https?:\/\//.test(o.url || '')) { s.url = String(o.url).slice(0, 2000); A.open(s.url); } }
+    function send(o) { if (s) publish(s.key, K_TOG, JSON.stringify(o), [], { noSelf: true, spread: 2 }); }
+    function act(a) { if (!s) return;
+      if (a === 'end') { send({ a: 'end' }); s = null; bar(); return A.toast('You left Watch Together'); }
+      const [x, v] = a.split(':'), o = { a: x };
+      if (v) o.v = +v; if (x === 'start') o.at = now() + 3;
+      if (x === 'go') { const p = A.page && A.page(); if (!p) return A.toast('Open a page first'); o.url = p.url; s.url = p.url; send(o); return A.toast('Everyone is moving to this page'); }
+      apply(o); send(o); if (x === 'start') A.toast('Starting from the top in 3 seconds…'); }
+    return {
+      join(key, url, host) { s = { key, url }; A.open(url); bar(); send({ a: 'join' });
+        A.toast(host ? '🎬 Started — when they join, use the 🎬 controls so everyone stays in sync' : '🎬 Joined — use the 🎬 controls; play, pause and skip happen for everyone'); },
+      remote(key, pk, o) { if (!s || s.key !== key) return;
+        if (o.a === 'join') return A.toast('🎬 ' + first(pk) + ' joined');
+        if (o.a === 'end') return A.toast('🎬 ' + first(pk) + ' left');
+        if (!['play', 'pause', 'skip', 'start', 'go'].includes(o.a)) return;
+        apply(o); A.toast('🎬 ' + first(pk) + ' ' + (o.a === 'skip' ? 'skipped ' + (o.v > 0 ? '+' : '') + o.v + ' s' : label[o.a])); },
+      active: () => !!s };
+  })();
   function sendText(key, text, reply, opt2 = {}) {
     text = text.trim(); if (!text) return;
-    const { rumor, wrapId } = publish(key, 14, text, [...(reply ? [['e', reply, '', 'reply']] : []), ...(opt2.poll ? [['hush-poll', JSON.stringify(opt2.poll)]] : [])]);
-    addLocal(key, { id: rumor.id, from: 'me', text, at: Date.now(), status: key === 'self' || okRelays() ? 'sending' : 'queued', reply, ttl: chatSet(key).ttl || 0, poll: opt2.poll || null }, wrapId);
+    const { rumor, wrapId } = publish(key, 14, text, [...(reply ? [['e', reply, '', 'reply']] : []), ...(opt2.poll ? [['hush-poll', JSON.stringify(opt2.poll)]] : []), ...(opt2.tog ? [['hush-together', opt2.tog]] : [])]);
+    addLocal(key, { id: rumor.id, from: 'me', text, at: Date.now(), status: key === 'self' || okRelays() ? 'sending' : 'queued', reply, ttl: chatSet(key).ttl || 0, poll: opt2.poll || null, tog: opt2.tog || null }, wrapId);
     lastTypingSent = 0;
   }
   async function sendFile(key, file, opt = {}) {
@@ -381,15 +414,15 @@ window.HushMsg = function (A) {
     return new Promise(r => c.toBlob(r, 'image/png'));
   }
   // In-app scanner: BarcodeDetector where available (Android), jsQR otherwise (Windows).
-  async function scan() {
+  async function scan(custom) {
     let st; try { st = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); } catch { return A.toast('Hush needs the camera to scan — allow it and try again'); }
     const v = document.createElement('div'); v.className = 'hm-view';
-    v.innerHTML = `<div class=hm-scan><video playsinline muted autoplay></video><i></i></div><p style="color:#fff;margin:14px">Point at a Hush Card or Murmur QR code</p><button class="hm-btn ghost" style="color:#fff;border-color:#fff6" data-x>Cancel</button>`;
+    v.innerHTML = `<div class=hm-scan><video playsinline muted autoplay></video><i></i></div><p style="color:#fff;margin:14px">${custom ? 'Point at the link code on your other device' : 'Point at a Hush Card or Murmur QR code'}</p><button class="hm-btn ghost" style="color:#fff;border-color:#fff6" data-x>Cancel</button>`;
     document.body.append(v); const vid = v.querySelector('video'); vid.srcObject = st;
     const det = 'BarcodeDetector' in window ? new BarcodeDetector({ formats: ['qr_code'] }) : null, cv = document.createElement('canvas'), g = cv.getContext('2d', { willReadFrequently: true });
     let on = true; const stop = () => { on = false; st.getTracks().forEach(t => t.stop()); v.remove(); };
     v.querySelector('[data-x]').onclick = stop;
-    const found = txt => { const pk = parseId(txt); if (!pk) return false; stop(); if (pk === me) { A.toast('That’s your own card'); return true; }
+    const found = txt => { if (custom) { if (!custom(txt)) return false; stop(); return true; } const pk = parseId(txt); if (!pk) return false; stop(); if (pk === me) { A.toast('That’s your own card'); return true; }
       addContact(pk); A.toast('Added — say hi 👋'); openChat(pk); return true; };
     const tick = async () => { if (!on) return;
       try { if (vid.readyState >= 2) {
@@ -579,10 +612,11 @@ window.HushMsg = function (A) {
       <div class=hm-card style="text-align:center"><div style="font-size:42px">💬</div><h3 style="font-size:22px;font-family:ui-serif,Georgia,serif;font-weight:400">murmur.</h3><p style="margin-top:-4px"><b>Private messages, built into Hush</b></p>
       <p>Chat, share photos and files, and make group chats with other Hush users. Everything is end-to-end encrypted and always sent through <b>Tor</b> — no server ever sees what you say, who you are, or where you are. No phone number, no email, no account.</p>
       <input class=hm-in id=hm-name placeholder="Your name (what friends see)" maxlength=40 style="text-align:center">
-      <button class=hm-btn id=hm-go>Start messaging</button><p style="margin:12px 0 0"><button class="hm-btn ghost" id=hm-restore>I have a backup</button></p></div>
+      <button class=hm-btn id=hm-go>Start messaging</button><p style="margin:12px 0 0;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="hm-btn ghost" id=hm-link>📱 Link from my other device</button><button class="hm-btn ghost" id=hm-restore>I have a backup</button></p></div>
       <div class=hm-card><h3>How it stays private</h3><p>🔒 Only the people in a chat can read it — photos and files too.</p><p>🧅 Every connection goes through Tor — your IP address is never shown to anyone.</p><p>✉️ Each message is sealed in an outer envelope from a throwaway key, so relays can’t tell who sent it.</p><p>📱 Your contacts and chats stay on this device.</p><p style="margin:0">🎤 Mic and camera turn on only while you hold the record button. Recordings are made and encrypted on your device, and Hush keeps no copies.</p></div></div></div>`;
     wireCommon();
     view.el.querySelector('#hm-restore').onclick = () => { view.screen = 'restore'; repaint(); };
+    view.el.querySelector('#hm-link').onclick = linkJoin;
     view.el.querySelector('#hm-go').onclick = async () => { await createKey(); LS.set('profile', { name: view.el.querySelector('#hm-name').value.trim().slice(0, 40) });
       view.screen = 'list'; start(); repaint(); A.toast('You’re set up — share your Hush ID to start chatting'); };
   }
@@ -626,6 +660,8 @@ window.HushMsg = function (A) {
     else if (m.poll) { const v = m.votes || {}, tot = Object.keys(v).length, mineV = v.me;
       body = `<b class=hm-pq>📊 ${esc(m.text)}</b>${m.poll.map((o, i) => { const n = Object.values(v).filter(x => x === i).length, pc = tot ? Math.round(100 * n / tot) : 0;
         return `<button class="hm-po ${mineV === i ? 'on' : ''}" data-vote="${i}"><i style="width:${pc}%"></i><span>${esc(o)}</span><em>${n || ''}</em></button>`; }).join('')}<small style="opacity:.75">${tot} vote${tot === 1 ? '' : 's'} · tap to vote</small>`; cls = 'pollb'; }
+    else if (m.tog) { let h = m.tog; try { h = new URL(m.tog).hostname.replace(/^www\./, ''); } catch {}
+      body = `<div class=hm-file><i>🎬</i><div><b>Watch together</b><small>${esc(h)}</small></div></div><button class=hm-btn data-tog="${m.id}" style="margin-top:6px;width:100%">${m.from === 'me' ? 'Open & start' : 'Join'}</button>`; }
     else { const url = (m.text.match(/https?:\/\/\S+/) || [])[0];
       body = linkify(m.text) + (url && m.text.trim() === url.trim() ? `<a href=# class=hm-link data-u="${esc(url)}">🔗 ${esc((() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } })())}</a>` : ''); }
     if (m.once && m.file) { body = m.opened ? `<div class=hm-file><i>👁</i><div><b>View-once photo</b><small>${m.from === 'me' ? 'Sent' : 'Opened'}</small></div></div>` : m.from === 'me' ? `<div class=hm-file><i>👁</i><div><b>View-once photo</b><small>Disappears after they open it</small></div></div>` : `<div class=hm-file data-once="${m.id}"><i>👁</i><div><b>View-once photo</b><small>${m.file.done ? 'Tap to open — you can view it once' : 'Receiving…'}</small></div></div>`; cls = ''; }
@@ -680,12 +716,14 @@ window.HushMsg = function (A) {
     view.el.querySelector('#hm-go').onclick = go; if (!A.mobile) setTimeout(() => ta.focus(), 30);
     const fi = view.el.querySelector('#hm-file'); view.el.querySelector('#hm-att').onclick = () => fi.click();
     fi.onchange = () => { [...fi.files].slice(0, 10).forEach(f => sendFile(key, f, view.once ? { once: true } : {})); view.once = false; fi.value = ''; };
-    view.el.querySelector('#hm-plus').onclick = e => menu(e.clientX, e.clientY - 120, `<button class=i data-a=poll>📊 Poll</button><button class=i data-a=once>👁 View-once photo</button><button class=i data-a=self>✎ Notes to self</button>`, (m, done) => m.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { done();
+    view.el.querySelector('#hm-plus').onclick = e => menu(e.clientX, e.clientY - 120, `<button class=i data-a=poll>📊 Poll</button><button class=i data-a=once>👁 View-once photo</button>${key !== 'self' && A.media && A.page && A.page() ? '<button class=i data-a=tog>🎬 Watch this page together</button>' : ''}<button class=i data-a=self>✎ Notes to self</button>`, (m, done) => m.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { done();
+      if (b.dataset.a === 'tog') { const p = A.page(); if (p) { sendText(key, '🎬 Watch together: ' + p.url, null, { tog: p.url }); together.join(key, p.url, true); } return; }
       if (b.dataset.a === 'poll') pollForm(key); else if (b.dataset.a === 'once') { view.once = true; fi.accept = 'image/*'; fi.multiple = false; fi.click(); } else openChat('self'); }));
     const pb = view.el.querySelector('[data-jump]'); if (pb) pb.onclick = () => { const t = view.el.querySelector(`[data-m="${pb.dataset.jump}"]`); if (t) { t.scrollIntoView({ block: 'center', behavior: 'smooth' }); t.classList.add('hm-flash'); setTimeout(() => t.classList.remove('hm-flash'), 1200); } };
     view.el.querySelectorAll('[data-vote]').forEach(b => b.onclick = e => { e.stopPropagation(); const m = list.find(x => x.id === b.closest('[data-m]').dataset.m); if (!m) return;
       const i = +b.dataset.vote, cur = (m.votes || {}).me; publish(key, 7, cur === i ? '' : 'poll:' + i, [['e', m.id], ['k', '14']]);
       const all = chats(), x = (all[key] || []).find(y => y.id === m.id); x.votes = x.votes || {}; if (cur === i) delete x.votes.me; else x.votes.me = i; LS.set('chats', all); repaint(); });
+    view.el.querySelectorAll('[data-tog]').forEach(b => b.onclick = e => { e.stopPropagation(); const m = list.find(x => x.id === b.dataset.tog); if (m && m.tog) together.join(key, m.tog, m.from === 'me'); });
     view.el.querySelectorAll('[data-once]').forEach(b => b.onclick = async e => { e.stopPropagation(); const m = list.find(x => x.id === b.dataset.once); if (!m || !m.file.done) return;
       await viewer(m.file.id, true); const all = chats(), x = (all[key] || []).find(y => y.id === m.id); if (x) { x.opened = true; LS.set('chats', all); }
       idb('files', 'readwrite', st => st.delete(m.file.id)).catch(() => {}); repaint(); });
@@ -945,6 +983,54 @@ window.HushMsg = function (A) {
       else saveBlob(blob, name);
       A.toast('Backup saved — keep the file and your password safe'); };
   }
+  async function finishRestore(k, data, msg) { await useKey(k); if (data) { LS.set('contacts', data.contacts || {}); LS.set('groups', data.groups || {}); if (data.profile) LS.set('profile', data.profile);
+      if (data.prefs) LS.set('prefs', data.prefs); if (data.chats && typeof data.chats === 'object') LS.set('chats', { ...chats(), ...data.chats });
+      for (const f of hooks.restore) { try { await f(data.extra || {}); } catch {} } }
+    LS.set('since', now() - 14 * 86400); view.screen = 'list'; start(); badge(); repaint(); A.toast(msg || 'Welcome back — your Hush ID is restored'); }
+  // ---------------------------------------------------------------- Link my devices
+  // The old device packs your ID, contacts, chats (text) and Echo, locks it twice (a random key in the QR code + a
+  // 6-digit code you type), and leaves it, encrypted, on a file host through Tor for 15 minutes. The new device scans,
+  // types the code, downloads and unlocks it. Both devices then share one Hush ID, so messages arrive on both.
+  function overlay(html) { const v = document.createElement('div'); v.className = 'hm-view'; v.innerHTML = `<div class=hm-card style="width:min(420px,92vw);color:var(--ink);max-height:90vh;overflow:auto">${html}</div>`;
+    document.body.append(v); v.onclick = e => { if (e.target === v || e.target.closest('[data-x]')) v.remove(); }; return v; }
+  async function linkShow() {
+    if (!await askPin('Enter your PIN to link a device')) return;
+    const v = overlay('<h3>📱 Link another device</h3><p>Packing your ID, contacts and chats…</p>');
+    try {
+      const extra = {}; for (const f of hooks.backup) { try { Object.assign(extra, await f()); } catch {} }
+      const ch = {}; for (const [k, l] of Object.entries(chats())) ch[k] = l.filter(m => !m.file && !m.unsent && !m.once).slice(-300);
+      const data = { v: 1, key: hex(sk), contacts: contacts(), groups: groups(), profile: profile(), prefs: prefs(), relays: relays(), hosts: hosts(), chats: ch, extra, at: Date.now() };
+      const code = String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000)), salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+      const enc = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await pbkdf(code, salt, 300000), new TextEncoder().encode(JSON.stringify(data)));
+      const meta = await uploadEncrypted(new Blob([enc], { type: 'application/octet-stream' }));
+      const exp = now() + 900, link = 'hushlink:' + btoa(JSON.stringify({ u: meta.url, a: meta.alt, k: meta.k, n: meta.nonce, x: meta.x, s: hex(salt), i: hex(iv), e: exp }));
+      v.firstChild.innerHTML = `<h3>📱 Link another device</h3><p>On the new device: open Murmur → <b>Link from my other device</b> → scan this, then type the code.</p>
+        <div class=hm-qr style="max-width:260px;margin:8px auto">${A.qr ? A.qr(link) : ''}</div><div style="text-align:center;font:700 30px ui-monospace,monospace;letter-spacing:6px;margin:6px 0">${code.slice(0, 3)} ${code.slice(3)}</div>
+        <p style="font-size:12.5px">Works for 15 minutes. <b>Only show this to your own devices</b> — the code and the QR together are your whole Hush ID.</p>
+        <div style="display:flex;gap:8px;justify-content:center"><button class="hm-btn ghost" id=lk-c>Copy link instead</button><button class=hm-btn data-x>Done</button></div>`;
+      v.querySelector('#lk-c').onclick = async () => { try { await navigator.clipboard.writeText(link); A.toast('Link copied — paste it on the other device, then type the code'); } catch { prompt('Link', link); } };
+      setTimeout(() => v.isConnected && v.remove(), 900e3);
+    } catch (e) { v.firstChild.innerHTML = `<h3>📱 Link another device</h3><p>Couldn’t prepare the link: ${esc(String(e.message || e).slice(0, 120))}</p><button class=hm-btn data-x>Close</button>`; }
+  }
+  function linkJoin() {
+    const v = overlay(`<h3>📱 Link from my other device</h3><p>On your other device: Murmur → Your Hush ID → <b>Link another device</b>. Then scan its code here, or paste its link.</p>
+      <button class=hm-btn id=lj-s style="width:100%">📷 Scan the code</button><textarea class=hm-in id=lj-l rows=2 placeholder="…or paste the link (hushlink:…)" style="margin-top:10px" autocapitalize=off spellcheck=false></textarea>
+      <input class=hm-in id=lj-c inputmode=numeric maxlength=7 placeholder="6-digit code" style="text-align:center;font:600 20px ui-monospace,monospace;letter-spacing:4px">
+      <div style="display:flex;gap:8px;justify-content:flex-end"><button class="hm-btn ghost" data-x>Cancel</button><button class=hm-btn id=lj-go>Link</button></div>`);
+    v.querySelector('#lj-s').onclick = () => scan(t => { if (!/^hushlink:/.test(t)) return false; v.querySelector('#lj-l').value = t; v.querySelector('#lj-c').focus(); A.toast('Got it — now type the code'); return true; });
+    v.querySelector('#lj-go').onclick = async () => {
+      const b = v.querySelector('#lj-go'), code = v.querySelector('#lj-c').value.replace(/\D/g, ''); let j;
+      try { j = JSON.parse(atob(v.querySelector('#lj-l').value.trim().replace(/^hushlink:/, ''))); } catch { return A.toast('That isn’t a Hush link code'); }
+      if (code.length !== 6) return A.toast('Type the 6-digit code shown on your other device');
+      if (+j.e < now()) return A.toast('That code expired — make a new one on your other device');
+      b.disabled = true; b.textContent = 'Linking through Tor…';
+      try { const u = await mediaUrl({ url: j.u, alt: j.a || [], k: j.k, nonce: j.n, x: j.x, mime: 'application/octet-stream' }); if (!u) throw new Error('download');
+        const buf = await (await fetch(u)).arrayBuffer(); let plain;
+        try { plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unhex(j.i) }, await pbkdf(code, unhex(j.s), 300000), buf); } catch { throw new Error('code'); }
+        const data = JSON.parse(new TextDecoder().decode(plain)); if (!/^[0-9a-f]{64}$/.test(data.key)) throw new Error('bad');
+        v.remove(); await finishRestore(data.key, data, '📱 Linked — this device now has your Hush ID, contacts and chats');
+      } catch (e) { b.disabled = false; b.textContent = 'Link'; A.toast(String(e.message) === 'code' ? 'Wrong code — check it and try again' : 'Couldn’t download the link — check the connection and try again'); } };
+  }
   function drawRestore() {
     view.el.innerHTML = `<div class=hm>${head('Restore', '', `<button class=hm-ib data-go=welcome aria-label=Back>${I.back}</button>`)}<div class=hm-body>
       <div class=hm-card><h3>📄 From a backup file</h3><p>Restores your ID, contacts, groups and settings.</p><input type=file id=hm-rf class=hm-in accept=".hushbackup,application/octet-stream,application/json">
@@ -952,9 +1038,7 @@ window.HushMsg = function (A) {
       <div class=hm-card><h3>🔑 From recovery words</h3><p>Restores your ID only. Type your 24 words separated by spaces.</p><textarea class=hm-in id=hm-rw rows=4 autocapitalize=off spellcheck=false placeholder="word1 word2 word3 …"></textarea>
         <button class=hm-btn id=hm-rwo>Restore</button></div></div></div>`;
     wireCommon();
-    const finish = async (k, data) => { await useKey(k); if (data) { LS.set('contacts', data.contacts || {}); LS.set('groups', data.groups || {}); if (data.profile) LS.set('profile', data.profile);
-        if (data.prefs) LS.set('prefs', data.prefs); for (const f of hooks.restore) { try { await f(data.extra || {}); } catch {} } }
-      LS.set('since', now() - 14 * 86400); view.screen = 'list'; start(); badge(); repaint(); A.toast('Welcome back — your Hush ID is restored'); };
+    const finish = finishRestore;
     view.el.querySelector('#hm-rwo').onclick = async () => { const w = view.el.querySelector('#hm-rw').value.trim().toLowerCase().split(/\s+/).join(' ');
       if (!N.validateMnemonic(w, N.bip39English)) return A.toast('Those words don’t look right — check spelling and order');
       await finish(hex(N.mnemonicToEntropy(w, N.bip39English))); };
@@ -983,6 +1067,7 @@ window.HushMsg = function (A) {
         <div class=hm-opt><div>Privacy curtain<small>Blur chats when you switch away${A.mobile ? '; block screenshots and the recent-apps preview while Murmur or Echo is open' : ''}</small></div><button class="hm-sw ${p.curtain !== false ? 'on' : ''}" data-pref=curtain aria-label="Privacy curtain"></button></div></div>
       <div class=hm-card><h3>Lock Murmur & Echo</h3><p>${lockCfg ? '🔒 On — ' + (A.biometric ? 'fingerprint/face or ' : '') + 'your PIN is needed after 5 minutes away.' : 'Ask for a PIN' + (A.biometric ? ' or your fingerprint/face' : '') + ' before anyone can open your messages on this device.'}</p>
         <button class=hm-btn id=hm-lock>${lockCfg ? 'Turn off lock' : 'Set a PIN'}</button>${lockCfg ? ' <button class="hm-btn ghost" id=hm-lnow>Lock now</button>' : ''}</div>
+      <div class=hm-card><h3>📱 Link another device</h3><p>Use the same Hush ID on your phone and computer — contacts, chats and Echo come along, and new messages arrive on both.</p><button class=hm-btn id=hm-lk>Link a device</button></div>
       <div class=hm-card><h3>Back up your Hush ID</h3><p>Without a backup, losing this device means losing your ID — there’s no account to recover. Your backup restores your ID${hooks.backup.length ? ', contacts and Echo profile' : ' and contacts'} on any device.</p>
         <button class=hm-btn data-go=backup>Back up now</button></div>
       <div class=hm-card><h3>Privacy</h3><p><span class=hm-tor>🧅 Tor only</span> Every connection goes through Tor. Messages, photos and files are end-to-end encrypted (NIP-44), sealed and gift-wrapped (NIP-59), and relayed by ${relays().length} independent relays.</p>
@@ -996,6 +1081,7 @@ window.HushMsg = function (A) {
     view.el.querySelector('#hm-lock').onclick = async () => { if (lockCfg) { if (!await askPin('Enter your PIN to turn off the lock')) return; lockCfg = null; await A.secret.del('murmur-lock').catch(() => {}); A.toast('Lock turned off'); return repaint(); }
       const a = await pinPad('Choose a PIN (4–8 digits)'); if (!a) return; const b = await pinPad('Enter it again'); if (a !== b) return A.toast('PINs didn’t match — try again');
       const salt = hex(crypto.getRandomValues(new Uint8Array(16))); lockCfg = { salt, hash: await pinHash(a, salt) }; await A.secret.set('murmur-lock', JSON.stringify(lockCfg)); unlockedAt = Date.now(); A.toast('🔒 Lock is on'); repaint(); };
+    view.el.querySelector('#hm-lk').onclick = linkShow;
     const ln = view.el.querySelector('#hm-lnow'); if (ln) ln.onclick = () => { unlockedAt = 0; A.close && A.close(); };
     const saveP = patch => { LS.set('profile', { ...profile(), ...patch }); shareCard(); };
     view.el.querySelector('#hm-save').onclick = () => { saveP({ name: view.el.querySelector('#hm-name').value.trim().slice(0, 40), status: view.el.querySelector('#hm-status').value.trim().slice(0, 80) }); A.toast('Profile saved — shared with your contacts'); repaint(); };

@@ -152,6 +152,9 @@ pub fn page_action_js(action: &str, arg: &str) -> Result<String, String> {
         "dark-on" => "__hushPage.dark(true)".to_string(),
         "media-pause" => "document.querySelectorAll('video,audio').forEach(v=>v.pause())".to_string(),
         "media-play" => "(document.querySelector('video')||document.querySelector('audio')||{play(){}}).play()".to_string(),
+        // Watch Together: jump to a time / skip by seconds (arg is a JSON string; `+` turns it into a number or NaN).
+        "media-seek" => format!("(()=>{{const v=document.querySelector('video')||document.querySelector('audio');const t=+{a};if(v&&isFinite(t))v.currentTime=Math.max(0,t)}})()"),
+        "media-skip" => format!("(()=>{{const v=document.querySelector('video')||document.querySelector('audio');const t=+{a};if(v&&isFinite(t))v.currentTime=Math.max(0,v.currentTime+t)}})()"),
         "wheel" => "window.__hushWheel&&__hushWheel()".to_string(),
         "scroll-top" => "scrollTo({top:0,behavior:'smooth'})".to_string(),
         "scroll-bottom" => "scrollTo({top:document.documentElement.scrollHeight,behavior:'smooth'})".to_string(),
