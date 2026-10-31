@@ -102,6 +102,32 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     /** Privacy curtain: while Murmur/Echo is open, block screenshots and the recent-apps thumbnail. */
     @Command fun secure(i: Invoke) { val on = i.parseArgs(SecureArgs::class.java).on
         act.runOnUiThread { if (on) act.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE) else act.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE); i.resolve() } }
+    // ---------- Murmur chat bubble: a floating head over the page when a message arrives. Drag it anywhere;
+    // tap to open the chat; drag it to the bottom to dismiss. ----------
+    private var bubble: android.widget.TextView? = null
+    @Command fun bubble(i: Invoke) { val a = i.parseArgs(BubbleArgs::class.java)
+        act.runOnUiThread {
+            val root = act.findViewById<ViewGroup>(android.R.id.content)
+            if (!a.show) { bubble?.let { root.removeView(it) }; bubble = null; i.resolve(); return@runOnUiThread }
+            val b = bubble ?: android.widget.TextView(act).also { v ->
+                val sz = dp(58); v.layoutParams = FrameLayout.LayoutParams(sz, sz).apply { leftMargin = act.resources.displayMetrics.widthPixels - sz - dp(14); topMargin = topPx + dp(90) }
+                v.gravity = android.view.Gravity.CENTER; v.setTextColor(0xFFFFFFFF.toInt()); v.textSize = 18f; v.typeface = android.graphics.Typeface.DEFAULT_BOLD; v.elevation = dp(12).toFloat()
+                var dx = 0f; var dy = 0f; var moved = false
+                v.setOnTouchListener { view, e -> val lp = view.layoutParams as FrameLayout.LayoutParams
+                    when (e.actionMasked) {
+                        android.view.MotionEvent.ACTION_DOWN -> { dx = e.rawX - lp.leftMargin; dy = e.rawY - lp.topMargin; moved = false; view.animate().scaleX(.9f).scaleY(.9f).setDuration(80).start() }
+                        android.view.MotionEvent.ACTION_MOVE -> { val nx = (e.rawX - dx).toInt(); val ny = (e.rawY - dy).toInt(); if (kotlin.math.abs(nx - lp.leftMargin) + kotlin.math.abs(ny - lp.topMargin) > 6) moved = true
+                            lp.leftMargin = nx; lp.topMargin = ny; view.layoutParams = lp }
+                        android.view.MotionEvent.ACTION_UP -> { view.animate().scaleX(1f).scaleY(1f).setDuration(80).start()
+                            val h = root.height; if (moved && lp.topMargin > h - dp(150)) { root.removeView(view); bubble = null; emit("bubble", JSObject().put("a", "dismiss")) }
+                            else if (!moved) emit("bubble", JSObject().put("a", "open"))
+                            else { val w = act.resources.displayMetrics.widthPixels; lp.leftMargin = if (lp.leftMargin + view.width / 2 < w / 2) dp(10) else w - view.width - dp(10); view.layoutParams = lp } }
+                    }; true }
+                root.addView(v); bubble = v }
+            b.text = a.text.take(2); b.background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(try { android.graphics.Color.parseColor(a.color) } catch (e: Throwable) { 0xFF4F46E5.toInt() }); setStroke(dp(3), 0xFFFFFFFF.toInt()) }
+            b.contentDescription = "New message"; b.bringToFront(); b.scaleX = 0.6f; b.scaleY = 0.6f; b.animate().scaleX(1f).scaleY(1f).setDuration(160).start()
+            i.resolve() } }
     private val keepIds = mutableSetOf<String>()
     private val sunk = mutableSetOf<String>()
     /** Background media: keep | release | pause | play for one tab. */
@@ -666,6 +692,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         act.runOnUiThread { active?.let { tabs[it]?.wv }?.evaluateJavascript(js, null) }; i.resolve() }
 
     @InvokeArg class PickArgs { var mode: String = "" }
+    @InvokeArg class BubbleArgs { var show: Boolean = false; var text: String = ""; var color: String = "" }
     @InvokeArg class SecureArgs { var on: Boolean = false }
     @InvokeArg class SecretArgs { var name: String = ""; var value: String = "" }
     @InvokeArg class MediaArgs { var id: String = ""; var action: String = "" }

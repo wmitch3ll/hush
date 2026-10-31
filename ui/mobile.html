@@ -344,6 +344,7 @@ window.__hushEvent=(name,d)=>{
     HX.markup(d.data,{name:"Hush "+(t?bare(t.url):""),save:async x=>{await native("saveImage",{data:x});setTimeout(()=>show(null),0);return "Photos › Pictures/Hush"}});
     const obs=new MutationObserver(()=>{if(!document.querySelector(".hx-shot")){obs.disconnect();if(sheet==="xs")show(null)}});obs.observe(document.body,{childList:true})}
   else if(name==="scroll"){const t=T();if(!t||t.native!==d.id||sheet)return;if(d.y<40||d.dir<0)toolsShow(true);else if(d.dir>0)toolsShow(false)}
+  else if(name==="bubble"){if(d.a==="open"){const k=bubbleKey;native("bubble",{show:false}).catch(()=>{});openMsgs(k)}}
   else if(name==="gesture"){HX.gesture(d)}
   else if(name==="float"){if(d.a==="open"){floating=null;const t=tabs.find(x=>x.native===d.id);if(t)select(t.id)}else if(d.a==="close")floating=null;
     else if(d.a==="moved")setPref("float_pos",[d.x,d.y,d.w].map(Math.round).join(","))}
@@ -385,8 +386,10 @@ function torInfo(){$("#xs").innerHTML=head("What is Tor?")+'<div style="padding:
 const HM=HushMsg({inv,secret:{get:n=>native('secretGet',{name:n}).then(r=>r&&typeof r.value==='string'?r.value:null),set:(n,v)=>native('secretSet',{name:n,value:v}),del:n=>native('secretDel',{name:n})},biometric:()=>native('biometric'),invRaw:(c,d,h)=>window.__TAURI__.core.invoke(c,d,{headers:h}),listen:(e,f)=>window.__TAURI__.event.listen(e,f),toast,mobile:true,open:u=>{show(null);newTab(false,true);go(u)},
   page:()=>{const t=T();return t&&t.native&&!t.priv&&/^https?:/.test(t.url)?{url:t.url}:null},
   badge:n=>{for(const b of [$("#menu-btn"),$("#tb-menu")]){b.classList.toggle("msgdot",n>0);b.dataset.n=n>99?"99+":n}},qr:s=>{try{return hushQR.svg(s)}catch(e){return ""}},close:()=>{HM.close();show(null)},
+  onIncoming:(key,txt,color)=>{if(sheet==="msgs")return;bubbleKey=key;native("bubble",{show:true,text:txt,color}).catch(()=>{})},
   saveImage:d=>native("saveImage",{data:d}).then(()=>toast("Saved to Photos")).catch(e=>toast(String(e)))});
-function openMsgs(chat){show("msgs");HM.open($("#msgs"),typeof chat==="string"?chat:null)}
+var bubbleKey=null;
+function openMsgs(chat){native("bubble",{show:false}).catch(()=>{});show("msgs");HM.open($("#msgs"),typeof chat==="string"?chat:null)}
 const EC=HushEcho({M:HM.api,toast,mobile:true,open:u=>{show(null);newTab(false,true);go(u)},close:()=>{EC.close();show(null)},openMurmur:pk=>{EC.close();openMsgs(pk||null)},badge:n=>{}});
 function openEcho(){show("echos");EC.open($("#echos"))}
 setTimeout(()=>EC.boot(),3000);
@@ -565,7 +568,7 @@ function drawDownloads(){const el=$("#downloads");
   el.innerHTML=head("Downloads")+(downloads.length?downloads.map(d=>item(esc(d.name),d.state==="started"?"Downloading — open it from the notification or your Downloads folder":"Failed")).join("")
     :`<div class="empty">Nothing downloaded yet.<br>Files go to your phone’s Downloads folder.</div>`);wire(el)}
 function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<button class="sw ${on?"on":""}" data-sw="${k}"></button>`;
-  el.innerHTML=head("Settings")+`<h3>Layout</h3>
+  el.innerHTML=head("Settings")+`<input class="txt" id="s-q" placeholder="Search settings" style="margin:0 0 6px"><h3>Layout</h3>
    ${item("Address bar","Swipe it ← → to switch tabs",seg("bar_pos",[["top","Top"],["bottom","Bottom"]]))}
    ${item("Theme","",seg("theme",[["system","Auto"],["light","Light"],["dark","Dark"]]))}
    <div class="item" style="display:block"><div style="margin-bottom:10px">Browser color</div><div class="swatches">${Object.entries(COLORS).map(([k,v])=>
@@ -615,6 +618,7 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
   $("#s-color").oninput=e=>{state.settings.ui.color=e.target.value;applyColor()};$("#s-color").onchange=async e=>{await setPref("color",e.target.value);drawSettings()};
   el.querySelectorAll("[data-sw]").forEach(b=>b.onclick=async()=>{const k=b.dataset.sw,on=b.classList.contains("on"),bin=["force_dark","pull_refresh","desktop","bg_play"].includes(k);
     await setPref(k,bin?String(!on):(on?"off":"on"));if(k==="force_dark")applyDarkNow();if(k==="restore")saveSession();drawSettings()});
+  HX.settingsSearch(el,$("#s-q"),".item");
   HX.lookPicker($("#s-look"),()=>{applyPrefs();drawSettings()});
   $("#s-gest").onclick=()=>{$("#xs").innerHTML=head("Gestures & quick wheel")+'<div id="gx" style="padding:0 4px 20px"></div>';wire($("#xs"));HX.gesturePanel($("#gx"));show("xs")};
   $("#s-watch").onclick=openWatch;
@@ -698,6 +702,6 @@ async function loadState(first){try{state=await inv("get_state");state.settings.
   if(first&&pref("restore")==="on"&&state.session?.length){tabs=[];state.session.forEach(s=>tabs.push({id:nid++,native:null,url:s.url,title:"",priv:false,ws:wsList().includes(s.ws)?s.ws:curWs(),canBack:false,canFwd:false}));
     const last=inWs().at(-1);if(last){cur=last.id;openNative(last)}else newTab(false,true);toast("Restored "+state.session.length+" tabs")}
   render()}
-newTab(false,true);render();loadState(true).then(handleIncoming);
+newTab(false,true);render();loadState(true).then(()=>{handleIncoming();if(!state.settings.ui?.toured){$("#xs").innerHTML='<div id="tourx" style="padding:20px 8px"></div>';show("xs");HX.tour($("#tourx"),true,()=>{setPref("toured","1");show(null)})}});
 </script>
 </body></html>

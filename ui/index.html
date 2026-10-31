@@ -15,6 +15,12 @@ button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7
 #tabsbar{display:none!important}
 /* Positions/sizes of #addr, #tabsbar, #page are set by layout() in JS — one source of truth, also sent to Rust. */
 #np{display:none;align-items:center;gap:2px;height:30px;padding:0 4px 0 10px;border-radius:99px;background:var(--card);border:1px solid var(--line);color:var(--ink);font:600 11.5px system-ui;max-width:220px;flex:none}#np.on{display:flex}#np span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}#np button{width:26px;height:26px}
+#addr .tbhide{display:none!important}.tools{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.tool{all:unset;cursor:pointer;display:flex!important;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border-radius:14px;background:var(--card);border:1px solid var(--line);width:auto!important;height:auto!important;color:var(--ink)!important;position:relative}
+.tool svg{width:22px!important;height:22px!important}.tool span{font-size:12.5px}.tool em{position:absolute;top:6px;right:8px;font:600 9.5px system-ui;color:var(--mute);font-style:normal}.tool:disabled{opacity:.35}
+#dock{position:absolute;display:none;flex-direction:column;background:var(--bg);border-left:1px solid var(--line);z-index:4}#dock.on{display:flex}
+#dockh{display:flex;gap:2px;padding:6px 6px;border-bottom:1px solid var(--line);flex:none}#dockh button{width:34px;height:34px}#dockh button.on{background:var(--card);color:var(--ink);box-shadow:inset 0 -2px 0 var(--acc)}
+#dockb{flex:1;min-height:0;overflow:hidden}#dockb>div{height:100%}#dockr{position:absolute;left:-3px;top:0;bottom:0;width:6px;cursor:ew-resize}
 #addr{position:absolute;display:flex;gap:4px;align-items:center;padding:0 10px;background:var(--bg);z-index:3}
 #addr.top{border-bottom:1px solid var(--line)}#addr.bottom{border-top:1px solid var(--line)}
 #tabsbar{position:absolute;display:flex;align-items:center;gap:8px;background:var(--bg);z-index:2;transition:transform .18s ease}
@@ -133,6 +139,7 @@ kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:
   <button id=pick title="Block an element" aria-label="Block an element" disabled><svg viewBox="0 0 24 24"><circle cx=6 cy=6 r=3 /><circle cx=6 cy=18 r=3 /><path d="M8.1 8.1L20 20M8.1 15.9L20 4"/></svg></button>
   <button id=star title="Bookmark this page (Ctrl+D)" aria-label="Bookmark" disabled><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg></button>
   <button id=dls title="Downloads (Ctrl+J)" aria-label="Downloads"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><b id=dlcnt class=badge></b></button>
+  <button id=more title="More tools" aria-label="More tools"><svg viewBox="0 0 24 24"><circle cx=5 cy=12 r=1.3 /><circle cx=12 cy=12 r=1.3 /><circle cx=19 cy=12 r=1.3 /></svg></button>
   <button id=gear title="Settings (Ctrl+,)" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx=12 cy=12 r=3 /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
 </div>
 <div id=load></div>
@@ -140,6 +147,7 @@ kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:
   <div id=home></div><div id=bms></div>
   <div id=panel class=panel hidden></div>
 </div>
+<aside id=dock aria-label="Hush Hub"><div id=dockh><button data-hub=murmur title="Murmur — messages (Ctrl+Shift+M)"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg><b class=badge id=dmc></b></button><button data-hub=echo title="Echo — social (Ctrl+Shift+E)"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 8-8M8 12a4 4 0 0 1 4-4M20 12a8 8 0 0 1-8 8M16 12a4 4 0 0 1-4 4"/><circle cx=12 cy=12 r=1.5 /></svg><b class=badge id=dec></b></button><button data-hub=notes title="Notes to self"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4"/></svg></button><button data-hub=downloads title="Downloads (Ctrl+J)"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></button><button data-hub=reading title="Reading list"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg></button><span style="flex:1"></span><button data-hub=pop title="Open full size"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-8 8M10 20H4v-6"/></svg></button><button data-hub=close title="Close the dock (Ctrl+Shift+H)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><div id=dockb></div><i id=dockr title="Drag to resize"></i></aside>
 <div id=toast role=status></div>
 <script src="qr.js"></script>
 <script src="extras.js"></script>
@@ -191,6 +199,9 @@ function layout(now){
   const px=o=>Object.entries(o).map(([k,v])=>`${k}:${typeof v=='number'?v+'px':v}`).join(';');
   ins[bp]=B;
   if(pinned)ins[tp]+=railSize();          // pinned: the page makes room once and stays that size
+  // Hush Hub dock: Murmur / Echo / notes beside the page — the page makes room instead of being covered.
+  const D=$('#dock'), dw=Math.max(300,Math.min(640,+pref('dock_w')||380));
+  if(dockTab){const r=ins.right;ins.right+=dw;D.style.cssText=px({top:ins.top,bottom:ins.bottom,right:r,width:dw})}
   A.style.cssText=px({[bp]:0,height:B,left:0,right:0});
   P.style.cssText=px({top:ins.top,right:ins.right,bottom:ins.bottom,left:ins.left});
   L.style.cssText=px({left:0,right:0,[bp=='top'?'top':'bottom']:B-1});
@@ -287,6 +298,7 @@ function draw(){
   $('#ws').textContent=curWs()[0].toUpperCase();$('#ws').title='Workspace: '+curWs()+' — click to switch';
   const t=tab(cur), live=t&&t.ws==curWs(), h=live?hostOf(t.url):'';document.body.classList.toggle('tor',!!(live&&t.tor&&!panel));
   if(document.activeElement!==$('#bar')) $('#bar').value=panel||!live?'':t.url;
+  applyToolbar();
   const showHome=!live&&!panel;if(showHome&&$('#home').hidden!==false||showHome&&!$('#home').firstChild)renderHome();$('#home').hidden=!showHome;$('#home').style.display=showHome?'block':'none';
   $('#panel').hidden=!panel;
   for(const id of ['back','fwd','reload','pick','star','read','listen','boostb','snap']) $('#'+id).disabled=!live||!!panel;
@@ -372,8 +384,9 @@ function shortcut(k){
   else if(k=='g'){if(!tab(cur))return;if(findOn&&$('#findq').value)inv('page_action',{action:'find',arg:$('#findq').value});else findMode(true)}
   else if(k=='f11')inv('toggle_fullscreen');
   else if(k=='shift+o')torTab();
-  else if(k=='shift+m')panel=='msg'?closePanel():openPanel('msg');
-  else if(k=='shift+e')panel=='echo'?closePanel():openPanel('echo');
+  else if(k=='shift+m')toggleDock('murmur');
+  else if(k=='shift+e')toggleDock('echo');
+  else if(k=='shift+h')dockTab?closeDock():openDock('murmur');
   else if(k=='shift+s'){if(tab(cur))snapshot(true)} else if(k=='shift+r'){if(tab(cur))listenToggle()} else if(k=='shift+a'){if(tab(cur))panel=='boost'?closePanel():openPanel('boost')}
   else if(k=='shift+b')panel=='bookmarks'?closePanel():openPanel('bookmarks');
   else if(k=='\\'){const o=inWs().filter(t=>t.id!=cur).at(-1);if(split)toggleSplit(split);else if(o)toggleSplit(o.id)}
@@ -384,7 +397,7 @@ addEventListener('keydown',e=>{const m=e.ctrlKey||e.metaKey,k=e.key.toLowerCase(
   if(m&&e.key=='Tab'){e.preventDefault();shortcut(e.shiftKey?'shift+tab':'tab')}
   else if(m&&e.shiftKey&&k=='n'){e.preventDefault();shortcut('shift+n')}
   else if(m&&e.shiftKey&&k=='t'){e.preventDefault();shortcut('shift+t')}
-  else if(m&&e.shiftKey&&['b','s','r','a','o','m','e'].includes(k)){e.preventDefault();shortcut('shift+'+k)}
+  else if(m&&e.shiftKey&&['b','s','r','a','o','m','e','h'].includes(k)){e.preventDefault();shortcut('shift+'+k)}
   else if(m&&/^[0-9]$/.test(e.key)){e.preventDefault();shortcut(e.key)}
   else if(m&&(e.key=='='||e.key=='+')){e.preventDefault();shortcut('+')}else if(m&&e.key=='-'){e.preventDefault();shortcut('-')}
   else if(m&&(k=='m'||k=='g')){e.preventDefault();shortcut(k)}
@@ -420,6 +433,11 @@ const RENDER={bookmarks:()=>renderBookmarks(),ext:()=>renderExt(),reading:()=>re
     HX.boost($('#bx'),h,()=>inv('nav',{action:'reload'}).catch(()=>{}));wire(p)},
   archive:()=>{const p=$('#panel');p.innerHTML=`<h2>Archived tabs ${closeBtn}</h2><div id=arx></div>`;HX.archivePanel($('#arx'),u=>openTab(u));wire(p)},
   diag:()=>{const p=$('#panel');p.innerHTML=`<h2>Diagnostics ${closeBtn}</h2><p style="color:var(--mute);margin:-8px 0 12px">Recent internal events. A screenshot of this helps fix problems.</p><pre style="white-space:pre-wrap;font:12px ui-monospace,monospace;user-select:text">${esc(DIAG.join('\n')||'Nothing yet — open the tab bar or load a page, then come back.')}</pre>`;wire(p)},
+  hub:()=>{},
+  tour:()=>{const p=$('#panel');p.innerHTML='<div id=tourx></div>';HX.tour($('#tourx'),false,()=>{setPref('toured','1');closePanel()})},
+  more:()=>{const p=$('#panel'),h=tbHidden(),t=tab(cur);p.innerHTML=`<h2>Tools ${closeBtn}</h2><div class=tools>${TB.filter(([id])=>id!='back'&&id!='fwd'&&id!='reload').map(([id,l])=>`<button class=tool data-t=${id} ${!t&&!['msgb','echob','dls','onion'].includes(id)?'disabled':''}>${$('#'+id).innerHTML.replace(/<b[^>]*class=[^>]*badge[^>]*>.*?<\/b>/g,'')}<span>${l}</span>${h.has(id)?'':'<em>in toolbar</em>'}</button>`).join('')}</div>
+    <p style="color:var(--mute);margin-top:14px">Choose what shows next to the address bar in <a href=# id=tb-set>Settings › Toolbar</a>.</p>`;
+    p.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{closePanel();$('#'+b.dataset.t).click()});$('#tb-set').onclick=e=>{e.preventDefault();openPanel('settings');setTimeout(()=>$('#s-tb')?.scrollIntoView({block:'center'}),50)};wire(p)},
   echo:()=>{const p=$('#panel');p.classList.add('msgp');p.innerHTML='<div id=hmx></div>';EC.open($('#hmx'))},
   msg:()=>{const p=$('#panel');p.classList.add('msgp');p.innerHTML='<div id=hmx></div>';HM.open($('#hmx'))},
   torinfo:()=>{const p=$('#panel');p.innerHTML=`<h2>What is Tor? ${closeBtn}</h2>`+HX.TOR_INFO+`<p style="margin-top:14px"><button class=btn id=ti-go>Open a Tor tab</button></p>`;wire(p);$('#ti-go').onclick=()=>{closePanel();torTab(true)}},
@@ -493,11 +511,30 @@ T.event.listen('float-action',({payload:p})=>{if(p.a=='open'){floating=null;sele
   else if(p.a=='moved')setPref('float_pos',[p.x,p.y,p.w].map(Math.round).join(','))});
 // ---------- Hush Messenger ----------
 const HM=HushMsg({inv,secret:{get:n=>inv('secret_get',{name:n}),set:(n,v)=>inv('secret_set',{name:n,value:v}),del:n=>inv('secret_del',{name:n})},invRaw:(c,d,h)=>T.core.invoke(c,d,{headers:h}),listen:(e,f)=>T.event.listen(e,f),toast,mobile:false,open:u=>{closePanel();openTab(u)},page:()=>{const t=tab(cur);return t&&/^https?:/.test(t.url)&&!t.priv?{url:t.url}:null},
-  badge:n=>{$('#msgcnt').textContent=n>99?'99+':n;$('#msgcnt').style.display=n?'grid':'none'},qr:s=>{try{return hushQR.svg(s)}catch(e){return ''}},close:()=>closePanel()});
-$('#msgb').onclick=()=>panel=='msg'?closePanel():openPanel('msg');setTimeout(()=>HM.boot(),1500);
-const EC=HushEcho({M:HM.api,toast,mobile:false,open:u=>{closePanel();openTab(u)},close:()=>closePanel(),openMurmur:pk=>{closePanel(true);openPanel('msg');if(pk)setTimeout(()=>HM.api.openChat(pk),300)},
-  badge:n=>{$('#echocnt').textContent=n>99?'99+':n;$('#echocnt').style.display=n?'grid':'none'}});
-$('#echob').onclick=()=>panel=='echo'?closePanel():openPanel('echo');setTimeout(()=>EC.boot(),3000);
+  badge:n=>{for(const id of ['#msgcnt','#dmc']){$(id).textContent=n>99?'99+':n;$(id).style.display=n?'grid':'none'}},qr:s=>{try{return hushQR.svg(s)}catch(e){return ''}},close:()=>{closePanel();closeDock()}});
+// ---------- Hush Hub dock ----------
+var dockTab=null;
+// ---------- customizable toolbar: pick which buttons sit next to the address bar; the rest live under ⋯ ----------
+const TB=[['back','Back'],['fwd','Forward'],['reload','Reload'],['onion','Tor tab'],['msgb','Murmur'],['echob','Echo'],['listen','Listen'],['boostb','Boosts'],['snap','Screenshot'],['read','Reader'],['pick','Block element'],['star','Bookmark'],['dls','Downloads']];
+const TB_DEF='listen,boostb,snap,read,pick';
+const tbHidden=()=>new Set((state.settings.ui.tb_hide??TB_DEF).split(',').filter(Boolean));
+function applyToolbar(){const h=tbHidden();for(const [id] of TB){const e=$('#'+id);if(e)e.classList.toggle('tbhide',h.has(id))}}
+$('#more').onclick=()=>panel=='more'?closePanel():openPanel('more');
+function openDock(t){if(t=='downloads'||t=='reading'){openPanel(t);return}closePanel(true);
+  if(dockTab==t){return}HM.close();EC.close();dockTab=t;$('#dock').classList.add('on');
+  document.querySelectorAll('#dockh [data-hub]').forEach(b=>b.classList.toggle('on',b.dataset.hub==t));
+  const b=$('#dockb');b.innerHTML='<div id=dockv></div>';layout(true);
+  if(t=='echo')EC.open($('#dockv'));else{HM.open($('#dockv'));if(t=='notes')setTimeout(()=>HM.api.openChat('self'),250)}}
+function closeDock(){if(!dockTab)return;HM.close();EC.close();dockTab=null;$('#dock').classList.remove('on');$('#dockb').textContent='';layout(true)}
+function toggleDock(t){dockTab==t?closeDock():openDock(t)}
+$('#dockh').onclick=e=>{const b=e.target.closest('[data-hub]');if(!b)return;const h=b.dataset.hub;
+  if(h=='close')closeDock();else if(h=='pop'){const t=dockTab;closeDock();openPanel(t=='echo'?'echo':'msg')}else openDock(h)};
+$('#dockr').onpointerdown=e=>{e.preventDefault();const x0=e.clientX,w0=+pref('dock_w')||380;const mv=m=>{state.settings.ui.dock_w=String(Math.max(300,Math.min(640,w0+(x0-m.clientX))));layout(true)};
+  const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up);setPref('dock_w',state.settings.ui.dock_w)};addEventListener('pointermove',mv);addEventListener('pointerup',up)};
+$('#msgb').onclick=()=>toggleDock('murmur');setTimeout(()=>HM.boot(),1500);
+const EC=HushEcho({M:HM.api,toast,mobile:false,open:u=>{closePanel();openTab(u)},close:()=>{closePanel();closeDock()},openMurmur:pk=>{closePanel(true);closeDock();openDock('murmur');if(pk)setTimeout(()=>HM.api.openChat(pk),300)},
+  badge:n=>{for(const id of ['#echocnt','#dec']){$(id).textContent=n>99?'99+':n;$(id).style.display=n?'grid':'none'}}});
+$('#echob').onclick=()=>toggleDock('echo');setTimeout(()=>EC.boot(),3000);
 let peeking=false;
 function peekUI(u){$('#peekbar').classList.toggle('on',peeking);if(peeking){$('#bar').value=u||'';toast('Peeking — Esc to close')}else draw()}
 async function peekClose(){peeking=false;await inv('peek_close').catch(()=>{});peekUI()}
@@ -533,7 +570,7 @@ const ACTIONS=()=>[
   ['Split view with last tab','Ctrl+\\',()=>{closePanel();shortcut('\\')}],['Site settings & QR code','',()=>tab(cur)&&openPanel('site')],
   ['Toggle dark mode for websites','',async()=>{await setPref('force_dark',pref('force_dark')=='true'?'false':'true');applyDarkNow();closePanel()}],
   ['Read later','',async()=>{const t=tab(cur);if(!t)return;await inv('bookmark_add',{title:hostOf(t.url),url:t.url,folder:'reading'});await loadState();closePanel();toast('Added to reading list')}],
-  ['Reading list','',()=>openPanel('reading')],['Self-destruct this tab','',()=>cur&&destructMenu(cur)],['Change watch','',()=>openPanel('watch')],['Gestures & quick wheel','',()=>openPanel('gest')],['Diagnostics','',()=>openPanel('diag')],['New Tor tab','Ctrl+Shift+O',()=>{closePanel();torTab(true)}],['Murmur — private messages','Ctrl+Shift+M',()=>openPanel('msg')],['Echo — social','Ctrl+Shift+E',()=>openPanel('echo')],['What is Tor?','',()=>openPanel('torinfo')],['New Tor identity','',()=>{closePanel();newIdentity()}],['Listen to this page','Ctrl+Shift+R',()=>{closePanel();tab(cur)&&listenToggle()}],['Boosts for this site','Ctrl+Shift+A',()=>tab(cur)&&openPanel('boost')],['Screenshot — whole page','Ctrl+Shift+S',()=>{closePanel();tab(cur)&&snapshot(true)}],['Screenshot — visible area','',()=>{closePanel();tab(cur)&&snapshot(false)}],['Archived tabs','',()=>openPanel('archive')],['Customize start page','',()=>{closePanel();renderHome()}],['Save page as PDF / print','Ctrl+P',()=>{closePanel();tab(cur)&&inv('page_action',{action:'print'})}],
+  ['Reading list','',()=>openPanel('reading')],['Take the tour','',()=>openPanel('tour')],['Self-destruct this tab','',()=>cur&&destructMenu(cur)],['Change watch','',()=>openPanel('watch')],['Gestures & quick wheel','',()=>openPanel('gest')],['Diagnostics','',()=>openPanel('diag')],['New Tor tab','Ctrl+Shift+O',()=>{closePanel();torTab(true)}],['Murmur — private messages','Ctrl+Shift+M',()=>openPanel('msg')],['Echo — social','Ctrl+Shift+E',()=>openPanel('echo')],['What is Tor?','',()=>openPanel('torinfo')],['New Tor identity','',()=>{closePanel();newIdentity()}],['Listen to this page','Ctrl+Shift+R',()=>{closePanel();tab(cur)&&listenToggle()}],['Boosts for this site','Ctrl+Shift+A',()=>tab(cur)&&openPanel('boost')],['Screenshot — whole page','Ctrl+Shift+S',()=>{closePanel();tab(cur)&&snapshot(true)}],['Screenshot — visible area','',()=>{closePanel();tab(cur)&&snapshot(false)}],['Archived tabs','',()=>openPanel('archive')],['Customize start page','',()=>{closePanel();renderHome()}],['Save page as PDF / print','Ctrl+P',()=>{closePanel();tab(cur)&&inv('page_action',{action:'print'})}],
   ['Bookmarks','Ctrl+Shift+B',()=>openPanel('bookmarks')],['Reopen closed tab','Ctrl+Shift+T',()=>{closePanel();shortcut('shift+t')}],
   ['Mute / unmute tab','Ctrl+M',()=>{closePanel();shortcut('m')}],['Full screen','F11',()=>{closePanel();shortcut('f11')}],
   ['Zoom in','Ctrl+=',()=>shortcut('+')],['Zoom out','Ctrl+−',()=>shortcut('-')],['Reset zoom','Ctrl+0',()=>shortcut('0')],
@@ -666,7 +703,7 @@ const sw=(k,on)=>`<button class="sw ${on?'on':''}" data-sw=${k}></button>`;
 function wipe(){if(confirm('Clear all cookies, cache and site data?')){inv('clear_data');toast('Browsing data cleared')}}
 function renderSettings(){
   const s=state.settings, p=$('#panel'), auto=pref('tabs_mode')=='auto';
-  p.innerHTML=`<h2>Settings ${closeBtn}</h2>
+  p.innerHTML=`<h2>Settings ${closeBtn}</h2><input class=txt id=s-q placeholder="Search settings — e.g. dark, tor, video" style="margin:-6px 0 14px">
   <h3>Layout</h3>
   ${row('Tab bar position','',seg('tabs_pos',[['left','Left'],['right','Right'],['top','Top'],['bottom','Bottom']]))}
   ${row('Tab bar','Auto-hide slides it over the page when you point at that edge (or press <kbd>Ctrl</kbd>+<kbd>B</kbd>) — the page never resizes',seg('tabs_mode',[['auto','Slide over'],['pinned','Always shown']]))}
@@ -681,6 +718,8 @@ function renderSettings(){
     <label class=btn style="position:relative;overflow:hidden;height:26px;padding:0 10px">Custom<input type=color id=s-color value="${/^#/.test(pref('color'))?pref('color'):'#3b82f6'}" style="position:absolute;inset:0;opacity:0;cursor:pointer"></label></div>`)}
   ${row('Dark mode for websites','Darkens light sites. Change it per site from the shield.',sw('force_dark',pref('force_dark')=='true'))}
   ${row('Look','A complete theme — colors, start page and tab bar','<div id=s-look></div>')}
+  <h3 id=s-tb>Toolbar</h3>
+  <div class=row style="display:block"><div style="margin-bottom:8px">Buttons next to the address bar<small>Tap to show or hide. Hidden ones are always under ⋯</small></div><div class=seg style="flex-wrap:wrap;display:flex;gap:6px">${TB.map(([id,l])=>`<button data-tbt=${id} class="${tbHidden().has(id)?'':'on'}">${l}</button>`).join('')}</div></div>
   <h3>Gestures & tools</h3>
   ${row('Mouse gestures & quick wheel','Right-drag on a page to go back, close tabs… · right-click and hold for your wheel','<button class=btn id=s-gest>Customize</button>')}
   ${row('Clean links','Removes tracking tags (utm, fbclid, gclid…) from links you open and copy',sw('clean_links',pref('clean_links')!='off'))}
@@ -722,13 +761,14 @@ function renderSettings(){
    <kbd>Ctrl</kbd>+<kbd>M</kbd> mute tab · <kbd>Ctrl</kbd>+<kbd>G</kbd> find next · <kbd>Ctrl</kbd>+<kbd>P</kbd> print / PDF · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> bookmarks · <kbd>F11</kbd> full screen ·
    <kbd>Ctrl</kbd>+<kbd>\\</kbd> split view · <kbd>Ctrl</kbd>+<kbd>B</kbd> show/hide tabs · <kbd>Ctrl</kbd>+<kbd>D</kbd> bookmark · <kbd>Ctrl</kbd>+<kbd>H</kbd> history · <kbd>Ctrl</kbd>+<kbd>J</kbd> downloads · <kbd>Ctrl</kbd>+<kbd>,</kbd> settings<br>
    Point at the screen edge to slide the tab bar in · drag tabs to reorder · shift-click a tab to split · middle-click to close · right-click a tab for mute, duplicate, move to workspace</div>`;
-  p.querySelectorAll('.seg button').forEach(b=>b.onclick=async()=>{await setPref(b.dataset.k,b.dataset.v);if(b.dataset.k=='zoom')tabs.forEach(t=>{t.zoom=+b.dataset.v/100;inv('set_zoom',{factor:t.zoom,tab:t.id}).catch(()=>{})});draw();layout(true);renderSettings()});
+  p.querySelectorAll('.seg button[data-k]').forEach(b=>b.onclick=async()=>{await setPref(b.dataset.k,b.dataset.v);if(b.dataset.k=='zoom')tabs.forEach(t=>{t.zoom=+b.dataset.v/100;inv('set_zoom',{factor:t.zoom,tab:t.id}).catch(()=>{})});draw();layout(true);renderSettings()});
   p.querySelectorAll('[data-color]').forEach(b=>b.onclick=async()=>{await setPref('color',b.dataset.color);renderSettings()});
   $('#s-color').oninput=e=>{state.settings.ui.color=e.target.value;applyColor()};$('#s-color').onchange=async e=>{await setPref('color',e.target.value);renderSettings()};
   p.querySelectorAll('[data-sw]').forEach(b=>b.onclick=async()=>{const k=b.dataset.sw,on=b.classList.contains('on');
     await setPref(k,k=='force_dark'?String(!on):(on?'off':'on'));if(k=='fp')toast('Applies to tabs you open from now on');if(k=='force_dark')applyDarkNow();if(k=='restore')saveSession();renderSettings()});
   $('#s-hist').onclick=e=>{e.preventDefault();openPanel('history')};
-  $('#s-tori').onclick=()=>openPanel('torinfo');
+  $('#s-tori').onclick=()=>openPanel('torinfo');HX.settingsSearch(p,$('#s-q'),'.row');
+  p.querySelectorAll('[data-tbt]').forEach(b=>b.onclick=async()=>{const h=tbHidden();h.has(b.dataset.tbt)?h.delete(b.dataset.tbt):h.add(b.dataset.tbt);await setPref('tb_hide',[...h].join(','));applyToolbar();renderSettings()});
   HX.lookPicker($('#s-look'),()=>{applyColor();renderSettings()});$('#s-gest').onclick=()=>openPanel('gest');$('#s-watch').onclick=()=>openPanel('watch');
   $('#s-ext').onclick=()=>openPanel('ext');$('#s-rl').onclick=()=>openPanel('reading');$('#s-focus').onclick=()=>openPanel('focus');$('#s-send').onclick=()=>openPanel('send');$('#s-about').onclick=()=>openPanel('about');
   $('#s-bangs').onclick=async()=>{const v=prompt('Your shortcuts, separated by | as  key=https://site.com/search?q=%s',pref('bangs'));if(v===null)return;
@@ -760,5 +800,5 @@ async function loadState(first){try{state=await inv('get_state');state.settings.
   if(first&&pref('restore')=='on'&&state.session?.length&&!tabs.length){for(const t of state.session)await openTab(t.url,{ws:wsList().includes(t.ws)?t.ws:curWs(),quiet:true,background:true});
     const last=inWs().at(-1);if(last)select(last.id);toast('Restored '+state.session.length+' tabs')}
 }catch(e){console.error(e)}}
-layout(true);draw();loadState(true);$('#bar').focus();
+layout(true);draw();loadState(true).then(()=>{if(!state.settings.ui.toured)openPanel('tour')});$('#bar').focus();
 </script>

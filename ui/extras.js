@@ -26,6 +26,10 @@ window.HushX = function (A) {
 .hx-edit .hx-tile .hx-x{display:flex}.hx-edit .hx-tile{animation:hxw .25s ease-in-out infinite alternate}.hx-tile.hx-drag{opacity:.3}.hx-tile.hx-over{outline:2px dashed var(--acc)}
 @keyframes hxw{from{transform:rotate(-1.2deg)}to{transform:rotate(1.2deg)}}@media (prefers-reduced-motion:reduce){.hx-edit .hx-tile{animation:none}}
 .hx-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.hx-tour{max-width:440px;margin:0 auto;padding:20px 8px;display:flex;flex-direction:column;gap:18px;min-height:60vh;justify-content:center}.hx-tc{position:relative;min-height:240px}
+.hx-ts{position:absolute;inset:0;text-align:center;opacity:0;transform:translateX(24px);transition:opacity .25s,transform .25s;pointer-events:none}.hx-ts.on{opacity:1;transform:none;pointer-events:auto}
+.hx-ts .e{font-size:64px;margin-bottom:14px}.hx-ts h2{display:block!important;text-align:center;font:700 24px system-ui;margin:0 0 10px;color:var(--ink)}.hx-ts p{color:var(--mute);font-size:15px;line-height:1.55;margin:0}
+.hx-dots{display:flex;gap:6px;justify-content:center}.hx-dots i{width:7px;height:7px;border-radius:50%;background:var(--line)}.hx-dots i.on{background:var(--ink);width:20px;border-radius:99px}
 .hx-b{all:unset;cursor:pointer;padding:6px 12px;border-radius:99px;background:var(--card);color:var(--ink);border:1px solid var(--line);font-size:12px;text-shadow:none}
 .hx-notes{width:min(640px,100%);min-height:70px;resize:vertical;border-radius:14px;border:1px solid var(--line);background:color-mix(in srgb,var(--card) 88%,transparent);color:var(--ink);padding:10px 12px;font:13px/1.45 system-ui;text-shadow:none}
 .hx-pop{width:min(640px,100%);background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:12px;display:grid;gap:10px;text-shadow:none;font-size:12.5px}
@@ -334,6 +338,33 @@ window.HushX = function (A) {
     <p style="margin:0 0 6px"><b>Good for</b></p><ul style="margin:0 0 10px;padding-left:20px"><li>Hiding your location and IP from sites and trackers</li><li>Keeping your internet provider from seeing which sites you visit</li><li>Getting past some network blocks</li></ul>
     <p style="margin:0 0 6px"><b>Keep in mind</b></p><ul style="margin:0 0 10px;padding-left:20px"><li>Pages load slower — your traffic travels further</li><li>If you sign in to a site, that site still knows it’s you</li><li>Some sites show extra captchas or block Tor</li></ul>
     <p style="margin:0;color:var(--mute);font-size:12.5px">Hush has Tor built in (the Tor Project’s Arti engine), so there’s nothing to install. Hush Messenger always uses it.</p></div>`;
-  return { TOR_INFO, mediaPrompt, LEAVE, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
+  // Settings search: filter rows by text; hide section titles with nothing left under them.
+  function settingsSearch(root, input, rowSel) {
+    const run = () => { const q = input.value.trim().toLowerCase(), re = q ? new RegExp('(^|[^a-z0-9])' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') : null; let h = null, any = false;
+      [...root.children].forEach(el => { if (el.tagName === 'H3') { if (h) h.style.display = any || !q ? '' : 'none'; h = el; any = false; return; }
+        if (!el.matches(rowSel)) return; const ok = !q || re.test(el.textContent); el.style.display = ok ? '' : 'none'; if (ok) any = true; });
+      if (h) h.style.display = any || !q ? '' : 'none'; };
+    input.oninput = run; run();
+  }
+  // First-run tour: a few swipeable cards that show off what Hush can do.
+  function tour(el, mobile, done) {
+    const S = [
+      ['🛡', 'Private by default', 'Ads, trackers, cookie banners and fingerprinting are blocked on every site. Tap the shield for per-site settings.'],
+      mobile ? ['👆', 'Built for your thumbs', 'Swipe the address bar ← → to switch tabs, swipe it down for all tabs, hold it for commands. Two-finger swipes and the quick wheel are customizable in Settings.']
+             : ['🖱', 'Gestures & the quick wheel', 'Hold the right mouse button and draw to go back, close tabs and more. Right-click and hold for your quick wheel. Ctrl+K finds anything.'],
+      ['👀', 'Peek & floating video', mobile ? 'Hold a link to peek at it without leaving the page. Leave a playing video and it keeps going in a mini player.' : 'Shift-click a link to peek at it. Leave a playing video and it keeps going in a small player you can drag and resize.'],
+      ['🧅', 'Tor, built in', 'Hide your IP and location with one tap — the onion. No extra app, nothing to install.'],
+      ['💬', 'Murmur', 'Private messages, photos, voice and video with other Hush users — end-to-end encrypted and always through Tor. No phone number.'],
+      ['📣', 'Echo', 'Share with friends privately, or make a public profile if you want to be found. Your choice, post by post.']];
+    let i = 0;
+    const draw = () => { el.innerHTML = `<div class=hx-tour><div class=hx-tc>${S.map((s, k) => `<div class="hx-ts ${k === i ? 'on' : ''}"><div class=e>${s[0]}</div><h2>${s[1]}</h2><p>${s[2]}</p></div>`).join('')}</div>
+      <div class=hx-dots>${S.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('')}</div>
+      <div class=hx-row><button class=hx-b data-t=skip>Skip</button><span style="flex:1"></span>${i ? '<button class=hx-b data-t=back>Back</button>' : ''}<button class="hx-b on" data-t=next style="background:var(--ink);color:var(--bg)">${i === S.length - 1 ? 'Start browsing' : 'Next'}</button></div></div>`;
+      el.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { const t = b.dataset.t; if (t === 'skip' || (t === 'next' && i === S.length - 1)) return done(); i += t === 'next' ? 1 : -1; draw(); });
+      let x0 = null; const c = el.querySelector('.hx-tc'); c.ontouchstart = e => x0 = e.touches[0].clientX;
+      c.ontouchend = e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null; if (dx < -50 && i < S.length - 1) { i++; draw(); } else if (dx > 50 && i) { i--; draw(); } }; };
+    draw();
+  }
+  return { settingsSearch, tour, TOR_INFO, mediaPrompt, LEAVE, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
     destructSweep, destructLabel, DESTRUCT, watchAdd, watchSweep, watchPanel, watchCount, syncLink, LS };
 };

@@ -205,7 +205,8 @@ window.HushMsg = function (A) {
       const c = contacts(); if (!isGroup(key) && !c[key]) { c[key] = { name: nameOf(key), added: Date.now(), request: true }; LS.set('contacts', c); }
       if (view.open && view.chat === key && document.visibilityState !== 'hidden') sendRead(key);
       else { const un = LS.get('unread', {}); un[key] = (un[key] || 0) + 1; LS.set('unread', un);
-        A.toast('💬 ' + (isGroup(key) ? chatName(key) + ' · ' + first(r.pubkey) : nameOf(r.pubkey)) + ': ' + preview.slice(0, 60)); }
+        A.toast('💬 ' + (isGroup(key) ? chatName(key) + ' · ' + first(r.pubkey) : nameOf(r.pubkey)) + ': ' + preview.slice(0, 60));
+        if (A.onIncoming) A.onIncoming(key, initials(isGroup(key) ? chatName(key) : nameOf(r.pubkey)), contacts()[r.pubkey]?.aura || '#4F46E5'); }
     }
     LS.set('since', Math.max(LS.get('since', 0), Math.min(now(), r.created_at)));
     badge(); if (view.open) repaint();
