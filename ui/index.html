@@ -411,7 +411,12 @@ addEventListener('keydown',e=>{const m=e.ctrlKey||e.metaKey,k=e.key.toLowerCase(
 T.event.listen('shortcut',({payload:p})=>shortcut(p.key));
 
 // ---------- events from Rust ----------
+const listHas=(k,h)=>(pref(k)||'').split(',').filter(Boolean).some(x=>h==x||h.endsWith('.'+x));
+const torSite=h=>listHas('tor_sites',h.replace(/^www\./,'')),jsSite=h=>listHas('js_allow',h.replace(/^www\./,''));
+async function toggleList(k,site){const l=(pref(k)||'').split(',').filter(Boolean);await setPref(k,(l.includes(site)?l.filter(x=>x!=site):[...l,site]).join(','))}
 T.event.listen('tab-url',({payload:p})=>{const t=tab(p.tab);if(!t)return;t.url=p.url;
+  // Always-through-Tor sites: a normal tab that lands on one is reopened as a Tor tab.
+  if(p.state=='started'&&!t.tor&&!t.priv&&/^https?:/.test(p.url)&&torSite(hostOf(p.url))){const id=t.id;openTab(p.url,{tor:true}).then(()=>closeTab(id,true));toast('🧅 Opened through Tor — you set this site to always use Tor');return}
   if(p.state=='finished'){if(!t.priv)inv('history_add',{url:p.url,title:hostOf(p.url).replace(/^www\./,'')}).catch(()=>{});saveSession()}
   if(p.tab==cur)$('#load').classList.toggle('on',p.state=='started');draw()});
 T.event.listen('focus-blocked',({payload:p})=>{if(p.tab==cur){$('#load').classList.remove('on');toast('Focus mode: '+hostOf(p.url).replace(/^www\./,'')+' is paused — Ctrl+K → Focus mode to end')}});
@@ -688,12 +693,17 @@ function renderSite(){const t=tab(cur),p=$('#panel');if(!t)return closePanel();c
   ${row('Shield',off?'Off — ads and trackers are allowed here':`On — ${counts[cur]||0} blocked on this page`,`<button class="sw ${off?'':'on'}" id=st-shield></button>`)}
   ${row('Dark mode on this site','Auto follows your setting in Settings',`<div class=seg>${[['auto','Auto'],['on','On'],['off','Off']].map(([v,l])=>`<button data-d=${v} class="${sd==v?'on':''}">${l}</button>`).join('')}</div>`)}
   ${pref('fp')!='off'?row('Fingerprint protection',fpOff(h)?'Off on this site':'On — this site sees randomized device details',`<button class="sw ${fpOff(h)?'':'on'}" id=st-fp></button>`):''}
+  ${row('Always open through Tor',torSite(h)?'On — this site always opens in a Tor tab':'Hide your IP from this site every time',`<button class="sw ${torSite(h)?'on':''}" id=st-tor></button>`)}
+  ${pref('sec_level')?row('JavaScript on this site',jsSite(h)?'Allowed (you trust this site)':`Blocked by your security level (${pref('sec_level')=='safest'?'Safest':'Safer'})`,`<button class="sw ${jsSite(h)?'on':''}" id=st-js></button>`):''}
   ${t.priv?row('Private tab','Nothing from this tab is saved',''):''}
+  ${row('Connection',t.tor?'🧅 Through Tor — the site can’t see your IP or location':/^https:/.test(t.url)?'🔒 Encrypted (HTTPS)':'⚠ Not encrypted','')}
   <h3>Page</h3>
   <div class=chips><button id=st-read>Reader view</button><button id=st-find>Find in page</button><button id=st-pick>Block an element</button>
    <button id=st-copy>Copy link</button><button id=st-split>${split?'Close split view':'Split with another tab'}</button></div>
   <h3>Open on your phone</h3><div class=qr>${(()=>{try{return hushQR.svg(t.url)}catch(e){return ''}})()}</div>
   <p style="color:var(--mute);text-align:center;font-size:12px;margin-top:8px">Scan with your phone’s camera</p>`;
+  $('#st-tor').onclick=async()=>{await toggleList('tor_sites',siteKey(h));renderSite();if(torSite(h)&&!t.tor){const id=t.id;await openTab(t.url,{tor:true});closeTab(id,true)}};
+  if($('#st-js'))$('#st-js').onclick=async()=>{await toggleList('js_allow',siteKey(h));inv('nav',{action:'reload'}).catch(()=>{});renderSite()};
   $('#st-shield').onclick=async()=>{await inv('toggle_shield',{host:h});off?allow.delete(h):allow.add(h);inv('nav',{action:'reload'});renderSite();draw()};
   if($('#st-fp'))$('#st-fp').onclick=async()=>{const site=siteKey(h),list=pref('fp_off').split(',').filter(Boolean);
     await setPref('fp_off',(fpOff(h)?list.filter(x=>x!=site):[...list,site]).join(','));toast('Reload the page or open a new tab to apply');renderSite()};
@@ -731,6 +741,7 @@ function renderSettings(){
   ${row('Clean links','Removes tracking tags (utm, fbclid, gclid…) from links you open and copy',sw('clean_links',pref('clean_links')!='off'))}
   ${row('Video controls','Speed, ±10 s, loop and pop-out on any video',sw('video_bar',pref('video_bar')!='off'))}
   ${row('YouTube quality','Videos start at this quality instead of YouTube’s low automatic pick',seg('video_quality',[['1080','1080p'],['720','720p'],['1440','1440p'],['2160','4K'],['auto','Auto']]))}
+  ${row('Security level','Standard: everything works · Safer: no JavaScript on unencrypted pages, no WebAssembly · Safest: JavaScript only on sites you allow (site panel → JavaScript). Stops most browser attacks.',seg('sec_level',HX.SEC))}
   ${row('When you leave a playing video','Ask each time, open the mini player (drag it anywhere, drag its corner to resize), keep it playing in the background, or stop it',seg('video_leave',HX.LEAVE))}
   ${row('Change watch','Get told when a price or text on a page changes','<button class=btn id=s-watch>Open</button>')}
   <h3>Tabs & history</h3>

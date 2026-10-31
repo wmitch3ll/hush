@@ -77,7 +77,8 @@ pub fn scriptlets_init_js() -> String {
         format!("const __HUSH_FP={};\n{}\n", json!({ "secret": *FP_SECRET, "off": fp_off }), FARBLE_JS)
     } else { String::new() };
     let tools = format!("{{const __HUSH_TOOLS={};\n{}\n}}\n", json!({ "clean": p.clean, "video": p.video, "gestures": p.gestures, "wheel": p.wheel, "quality": p.quality }), include_str!("tools.js"));
-    format!("{fp}{tools}window.__hushOff={};\n{}", serde_json::to_string(&off).unwrap_or("[]".into()), SCRIPTLETS_JS)
+    let sec = if p.sec != "standard" { "try{delete window.WebAssembly}catch(e){}\n" } else { "" };
+    format!("{sec}{fp}{tools}window.__hushOff={};\n{}", serde_json::to_string(&off).unwrap_or("[]".into()), SCRIPTLETS_JS)
 }
 /// What every page gets when it starts loading; readable from JNI threads without the AppHandle.
 #[derive(Default)]
@@ -86,7 +87,9 @@ pub struct PagePrefs { pub dark: bool, pub site_dark: std::collections::BTreeMap
     /// Fingerprint protection on/off, and sites where it's turned off.
     pub fp_on: bool, pub fp_off: Vec<String>,
     /// Page tools: link cleaner, video controls, mouse gestures (desktop).
-    pub clean: bool, pub video: bool, pub gestures: bool, pub wheel: Vec<String>, pub quality: String }
+    pub clean: bool, pub video: bool, pub gestures: bool, pub wheel: Vec<String>, pub quality: String,
+    /// Security level: "standard" | "safer" (no JS on http, no WebAssembly) | "safest" (no JS except allowed sites).
+    pub sec: String, pub js_allow: Vec<String> }
 pub static PAGE_PREFS: LazyLock<parking_lot::RwLock<PagePrefs>> = LazyLock::new(Default::default);
 fn refresh_page_prefs(s: &store::Store) {
     let mut p = PAGE_PREFS.write();
@@ -100,9 +103,64 @@ fn refresh_page_prefs(s: &store::Store) {
     p.wheel = s.settings.ui.get("wheel").map(|v| v.as_str()).unwrap_or("back,forward,reload,newtab,closetab,screenshot").split(',')
         .filter(|x| !x.is_empty() && x.len() < 16 && x.chars().all(|c| c.is_ascii_lowercase())).take(8).map(str::to_string).collect();
     p.fp_off = s.settings.ui.get("fp_off").map(|v| v.split(',').map(|x| x.trim().to_lowercase()).filter(|x| !x.is_empty()).collect()).unwrap_or_default();
+    p.sec = s.settings.ui.get("sec_level").filter(|v| matches!(v.as_str(), "safer" | "safest")).cloned().unwrap_or_else(|| "standard".into());
+    p.js_allow = s.settings.ui.get("js_allow").map(|v| v.split(',').map(|x| x.trim().trim_start_matches("www.").to_lowercase()).filter(|x| !x.is_empty()).collect()).unwrap_or_default();
     let until = s.settings.ui.get("focus_until").and_then(|v| v.parse().ok()).unwrap_or(0);
     let sites = s.settings.ui.get("focus_sites").map(|v| v.split(',').map(|x| x.trim().trim_start_matches("www.").to_lowercase()).filter(|x| !x.is_empty()).collect()).unwrap_or_default();
     *FOCUS.write() = (until, sites);
+}
+/// Downloaded photos: remove the hidden location / camera / owner data (JPEG APP1 Exif+XMP, APP13; PNG eXIf/tEXt/iTXt/zTXt).
+/// The picture itself is untouched. Anything that doesn't parse cleanly is left exactly as it was.
+pub fn strip_photo_meta(path: &std::path::Path) {
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    let Ok(md) = std::fs::metadata(path) else { return }; if md.len() > 60_000_000 { return; }
+    let Ok(b) = std::fs::read(path) else { return };
+    let out = match ext.as_str() { "jpg" | "jpeg" => strip_jpeg(&b), "png" => strip_png(&b), _ => None };
+    if let Some(o) = out { if o.len() < b.len() { let _ = std::fs::write(path, o); } }
+}
+pub fn strip_jpeg(b: &[u8]) -> Option<Vec<u8>> {
+    if b.len() < 4 || b[0] != 0xFF || b[1] != 0xD8 { return None; }
+    let mut o = vec![0xFF, 0xD8]; let mut i = 2;
+    while i + 4 <= b.len() {
+        if b[i] != 0xFF { return None; }
+        let m = b[i + 1];
+        if m == 0xDA { o.extend_from_slice(&b[i..]); return Some(o); }          // start of image data: copy the rest
+        let len = u16::from_be_bytes([b[i + 2], b[i + 3]]) as usize; if len < 2 || i + 2 + len > b.len() { return None; }
+        let seg = &b[i..i + 2 + len];
+        let drop = m == 0xE1 || m == 0xED || m == 0xFE;                            // APP1 (Exif/XMP), APP13 (IPTC), comments
+        if !drop { o.extend_from_slice(seg); }
+        i += 2 + len;
+    }
+    None
+}
+pub fn strip_png(b: &[u8]) -> Option<Vec<u8>> {
+    const SIG: [u8; 8] = [137, 80, 78, 71, 13, 10, 26, 10];
+    if b.len() < 8 || b[..8] != SIG { return None; }
+    let mut o = SIG.to_vec(); let mut i = 8;
+    while i + 12 <= b.len() {
+        let len = u32::from_be_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]) as usize; let end = i + 12 + len; if end > b.len() { return None; }
+        let ty = &b[i + 4..i + 8];
+        if !matches!(ty, b"eXIf" | b"tEXt" | b"iTXt" | b"zTXt" | b"tIME") { o.extend_from_slice(&b[i..end]); }
+        if ty == b"IEND" { return Some(o); }
+        i = end;
+    }
+    None
+}
+#[cfg(test)]
+mod meta_tests { use super::*;
+    #[test] fn jpeg_exif_removed() {
+        let mut j = vec![0xFF, 0xD8, 0xFF, 0xE0, 0, 4, 1, 2, 0xFF, 0xE1, 0, 8, b'E', b'x', b'i', b'f', 0, 0, 0xFF, 0xDA, 0, 2, 9, 9, 0xFF, 0xD9];
+        let o = strip_jpeg(&j).unwrap(); assert!(!o.windows(4).any(|w| w == b"Exif")); assert!(o.ends_with(&[0xFF, 0xDA, 0, 2, 9, 9, 0xFF, 0xD9])); assert!(o.starts_with(&[0xFF, 0xD8, 0xFF, 0xE0])); j.truncate(5); assert!(strip_jpeg(&j).is_none());
+    } }
+/// Security levels: may this page run JavaScript?
+pub fn js_allowed(url: &str) -> bool {
+    let p = PAGE_PREFS.read();
+    if p.sec == "standard" { return true; }
+    let Ok(u) = url::Url::parse(url) else { return true };
+    if !matches!(u.scheme(), "http" | "https") { return true; }
+    let host = u.host_str().unwrap_or("").trim_start_matches("www.").to_lowercase();
+    if p.js_allow.iter().any(|a| host == *a || host.ends_with(&format!(".{a}"))) { return true; }
+    match p.sec.as_str() { "safer" => u.scheme() == "https", _ => false }
 }
 /// Focus mode: (until unix-seconds, sites). Document loads on those sites are replaced by a "focus" page.
 pub static FOCUS: LazyLock<parking_lot::RwLock<(u64, Vec<String>)>> = LazyLock::new(Default::default);
@@ -148,6 +206,14 @@ pub fn boost_js(url: &str) -> String {
 /// Only these named actions can be run in a page; `arg` is JSON-encoded, so it can't break out of the string.
 /// Fingerprint protection page script (see uniform.js).
 pub const UNIFORM_JS: &str = include_str!("uniform.js");
+#[cfg(test)]
+mod sec_tests { use super::*;
+    #[test] fn security_levels() {
+        PAGE_PREFS.write().sec = "safest".into(); PAGE_PREFS.write().js_allow = vec!["example.com".into()];
+        assert!(!js_allowed("https://news.site/")); assert!(js_allowed("https://www.example.com/a")); assert!(js_allowed("https://app.example.com/"));
+        PAGE_PREFS.write().sec = "safer".into(); assert!(js_allowed("https://x.org/")); assert!(!js_allowed("http://x.org/"));
+        PAGE_PREFS.write().sec = "standard".into(); assert!(js_allowed("http://x.org/"));
+    } }
 pub fn page_action_js(action: &str, arg: &str) -> Result<String, String> {
     let a = serde_json::to_string(arg).map_err(|e| e.to_string())?;
     let call = match action {
@@ -293,7 +359,7 @@ async fn set_setting(app: AppHandle, key: String, value: String) -> Result<(), S
         // Free-form UI preferences (layout, auto-hide, density...). The UI owns their meaning; Rust only stores them.
         k if k.starts_with("ui.") => {
             let name = &k[3..];
-            let max = if matches!(name, "bangs" | "focus_sites" | "workspaces" | "fp_off") { 4000 } else { 200 };
+            let max = if matches!(name, "bangs" | "focus_sites" | "workspaces" | "fp_off" | "tor_sites" | "js_allow" | "spaces" | "essentials" | "tab_notes") { 4000 } else { 200 };
             if name.is_empty() || name.len() > 40 || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') || value.len() > max {
                 return Err("invalid ui setting".into());
             }

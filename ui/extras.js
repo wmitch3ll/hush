@@ -329,6 +329,7 @@ window.HushX = function (A) {
     function finish(c, remember, quiet) { clearTimeout(t); el.remove(); done(c === 'dismiss' ? 'background' : c, remember, quiet); }
     el.querySelectorAll('[data-c]').forEach(b => b.onclick = () => finish(b.dataset.c, el.querySelector('input').checked));
   }
+  const SEC = [['', 'Standard'], ['safer', 'Safer'], ['safest', 'Safest']];
   const LEAVE = [['ask', 'Ask me'], ['mini', 'Mini player'], ['background', 'Keep playing'], ['pause', 'Stop']];
 
   // Plain-language explainer for the ⓘ next to Tor.
@@ -365,6 +366,6 @@ window.HushX = function (A) {
       c.ontouchend = e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null; if (dx < -50 && i < S.length - 1) { i++; draw(); } else if (dx > 50 && i) { i--; draw(); } }; };
     draw();
   }
-  return { settingsSearch, tour, TOR_INFO, mediaPrompt, LEAVE, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
+  return { settingsSearch, tour, TOR_INFO, mediaPrompt, LEAVE, SEC, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
     destructSweep, destructLabel, DESTRUCT, watchAdd, watchSweep, watchPanel, watchCount, syncLink, LS };
 };

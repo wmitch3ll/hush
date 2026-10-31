@@ -1,7 +1,4 @@
-// Fingerprint protection, run at document start.
-// Every tab: the graphics card is hidden (one generic WebGL vendor/renderer, no WebGPU adapter details) and canvas
-// read-backs get faint per-site noise, so the GPU can't be used to recognise you (as Brave does since 1.93).
-// Tor tabs (__HUSH_UNIFORM = 'tor'): everyone also looks the same — UTC time zone, en-US, a common screen size
+// Tor tabs (__HUSH_UNIFORM = 'tor'), run at document start: on top of farble.js, everyone looks the same — UTC time zone, en-US, a common screen size
 // rounded to 200×100 steps (letterboxing), 4 cores / 8 GB, only standard fonts (as Tor/Mullvad Browser do).
 (() => {
   if (window.__hushUniform) return; window.__hushUniform = 1;
@@ -12,23 +9,8 @@
   for (const c of location.hostname) seed = (seed * 31 + c.charCodeAt(0)) | 0;
   const rnd = i => { let x = (seed ^ (i * 2654435761)) | 0; x ^= x << 13; x ^= x >>> 17; x ^= x << 5; return (x >>> 0) / 4294967296; };
 
-  // ---- GPU (all tabs)
-  const GL_V = 'Hush', GL_R = 'Hush Graphics';
-  for (const P of [window.WebGLRenderingContext, window.WebGL2RenderingContext]) {
-    if (!P) continue; const gp = P.prototype.getParameter, ge = P.prototype.getSupportedExtensions;
-    P.prototype.getParameter = function (p) { if (p === 0x9245 || p === 0x1F00) return GL_V; if (p === 0x9246 || p === 0x1F01) return GL_R; return gp.call(this, p); };
-    P.prototype.getSupportedExtensions = function () { const l = ge.call(this) || []; return l.filter((e, i) => e !== 'WEBGL_debug_renderer_info' && (i < 8 || rnd(i) > 0.15)); };
-  }
-  if (navigator.gpu) { const ra = navigator.gpu.requestAdapter?.bind(navigator.gpu);
-    if (TOR) def(Navigator.prototype, 'gpu', undefined);
-    else if (ra) navigator.gpu.requestAdapter = async o => { const a = await ra(o); if (a) { try { def(a, 'info', { vendor: '', architecture: '', device: '', description: '' }); } catch (e) {} } return a; }; }
-  // ---- Canvas: faint noise on read-back (all tabs)
-  const noise = (d, w) => { for (let i = 0; i < d.length; i += 4 * 97) { const r = rnd(i + w); if (r < 0.5) d[i] = d[i] ^ 1; } };
-  const gid = CanvasRenderingContext2D.prototype.getImageData;
-  CanvasRenderingContext2D.prototype.getImageData = function (...a) { const im = gid.apply(this, a); try { noise(im.data, a[2] | 0); } catch (e) {} return im; };
-  for (const k of ['toDataURL', 'toBlob']) { const f = HTMLCanvasElement.prototype[k];
-    HTMLCanvasElement.prototype[k] = function (...a) { try { const w = this.width, h = this.height; if (w && h && w * h < 4e6) { const c = this.getContext('2d'); if (c) { const im = gid.call(c, 0, 0, w, h); noise(im.data, w); c.putImageData(im, 0, 0); } } } catch (e) {} return f.apply(this, a); }; }
-  if (!TOR) return;
+  if (!TOR) return;   // every tab already gets farble.js (GPU, canvas, audio, hardware randomized per site)
+  if (navigator.gpu) def(Navigator.prototype, 'gpu', undefined);   // WebGPU adapter details identify the graphics card
 
   // ---- Tor tabs: look like everyone else
   // Time zone: UTC everywhere.

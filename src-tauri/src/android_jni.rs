@@ -47,6 +47,12 @@ pub extern "system" fn Java_app_hush_browser_Native_focusBlock(mut env: JNIEnv, 
 }
 
 #[no_mangle]
+pub extern "system" fn Java_app_hush_browser_Native_jsAllowed(mut env: JNIEnv, _c: JClass, url: JString) -> jboolean {
+    let u: String = env.get_string(&url).map(|s| s.into()).unwrap_or_default();
+    std::panic::catch_unwind(|| crate::js_allowed(&u)).unwrap_or(true) as jboolean
+}
+
+#[no_mangle]
 pub extern "system" fn Java_app_hush_browser_Native_pageJs(env: JNIEnv, _c: JClass) -> jni::sys::jstring {
     env.new_string(crate::PAGE_JS).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
 }

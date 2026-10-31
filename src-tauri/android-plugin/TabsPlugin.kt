@@ -343,7 +343,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         if (earlyScripts) try { WebViewCompat.addDocumentStartJavaScript(w, Native.scriptletJs(), setOf("*")) } catch (e: Throwable) {}
         // Tor mode: WebRTC could reveal your real IP outside the proxy, so it's removed from every page.
         if (torOn && earlyScripts) try { WebViewCompat.addDocumentStartJavaScript(w, NO_RTC_JS, setOf("*")) } catch (e: Throwable) {}
-        // Fingerprint protection: hidden GPU + canvas noise always; in Tor mode every phone also looks the same.
+        // Tor mode: every phone looks the same (UTC, letterboxing, fonts, hardware).
         if (earlyScripts) try { WebViewCompat.addDocumentStartJavaScript(w, "var __HUSH_UNIFORM=" + (if (torOn) "'tor'" else "''") + ";" + Native.uniformJs(), setOf("*")) } catch (e: Throwable) {}
         // Audio indicator: the page reports (only) whether something is playing. Spoofing it can't do anything but flip an icon.
         val audioMsgs = try { WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) } catch (e: Throwable) { false }
@@ -377,12 +377,15 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                         if (h.startsWith("a-") && h.length < 20 && h.drop(2).all { it in 'a'..'z' }) emit("gesture", JSObject().apply { put("action", h.drop(2)) })
                         else if (h.length in 1..4 && h.all { it in "lrudt" }) emit("gesture", JSObject().apply { put("g", h.uppercase()) }); true }
                     "http" -> { v.loadUrl(r.url.toString().replaceFirst("http://", "https://")); true }  // HTTPS-first
-                    "https", "about", "data", "blob" -> false
+                    "https" -> { if (r.isForMainFrame) try { val ok = Native.jsAllowed(r.url.toString()); if (v.settings.javaScriptEnabled != ok) v.settings.javaScriptEnabled = ok } catch (e: Throwable) {}; false }
+                    "about", "data", "blob" -> false
                     else -> true   // intent:, file:, javascript:, market:, custom app schemes — refused
                 }
             }
             override fun onPageStarted(v: WebView, u: String, f: android.graphics.Bitmap?) {
                 t.page = u; t.url = u
+                // Security levels: a typed/opened URL skips shouldOverrideUrlLoading, so fix the JS switch here and reload once.
+                try { val ok = Native.jsAllowed(u); if (v.settings.javaScriptEnabled != ok) { v.settings.javaScriptEnabled = ok; v.stopLoading(); v.loadUrl(u); return } } catch (e: Throwable) {}
                 try { v.evaluateJavascript(Native.cosmeticJs(u), null) } catch (e: Throwable) {}
                 if (!earlyScripts) try { v.evaluateJavascript(Native.scriptletJs(), null) } catch (e: Throwable) {}
                 if (bgPlay) v.evaluateJavascript(BG_PLAY_JS, null)

@@ -331,6 +331,7 @@ $("#reload").onclick=()=>{const t=T();if(t&&t.native){progress(true);inv("nav",{
 window.__hushEvent=(name,d)=>{
   if(name==="tabUrl"){const t=tabs.find(x=>x.native===d.id);if(!t)return;t.url=d.url;t.title=d.title||t.title;t.canBack=d.canBack;t.canFwd=d.canFwd;
     if(d.state==="finished"){if(!t.priv&&d.url.startsWith("http"))inv("history_add",{url:d.url,title:t.title||bare(d.url)}).catch(()=>{});saveSession()}
+    if(d.state==="started"&&!torOn&&/^https?:/.test(d.url)&&listHas("tor_sites",bare(d.url))){setTor(true);toast("🧅 Tor mode on — you set this site to always use Tor")}
     if(t.id===cur){progress(d.state==="started");if(d.state==="started")toolsShow(true);render()}}
   else if(name==="download"){
     if(d.state==="started"){downloads.unshift({name:d.name,state:"started"});toast("Downloading "+d.name+" — see notifications")}
@@ -515,6 +516,8 @@ function drawMenu(){const el=$("#menu"),t=T(),live=!!(t&&t.native);
   $("#m-rl").onclick=()=>{drawReading();show("reading")};$("#m-focus").onclick=()=>{drawFocus();show("focus")};$("#m-about").onclick=()=>{drawAbout();show("about")}}
 
 const siteKey=h=>{const p=h.split(".");return p.length>2?p.slice(-2).join("."):h};
+const listHas=(k,h)=>(pref(k)||"").split(",").filter(Boolean).some(x=>h.replace(/^www\./,"")===x||h.endsWith("."+x));
+async function toggleList(k,site){const l=(pref(k)||"").split(",").filter(Boolean);await setPref(k,(l.includes(site)?l.filter(x=>x!==site):[...l,site]).join(","))}
 const fpOff=h=>pref("fp_off").split(",").filter(Boolean).some(x=>h===x||h.endsWith("."+x));
 function siteDark(h){const v=state.site_dark?.[h];return v===true?"on":v===false?"off":"auto"}
 function applyDarkNow(){const t=T();if(!t?.native)return;const sd=siteDark(hostOf(t.url)),on=sd==="auto"?pref("force_dark")==="true":sd==="on";
@@ -524,6 +527,9 @@ function drawSite(){const el=$("#site"),t=T(),h=hostOf(t.url),off=allow.has(h),s
    ${item("Shield",off?"Off — ads and trackers allowed here":"On — ads, trackers & cookie banners blocked",`<button class="sw ${off?"":"on"}" id="st-shield"></button>`)}
    ${item("Dark mode here","Auto follows Settings",`<div class="seg">${[["auto","Auto"],["on","On"],["off","Off"]].map(([v,l])=>`<button data-d="${v}" class="${sd===v?"on":""}">${l}</button>`).join("")}</div>`)}
    ${t.priv?item("Private tab","Separate cookies & storage · nothing saved"):""}
+   ${item("Always use Tor here",listHas("tor_sites",h)?"On — Tor mode turns on when you open this site":"Hide your IP from this site every time",`<button class="sw ${listHas("tor_sites",h)?"on":""}" id="st-tor"></button>`)}
+   ${pref("sec_level")?item("JavaScript here",listHas("js_allow",h)?"Allowed — you trust this site":"Blocked by your security level",`<button class="sw ${listHas("js_allow",h)?"on":""}" id="st-js"></button>`):""}
+   ${item("Connection",torOn?"🧅 Through Tor — the site can’t see your IP":/^https:/.test(t.url)?"🔒 Encrypted (HTTPS)":"⚠ Not encrypted")}
    ${pref("fp")!=="off"?item("Fingerprint protection",fpOff(h)?"Off on this site":"On — randomized device details",`<button class="sw ${fpOff(h)?"":"on"}" id="st-fp"></button>`):""}
    <div id="st-perms"></div>
    <div class="row"><button class="btn" id="st-read">Reader view</button><button class="btn" id="st-find">Find</button><button class="btn" id="st-copy">Copy link</button></div>
@@ -531,6 +537,8 @@ function drawSite(){const el=$("#site"),t=T(),h=hostOf(t.url),off=allow.has(h),s
    <p class="hint" style="text-align:center;margin-top:4px">Tip: hold the shield to switch it on/off instantly</p>`;
   wire(el);
   $("#st-shield").onclick=async()=>{await quickShield();drawSite()};
+  $("#st-tor").onclick=async()=>{await toggleList("tor_sites",siteKey(h));drawSite();if(listHas("tor_sites",h)&&!torOn){setTor(true);toast("🧅 Tor mode on for this site")}};
+  if($("#st-js"))$("#st-js").onclick=async()=>{await toggleList("js_allow",siteKey(h));inv("nav",{action:"reload"}).catch(()=>{});drawSite()};
   if($("#st-fp"))$("#st-fp").onclick=async()=>{const site=siteKey(h),list=pref("fp_off").split(",").filter(Boolean);
     await setPref("fp_off",(fpOff(h)?list.filter(x=>x!==site):[...list,site]).join(","));toast("Open the page in a new tab to apply");drawSite()};
   native("sitePerms",{host:h}).then(p=>{const k=Object.keys(p||{});if(!k.length)return;$("#st-perms").innerHTML=item("Permissions",k.map(x=>x+": "+(p[x]?"allowed":"blocked")).join(" · "),'<button class="btn sm" id="st-preset">Reset</button>');
@@ -611,6 +619,7 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
    ${item("Video controls","Speed, ±10 s, loop and pop-out on any video",sw("video_bar",pref("video_bar")!=="off"))}
    ${item("Bottom toolbar","Back, forward, new tab, tabs and menu — hides while you scroll down",sw("toolbar",pref("toolbar")!=="off"))}
    ${item("YouTube quality","Videos start at this quality",seg("video_quality",[["1080","1080p"],["720","720p"],["auto","Auto"]]))}
+   <div class="item" style="display:block"><div style="margin-bottom:8px">Security level<small>Standard: everything works · Safer: no JavaScript on unencrypted pages · Safest: JavaScript only on sites you allow</small></div>${seg("sec_level",HX.SEC)}</div>
    <div class="item" style="display:block"><div style="margin-bottom:8px">When you leave a playing video<small>Ask each time · a mini player you can drag and resize · keep playing in the background · or stop</small></div>${seg("video_leave",HX.LEAVE)}</div>
    ${item("Change watch","Get told when a price or text changes",'<button class="btn sm" id="s-watch">Open</button>')}
    <h3>Gestures</h3>

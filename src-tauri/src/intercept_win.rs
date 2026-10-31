@@ -56,6 +56,16 @@ pub fn install(wv: &tauri::Webview, blocker: Arc<Blocker>) {
         }));
         let mut token = Default::default();
         let _ = core.add_WebResourceRequested(&handler, &mut token);
+        // Security levels: switch JavaScript on/off for each page before it loads.
+        let core3 = core.clone();
+        let nav = webview2_com::NavigationStartingEventHandler::create(Box::new(move |_, args| {
+            let Some(args) = args else { return Ok(()) };
+            let mut uri = PWSTR::null(); args.Uri(&mut uri)?; let uri = take_pwstr(uri);
+            if let Ok(s) = core3.Settings() { let _ = s.SetIsScriptEnabled(crate::js_allowed(&uri)); }
+            Ok(())
+        }));
+        let mut t2 = Default::default();
+        let _ = core.add_NavigationStarting(&nav, &mut t2);
     });
 }
 

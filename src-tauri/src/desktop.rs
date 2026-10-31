@@ -312,7 +312,7 @@ fn on_download(app: &AppHandle, tab: &str, ev: DownloadEvent<'_>) -> bool {
             true
         }
         DownloadEvent::Finished { url, path, success } => {
-            if let (true, Some(p)) = (success, &path) { app.state::<AppState>().downloads.lock().push(p.clone()); }
+            if let (true, Some(p)) = (success, &path) { crate::strip_photo_meta(p); app.state::<AppState>().downloads.lock().push(p.clone()); }
             let _ = app.emit_to("chrome", "download", serde_json::json!({ "tab": tab, "url": url.as_str(),
                 "path": path.as_ref().map(|p| p.to_string_lossy().to_string()), "state": if success { "done" } else { "failed" } }));
             true
@@ -493,7 +493,7 @@ fn make_tab_with(app: &AppHandle, input: String, private: bool, peek: bool, tor:
         .extensions_path(crate::extensions::dir(&app))
         .initialization_script(include_str!("harden.js"))
         .initialization_script(&crate::scriptlets_init_js())
-        // Fingerprint protection: hidden GPU + canvas noise everywhere; Tor tabs also look identical (UTC, letterboxing…).
+        // Tor tabs look identical to every other Tor user (UTC, letterboxing, fonts, hardware).
         .initialization_script(&format!("var __HUSH_UNIFORM={};{}", if tor.is_some() { "'tor'" } else { "''" }, crate::UNIFORM_JS));
     let builder = match tor {
         Some(port) => builder
