@@ -9,3 +9,5 @@ export const hexToBytes = h => Uint8Array.from(h.match(/../g) || [], x => parseI
 // Backup phrase: the 32-byte Hush ID secret as 24 standard BIP-39 words (and back).
 export { entropyToMnemonic, mnemonicToEntropy, validateMnemonic } from '@scure/bip39';
 export { wordlist as bip39English } from '@scure/bip39/wordlists/english';
+// QR scanner for Hush Cards (jsQR, Apache-2.0) — works where the browser has no built-in BarcodeDetector (Windows).
+export { default as jsQR } from 'jsqr';
