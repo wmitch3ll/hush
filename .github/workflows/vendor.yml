@@ -45,7 +45,7 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/ui/vendor/ort"
           npx esbuild entry.mjs --bundle --format=esm --platform=browser --minify --target=es2022 --legal-comments=inline \
             --external:onnxruntime-node --external:sharp --outfile="$GITHUB_WORKSPACE/ui/vendor/transformers.mjs"
-          ORT=$(node -p "require('onnxruntime-web/package.json').version"); echo "onnxruntime-web $ORT"
+          ORT=$(node -p "JSON.parse(require('fs').readFileSync('node_modules/onnxruntime-web/package.json')).version"); echo "onnxruntime-web $ORT"
           ls node_modules/onnxruntime-web/dist/ | grep -E 'jsep|asyncify|webgpu' || true
           for f in node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.mjs node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.mjs; do [ -f "$f" ] && cp "$f" "$GITHUB_WORKSPACE/ui/vendor/ort/"; done
           echo "$ORT" > "$GITHUB_WORKSPACE/ui/vendor/ort/VERSION"
