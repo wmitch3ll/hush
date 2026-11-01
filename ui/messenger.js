@@ -645,7 +645,7 @@ window.HushMsg = function (A) {
   function paintStatus() { const e = view.el && view.el.querySelector('.hm-st'); if (!e) return;
     if (view.screen === 'chat' && typingNames().length) return paintTyping();
     const s = status.startsWith('error') ? 'error' : status; e.className = 'hm-st ' + s;
-    e.innerHTML = `<i></i>${s === 'on' ? (view.screen === 'chat' && isGroup(view.chat) ? `${members(view.chat).length + 1} people · ` : '') + `Private · through Tor · ${okRelays()} relay${okRelays() === 1 ? '' : 's'}` : s === 'connecting' ? 'Connecting through Tor…' : s === 'error' ? 'Can’t reach Tor — retrying' : 'Offline'}`; }
+    e.innerHTML = `<i></i>${s === 'on' ? (view.screen === 'chat' && isGroup(view.chat) ? `${members(view.chat).length + 1} people · ` : '') + `Private${view.screen === 'chat' && pqOn(view.chat) ? ' · quantum-safe' : ''} · through Tor · ${okRelays()} relay${okRelays() === 1 ? '' : 's'}` : s === 'connecting' ? 'Connecting through Tor…' : s === 'error' ? 'Can’t reach Tor — retrying' : 'Offline'}`; }
   function typingNames() { const t = typing[view.chat] || {}, n = Date.now(); return Object.entries(t).filter(([, u]) => u > n).map(([pk]) => first(pk)); }
   function paintTyping() { const e = view.el && view.el.querySelector('.hm-st'); if (!e) return; const ns = typingNames();
     if (!ns.length) { e.classList.remove('hm-typing'); return paintStatus(); }
@@ -1207,7 +1207,7 @@ window.HushMsg = function (A) {
       <div class=hm-card><h3>📱 Link another device</h3><p>Use the same Hush ID on your phone and computer — contacts, chats and Echo come along, and new messages arrive on both.</p><button class=hm-btn id=hm-lk>Link a device</button></div>
       <div class=hm-card><h3>Back up your Hush ID</h3><p>Without a backup, losing this device means losing your ID — there’s no account to recover. Your backup restores your ID${hooks.backup.length ? ', contacts and Echo profile' : ' and contacts'} on any device.</p>
         <button class=hm-btn data-go=backup>Back up now</button></div>
-      <div class=hm-card><h3>Privacy</h3><p><span class=hm-tor>🧅 Tor only</span> Every connection goes through Tor. Messages, photos and files are end-to-end encrypted (NIP-44), sealed and gift-wrapped (NIP-59), and relayed by ${relays().length} independent relays.</p>
+      <div class=hm-card><h3>Privacy</h3><p><span class=hm-tor>🧅 Tor only</span> Every connection goes through Tor. Messages, photos and files are end-to-end encrypted (NIP-44), sealed and gift-wrapped (NIP-59); 1-to-1 chats add a post-quantum layer (ML-KEM-768) once both sides have it, and relayed by ${relays().length} independent relays.</p>
       <p>🎤 The mic and camera are used only while you hold a record button. Recordings are made and encrypted on this device; Hush keeps no copies and sends nothing anywhere else.</p>
       <p style="margin:0">Your secret key is kept in ${A.mobile ? 'the Android Keystore' : 'your operating system’s protected storage'} and never leaves this device unless you make a backup.</p></div>
       <div class=hm-card><h3>Start over</h3><p>Deletes your ID, contacts, groups, photos and every message on this device.</p><button class="hm-btn ghost" id=hm-reset style="color:#ef4444">Delete everything</button></div></div></div>`;
