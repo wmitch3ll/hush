@@ -36,7 +36,7 @@ cp -R "$ROOT"/src-tauri/android-plugin/res/. "$A/src/main/res/"
 python3 - "$A/src/main/AndroidManifest.xml" <<'PY'
 import re,sys
 p=sys.argv[1]; s=open(p).read()
-perms=["CAMERA","RECORD_AUDIO","MODIFY_AUDIO_SETTINGS","ACCESS_FINE_LOCATION","ACCESS_COARSE_LOCATION"]
+perms=["CAMERA","RECORD_AUDIO","MODIFY_AUDIO_SETTINGS","ACCESS_FINE_LOCATION","ACCESS_COARSE_LOCATION","FOREGROUND_SERVICE","FOREGROUND_SERVICE_MEDIA_PLAYBACK","WAKE_LOCK"]
 for x in perms:
     if f'android.permission.{x}"' not in s:
         s=re.sub(r'(<manifest[^>]*>)',r'\1\n    <uses-permission android:name="android.permission.'+x+'" />',s,count=1)
@@ -62,6 +62,9 @@ if "HushWidget" not in s:
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
         </service>
+    </application>""",1)
+if "HushPlayback" not in s:
+    s=s.replace("</application>","""        <service android:name="app.hush.browser.HushPlayback" android:exported="false" android:foregroundServiceType="mediaPlayback" />
     </application>""",1)
 open(p,'w').write(s); print("manifest: browser filters, PiP, widget, tile ok")
 PY

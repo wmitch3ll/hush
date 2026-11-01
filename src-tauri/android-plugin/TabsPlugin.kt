@@ -63,6 +63,10 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     private var textZoom = 100; private var desktop = false; private var pullRefresh = true
     private var findQuery = ""
     private var bgPlay = true
+    @Volatile private var inBg = false
+    /** Start/stop the background playback service to match: Hush in the background + a tab making sound. */
+    private fun bgCheck() { val playing = tabs.values.firstOrNull { it.audio }
+        if (inBg && bgPlay && playing != null) HushPlayback.start(act, playing.wv?.title ?: "") else if (inBg) HushPlayback.stop(act) }
     private var pendingUrl: String? = null
     private var fsView: View? = null; private var fsCb: WebChromeClient.CustomViewCallback? = null
     private var pendingPerm: PermissionRequest? = null
@@ -191,6 +195,19 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     override fun load(webView: WebView) {
         super.load(webView)
         chrome = webView
+        // Background play: when you switch to another app while a tab is playing, a media playback service keeps
+        // Hush's sound going (Android would otherwise stop it). Another app playing its own audio still pauses it.
+        act.application.registerActivityLifecycleCallbacks(object : android.app.Application.ActivityLifecycleCallbacks {
+            override fun onActivityStopped(a: Activity) { if (a !== act) return; inBg = true; bgCheck()
+                // Something may have paused the tab views on the way out: wake the ones that are playing.
+                act.window.decorView.postDelayed({ if (inBg && bgPlay) tabs.values.filter { it.audio }.forEach { t -> t.wv?.let { w -> w.onResume(); w.resumeTimers() } } }, 400) }
+            override fun onActivityStarted(a: Activity) { if (a !== act) return; inBg = false; HushPlayback.stop(act) }
+            override fun onActivityCreated(a: Activity, b: Bundle?) {}
+            override fun onActivityResumed(a: Activity) {}
+            override fun onActivityPaused(a: Activity) {}
+            override fun onActivitySaveInstanceState(a: Activity, b: Bundle) {}
+            override fun onActivityDestroyed(a: Activity) { if (a === act) HushPlayback.stop(act) }
+        })
         handleIntent(act.intent)
         // System back: page history first, otherwise let the chrome UI decide (close a sheet, etc.).
         (act as? ComponentActivity)?.onBackPressedDispatcher?.addCallback(object : OnBackPressedCallback(true) {
@@ -353,7 +370,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         val audioMsgs = try { WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) } catch (e: Throwable) { false }
         if (audioMsgs) try {
             WebViewCompat.addWebMessageListener(w, "hushAudio", setOf("*")) { _, msg, _, _, _ ->
-                t.audio = msg.data == "1"; emit("tabAudio", JSObject().apply { put("id", t.id); put("audio", t.audio) }) }
+                t.audio = msg.data == "1"; emit("tabAudio", JSObject().apply { put("id", t.id); put("audio", t.audio) }); if (inBg) act.runOnUiThread { bgCheck() } }
             if (earlyScripts) WebViewCompat.addDocumentStartJavaScript(w, AUDIO_JS, setOf("*"))
         } catch (e: Throwable) {}
         w.webViewClient = object : WebViewClient() {

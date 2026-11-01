@@ -38,8 +38,9 @@ window.__hushSplit = window.__hushSplit || (() => {
   addEventListener("pointerdown", () => { touched = Date.now(); }, true);
   addEventListener("keydown", () => { touched = Date.now(); }, true);
   document.addEventListener("pause", e => { const v = e.target;
-    if (!on || v.tagName !== "VIDEO" || v.ended || Date.now() - touched < 1500) return;
-    setTimeout(() => { if (on && v.paused && !v.ended && Date.now() - touched > 1500) { v.muted = !focus || v.muted; v.play().catch(() => {}); } }, 120); }, true);
+    // Only muted halves are restarted: if another app takes the sound, the half with Hush's sound stays paused.
+    if (!on || focus || v.tagName !== "VIDEO" || v.ended || Date.now() - touched < 1500) return;
+    setTimeout(() => { if (on && !focus && v.paused && !v.ended && Date.now() - touched > 1500) { v.muted = true; v.play().catch(() => {}); } }, 120); }, true);
   // Tapping the other half moves the focus (and the sound) there; the tap itself still reaches the page.
   addEventListener("pointerdown", e => { if (on && !focus && e.isTrusted) { focus = true; sound(); ring(); try { location.href = "hush-split://focus"; } catch (_) {} } }, true);
   return o => { on = !!(o && o.on); focus = !!(o && o.focus);
