@@ -201,14 +201,18 @@ fn relayout(win: &Window) {
     let st = win.app_handle().state::<AppState>();
     let split = st.split.lock().clone();
     let half = ((cw - 1.0) / 2.0).max(1.0);
+    // 3–4 tab split: the active tab and the split tab on top, extra tabs below (a 2×2 grid, or one wide tab).
+    let extra: Vec<String> = if split.is_some() { SPLIT_MORE.lock().iter().filter(|l| st.tabs.lock().contains(*l)).take(2).cloned().collect() } else { vec![] };
+    let hh = if extra.is_empty() { ch } else { ((ch - 1.0) / 2.0).max(1.0) };
     for wv in win.webviews() {
         let l = wv.label();
         if l == "rail" { continue; }                      // positioned by set_rail
         if let Some(f) = FLOAT.lock().clone().filter(|f| f.label == l) { let (x, y, w, h) = float_rect(win, &f); let _ = wv.set_position(LogicalPosition::new(x, y)); let _ = wv.set_size(LogicalSize::new(w, h)); continue; }
         if l.starts_with("peek") { let (px, py, pw, ph) = peek_rect(win); let _ = wv.set_position(LogicalPosition::new(px, py)); let _ = wv.set_size(LogicalSize::new(pw, ph)); continue; }
         let (x, y, w, h) = if l == "chrome" { (0.0, 0.0, s.width, s.height) }
-            else if split.as_deref() == Some(l) { (cx + half + 1.0, cy, half, ch) }       // split view: right half
-            else if split.is_some() { (cx, cy, half, ch) }                                  // split view: left half
+            else if let Some(i) = extra.iter().position(|e| e == l) { if extra.len() == 1 { (cx, cy + hh + 1.0, cw, hh) } else { (cx + i as f64 * (half + 1.0), cy + hh + 1.0, half, hh) } }
+            else if split.as_deref() == Some(l) { (cx + half + 1.0, cy, half, hh) }       // split view: right half
+            else if split.is_some() { (cx, cy, half, hh) }                                  // split view: left half
             else { (cx, cy, cw, ch) };
         let _ = wv.set_position(LogicalPosition::new(x, y));
         let _ = wv.set_size(LogicalSize::new(w, h));
@@ -223,7 +227,7 @@ fn show_only(app: &AppHandle, label: &str) {
     if float_label().as_deref() == Some(label) { unfloat(app, label, false); }   // opening the floating tab: back to full size
     let fl = float_label();
     for t in st.tabs.lock().iter() {
-        let on = !panel && (t == label || split.as_deref() == Some(t.as_str())) || fl.as_deref() == Some(t.as_str());
+        let on = !panel && (t == label || split.as_deref() == Some(t.as_str()) || (split.is_some() && SPLIT_MORE.lock().contains(t))) || fl.as_deref() == Some(t.as_str());
         if let Some(w) = app.get_webview(t) {
             // Snapshot the tab we're leaving so the tab bar shows what it looked like.
             #[cfg(windows)]
@@ -237,10 +241,19 @@ fn show_only(app: &AppHandle, label: &str) {
     raise_rail(app);
 }
 
+static SPLIT_MORE: std::sync::LazyLock<parking_lot::Mutex<Vec<String>>> = std::sync::LazyLock::new(Default::default);
+/// Split view with 3–4 tabs: up to two more tabs below the first two (empty list = back to two).
+#[tauri::command]
+pub async fn set_split_more(app: AppHandle, labels: Vec<String>) {
+    { let st = app.state::<AppState>(); let tabs = st.tabs.lock(); *SPLIT_MORE.lock() = labels.into_iter().filter(|l| tabs.contains(l)).take(2).collect(); }
+    let a = app.state::<AppState>().active.lock().clone();
+    if let Some(a) = a { show_only(&app, &a); }
+}
 /// Split view: show `label` on the right half next to the active tab (None = back to one tab).
 #[tauri::command]
 pub async fn set_split(app: AppHandle, label: Option<String>) {
     let st = app.state::<AppState>();
+    if label.is_none() { SPLIT_MORE.lock().clear(); }
     *st.split.lock() = label.filter(|l| st.tabs.lock().contains(l));
     let active = st.active.lock().clone();
     if let Some(a) = active { show_only(&app, &a); }
@@ -578,7 +591,8 @@ pub async fn close_tab(app: AppHandle, label: String) -> Option<String> {
     let st = app.state::<AppState>();
     st.tabs.lock().retain(|t| t != &label);
     st.blocker.counts.lock().remove(&label);
-    { let mut sp = st.split.lock(); if sp.as_deref() == Some(label.as_str()) { *sp = None; } }
+    { let mut sp = st.split.lock(); if sp.as_deref() == Some(label.as_str()) { *sp = None; SPLIT_MORE.lock().clear(); } }
+    SPLIT_MORE.lock().retain(|l| l != &label);
     let was_active = st.active.lock().as_deref() == Some(label.as_str());
     if was_active {
         let next = st.tabs.lock().last().cloned();

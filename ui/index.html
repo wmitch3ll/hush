@@ -320,14 +320,18 @@ async function openTab(v,o={}){closePanel(true);newPending=false;if(!o.backgroun
   if(!o.background){cur=id}draw();layout();sync();if(!o.quiet)peek();return id}
 async function wake(t){const id=await inv('open_tab',{input:t.url,private:t.priv,tor:!!t.tor,space:spaceOf(t.ws)});const old=t.id;t.id=id;t.sleeping=false;if(cur==old)cur=id;return id}
 function select(id){closePanel(true);const t=tab(id);if(!t)return;maybeFloat(cur,id);t.last=Date.now();if(t.sleeping){wake(t).then(nid=>{cur=nid;draw();sync()});return}if(t.ws!=curWs()){state.settings.ui.ws=t.ws;inv('set_setting',{key:'ui.ws',value:t.ws})}
-  cur=id;if(bgMedia==id){bgMedia=null}npDraw();if(split==id){split=null;inv('set_split',{label:null})}inv('switch_tab',{label:id});draw();sync()}
+  cur=id;if(bgMedia==id){bgMedia=null}npDraw();if(split==id||splitMore.includes(id)){split=null;splitMore=[];inv('set_split',{label:null})}inv('switch_tab',{label:id});draw();sync()}
 const closedStack=[];
 async function closeTab(id,quiet){if(bgMedia==id){bgMedia=null;npDraw()}if(floating==id){floating=null;await inv('float_close',{stop:true}).catch(()=>{})}{const c=tab(id);if(c&&c.url&&!c.priv){closedStack.push({url:c.url,ws:c.ws});if(closedStack.length>25)closedStack.shift()}}const next=await inv('close_tab',{label:id});tabs=tabs.filter(t=>t.id!=id);delete counts[id];if(split==id)split=null;
   const t=tab(next);cur=t&&t.ws==curWs()?next:(inWs().at(-1)?.id??null);if(cur&&cur!=next)inv('switch_tab',{label:cur});
   draw();layout();sync();saveSession();if(!quiet&&tabs.length)peek()}
 function cycle(d){const w=inWs();if(w.length<2)return;const i=w.findIndex(t=>t.id==cur);select(w[(i+d+w.length)%w.length].id);peek()}
+// Split view: up to 4 tabs. The first pick sits beside the current tab; the 3rd and 4th go underneath (2×2 grid).
+let splitMore=[];
 function toggleSplit(id){if(id==cur)return toast('Pick a different tab to split with');
-  split=split==id?null:id;inv('set_split',{label:split});toast(split?'Split view — shift-click the tab again to close':'Split view closed');draw()}
+  if(split&&split!=id){if(splitMore.includes(id))splitMore=splitMore.filter(x=>x!=id);else if(splitMore.length<2)splitMore.push(id);else return toast('Split view holds up to 4 tabs');
+    inv('set_split_more',{labels:splitMore});toast(splitMore.length+2+' tabs side by side');draw();return}
+  split=split==id?null:id;if(!split)splitMore=[];inv('set_split',{label:split});toast(split?'Split view — shift-click more tabs to add (up to 4), or this one again to close':'Split view closed');draw()}
 function go(v){v=v.trim();if(!v)return;closePanel(true);if(newPending||!tab(cur)||tab(cur).ws!=curWs()){openTab(v,{priv:newPending=='priv'})}else inv('navigate',{input:v});newPending=false;$('#bar').blur()}
 function newTab(priv){newPending=priv?'priv':true;$('#bar').value='';$('#bar').placeholder=priv?'New private tab — nothing is saved':'New tab — search or enter address';$('#bar').focus()}
 let saveT;function saveSession(){if(pref('restore')!='on')return;clearTimeout(saveT);saveT=setTimeout(()=>

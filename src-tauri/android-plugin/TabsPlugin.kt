@@ -515,7 +515,8 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         val root = act.findViewById<ViewGroup>(android.R.id.content)
         // Media keeps playing: a tab you chose to keep playing (or the tab you're watching while the tab list is open)
         // stays attached but moved off-screen, so the page isn't paused. Everything else is taken off screen.
-        tabs.values.forEach { t -> t.box?.let { b -> val off = (t.id != active || !visible) && !(t.id == floatId && visible)
+        if (splitId != null && (splitId == active || !tabs.containsKey(splitId))) splitId = null
+        tabs.values.forEach { t -> t.box?.let { b -> val off = (t.id != active || !visible) && !(t.id == floatId && visible) && !(t.id == splitId && visible)
             // Kept tabs sink BEHIND the app's own screen (lower Z): still attached and "visible" to the page so media
             // keeps playing, but every touch goes to the tab list / sheets on top. (Moving them off-screen could leave
             // video layers catching touches.)
@@ -526,7 +527,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                 return@let }
             if (t.id in sunk) { sunk -= t.id; b.translationZ = 0f; b.importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_AUTO; b.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS; if (!off) b.bringToFront() }
         } }
-        tabs.values.forEach { t -> t.box?.let { b -> if (b.parent != null && t.id !in sunk && (t.id != active || !visible) && !(t.id == floatId && visible)) {
+        tabs.values.forEach { t -> t.box?.let { b -> if (b.parent != null && t.id !in sunk && (t.id != active || !visible) && !(t.id == floatId && visible) && !(t.id == splitId && visible)) {
             // Grab the preview first (it needs the tab on screen), then take it off one frame later (the new tab covers it).
             if (b.tag != "leaving") { b.tag = "leaving"; snap(t) { b.tag = null; if ((t.id != active || !visible) && !(t.id == floatId && visible)) (b.parent as? ViewGroup)?.removeView(b) } } } } }
         // Floating video: that tab's view stays on top in a small, movable, resizable frame.
@@ -550,9 +551,28 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         if (b.parent == null) root.addView(b, android.widget.FrameLayout.LayoutParams(-1, -1))
         b.elevation = 0f; b.clipToOutline = false
         layout(b)
+        // Split screen: the active tab on top, the second tab below (drag the line between them to resize).
+        splitId?.let { sid -> tabs[sid]?.let { st -> if (st.wv == null) { st.box = null; st.wv = make(st).also { w -> if (st.saved != null) w.restoreState(st.saved!!) else w.loadUrl(st.url) } }
+            val sb = boxFor(st, st.wv!!); val avail = (root.height.takeIf { it > 0 } ?: act.resources.displayMetrics.heightPixels) - topPx - bottomPx
+            val h1 = (avail * splitFrac).toInt().coerceIn(dp(120), avail - dp(120)); val gap = dp(6)
+            b.layoutParams = android.widget.FrameLayout.LayoutParams(-1, h1).apply { topMargin = topPx }
+            val lp2 = android.widget.FrameLayout.LayoutParams(-1, avail - h1 - gap).apply { topMargin = topPx + h1 + gap }
+            if (sb.parent == null) root.addView(sb, lp2) else sb.layoutParams = lp2
+            val d = splitBar ?: android.view.View(act).also { v -> splitBar = v; v.setBackgroundColor(0x55888888)
+                var y0 = 0f; var f0 = 0f; v.setOnTouchListener { _, e -> when (e.actionMasked) {
+                    android.view.MotionEvent.ACTION_DOWN -> { y0 = e.rawY; f0 = splitFrac; true }
+                    android.view.MotionEvent.ACTION_MOVE -> { val av = (root.height - topPx - bottomPx).coerceAtLeast(1); splitFrac = (f0 + (e.rawY - y0) / av).coerceIn(0.2f, 0.8f); render(); true }
+                    else -> true } } }
+            val dl = android.widget.FrameLayout.LayoutParams(-1, gap).apply { topMargin = topPx + h1 }
+            if (d.parent == null) root.addView(d, dl) else d.layoutParams = dl
+            d.bringToFront() } }
+        if (splitId == null) splitBar?.let { (it.parent as? ViewGroup)?.removeView(it) }
         floatId?.let { tabs[it]?.box }?.takeIf { it.parent != null && floatId != active }?.bringToFront()
     }
 
+    private var splitId: String? = null; private var splitFrac = 0.5f; private var splitBar: android.view.View? = null
+    /** Split screen: show this tab under the active one ("" turns split off). */
+    @Command fun splitTab(i: Invoke) { val id = i.parseArgs(IdArgs::class.java).id; splitId = id.takeIf { it.isNotEmpty() && it != active && tabs.containsKey(it) }; render(); i.resolve() }
     @Command fun openTab(i: Invoke) {
         val id = "t" + java.util.UUID.randomUUID().toString().take(8)
         val a = i.parseArgs(Args::class.java)
