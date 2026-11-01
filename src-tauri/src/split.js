@@ -32,6 +32,14 @@ window.__hushSplit = window.__hushSplit || (() => {
     if (!r) { r = document.createElement("hush-split-ring"); r.id = "hush-split-ring"; document.documentElement.append(r); }
     r.style.cssText = "all:initial;position:fixed;inset:0;z-index:2147483647;pointer-events:none;box-shadow:inset 0 0 0 3px #4da3ff;border-radius:2px;visibility:visible"; };
   document.addEventListener("play", e => { if (!on) return; e.target.muted = !focus; if (e.target.tagName === "VIDEO" && cur !== e.target && (area(e.target) > 0)) fill(e.target); }, true);
+  // Keep every video playing: when another half takes the sound, the phone pauses the others (audio focus).
+  // A pause you didn't make yourself (no tap in this half just before) is undone; the video carries on muted.
+  let touched = 0;
+  addEventListener("pointerdown", () => { touched = Date.now(); }, true);
+  addEventListener("keydown", () => { touched = Date.now(); }, true);
+  document.addEventListener("pause", e => { const v = e.target;
+    if (!on || v.tagName !== "VIDEO" || v.ended || Date.now() - touched < 1500) return;
+    setTimeout(() => { if (on && v.paused && !v.ended && Date.now() - touched > 1500) { v.muted = !focus || v.muted; v.play().catch(() => {}); } }, 120); }, true);
   // Tapping the other half moves the focus (and the sound) there; the tap itself still reaches the page.
   addEventListener("pointerdown", e => { if (on && !focus && e.isTrusted) { focus = true; sound(); ring(); try { location.href = "hush-split://focus"; } catch (_) {} } }, true);
   return o => { on = !!(o && o.on); focus = !!(o && o.focus);
