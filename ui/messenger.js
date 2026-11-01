@@ -194,6 +194,7 @@ window.HushMsg = function (A) {
       const who = mine ? 'me' : r.pubkey, ed = tag('hush-edit')[1], un = tag('hush-unsend')[1], pin = tag('hush-pin'), ttlSet = tag('hush-ttlset');
       if (ed) { const m = list.find(x => x.id === ed && x.from === who); if (m) { m.text = String(r.content).slice(0, 20000); m.edited = true; all[key] = list; LS.set('chats', all); if (view.open) repaint(); } return; }
       if (un) { const i = list.findIndex(x => x.id === un && x.from === who); if (i >= 0) { list[i] = { ...list[i], text: '', file: null, poll: null, unsent: true }; all[key] = list; LS.set('chats', all); if (view.open) repaint(); } return; }
+      const lab = tag('hush-label'); if (lab.length && isGroup(key)) { const g = groups(); if (/^[0-9a-f]{64}$/.test(lab[1] || '')) { g[key] = { ...(g[key] || {}), labels: { ...(g[key]?.labels || {}), [lab[1]]: String(lab[2] || '').slice(0, 24) } }; LS.set('groups', g); if (view.open) repaint(); } return; }
       const prot = tag('hush-protect'); if (prot.length) { const cs = chatSet(key); cs.protect = prot[1] === '1'; saveChatSet(key, cs); list.push({ id: r.id, from: who, sys: true, text: (mine ? 'You' : first(r.pubkey)) + (cs.protect ? ' turned on protected chat — no saving, copying or forwarding' : ' turned off protected chat'), at: r.created_at * 1000 }); all[key] = list; LS.set('chats', all); if (view.open) repaint(); return; }
       if (pin.length) { const cs = chatSet(key); cs.pin = pin[1] || null; saveChatSet(key, cs); if (view.open) repaint(); return; }
       if (ttlSet.length) { const cs = chatSet(key); cs.ttl = +ttlSet[1] || 0; saveChatSet(key, cs); list.push({ id: r.id, from: who, sys: true, text: (mine ? 'You' : first(r.pubkey)) + ' ' + (cs.ttl ? 'turned on disappearing messages — ' + ttlLabel(cs.ttl) : 'turned off disappearing messages'), at: r.created_at * 1000 }); all[key] = list; LS.set('chats', all); if (view.open) repaint(); return; }
@@ -579,7 +580,17 @@ window.HushMsg = function (A) {
   const short = t => { const d = new Date(t), n = new Date(); return d.toDateString() === n.toDateString() ? time(t) : (n - d < 6 * 864e5 ? d.toLocaleDateString([], { weekday: 'short' }) : d.toLocaleDateString([], { month: 'short', day: 'numeric' })); };
   const dur = s => { s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
   const size = b => b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
-  const linkify = s => esc(s).replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)"'\]]/g, u => `<a href="#" data-u="${u}">${u.length > 60 ? u.slice(0, 57) + '…' : u}</a>`);
+  // Tap-to-remind: "tomorrow 7pm", "Friday at 6:30", "8pm" become a button that sets a reminder (kept on this device).
+  const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  function whenOf(txt) { const m = String(txt).toLowerCase().match(/\b(today|tonight|tomorrow|sunday|monday|tuesday|wednesday|thursday|friday|saturday)?\s*(?:at\s*)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/); if (!m) return null;
+    let h = +m[2] % 12 + (m[4] === 'pm' ? 12 : 0), mi = +(m[3] || 0); if (h > 23 || mi > 59) return null; const d = new Date(); d.setSeconds(0, 0); d.setHours(h, mi);
+    if (m[1] === 'tomorrow') d.setDate(d.getDate() + 1); else if (DAYS.includes(m[1])) { let k = (DAYS.indexOf(m[1]) - d.getDay() + 7) % 7; if (k === 0 && d < new Date()) k = 7; d.setDate(d.getDate() + k); } else if (d < new Date()) d.setDate(d.getDate() + 1);
+    return { at: d.getTime(), text: m[0].trim() }; }
+  const linkify = s => { let h = esc(s).replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)"'\]]/g, u => `<a href="#" data-u="${u}">${u.length > 60 ? u.slice(0, 57) + '…' : u}</a>`); const w = whenOf(s);
+    if (w) h = h.replace(new RegExp(esc(w.text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+'), 'i'), x => `<a href="#" class=hm-when data-when="${w.at}" title="Tap for a reminder">⏰ ${x}</a>`); return h; };
+  function remindersTick() { const l = LS.get('reminders', []), now0 = Date.now(), due = l.filter(r => r.at <= now0); if (!due.length) return; LS.set('reminders', l.filter(r => r.at > now0));
+    for (const r of due) { A.toast('⏰ ' + r.text.slice(0, 100)); try { if (Notification.permission === 'granted') new Notification('Hush reminder', { body: r.text.slice(0, 140) }); } catch {} } }
+  setInterval(remindersTick, 30000); setTimeout(remindersTick, 5000);
   // Avatars: profile photo (encrypted, from the person's profile card) or initials; optional "aura" ring colour.
   function avatarHTML(key, sz = 44) {
     if (key === 'self') return `<div class=hm-av style="background:var(--acc);color:var(--bg);width:${sz}px;height:${sz}px;font-size:${Math.round(sz / 2.4)}px">✎</div>`;
@@ -636,16 +647,19 @@ window.HushMsg = function (A) {
     const all = chats(), c = contacts(), g = groups(), un = LS.get('unread', {}), q = view.q.toLowerCase();
     const keys = [...new Set(['self', ...Object.keys(all), ...Object.keys(c).filter(k => !c[k].blocked && !c[k].auto), ...Object.keys(g)])].filter(k => k && (isGroup(k) || !c[k]?.blocked))
       .map(k => ({ k, last: (all[k] || []).at(-1) })).sort((a, b) => (b.last?.at || c[b.k]?.added || g[b.k]?.at || 0) - (a.last?.at || c[a.k]?.added || g[a.k]?.at || 0))
-      .filter(x => !q || chatName(x.k).toLowerCase().includes(q) || (x.last?.text || '').toLowerCase().includes(q));
+      .filter(x => !q || chatName(x.k).toLowerCase().includes(q) || (x.last?.text || '').toLowerCase().includes(q))
+      .filter(x => { const f = view.folder || 'all'; return f === 'all' || (f === 'unread' && un[x.k]) || (f === 'groups' && isGroup(x.k)) || (f === 'favs' && LS.get('favs', []).includes(x.k)); });
     view.el.innerHTML = `<div class=hm style="position:relative">${head('Murmur', '<div class=hm-st></div>', '',
       `<button class=hm-ib data-go=me title="Your Hush ID" aria-label="Your Hush ID">${I.qr}</button>${closeB()}`)}
-      <div class=hm-body><input class=hm-search placeholder="Search chats" value="${esc(view.q)}">
+      <div class=hm-body><input class=hm-search placeholder="Search chats" value="${esc(view.q)}"><div class=hm-folders style="display:flex;gap:6px;padding:0 12px 8px;overflow-x:auto">${[['all', 'All'], ['unread', 'Unread'], ['groups', 'Groups'], ['favs', '★ Favorites']].map(([k, l]) => `<button data-folder=${k} class="hm-chip ${(view.folder || 'all') === k ? 'on' : ''}" style="padding:5px 12px;border-radius:99px;border:1px solid var(--line);font:600 12.5px system-ui;${(view.folder || 'all') === k ? 'background:var(--ink);color:var(--bg)' : ''}">${l}</button>`).join('')}<button data-bcast class=hm-chip style="padding:5px 12px;border-radius:99px;border:1px solid var(--line);font:600 12.5px system-ui">📣 Broadcast</button></div>
       ${keys.map(({ k, last }) => `<button class=hm-row data-chat="${k}">${avatar(k)}<div class=t><b>${esc(chatName(k))}${badgeV(k)}</b><span>${k === 'self' && !last ? 'Links, photos and notes — synced to your devices' : last ? (last.from === 'me' && k !== 'self' ? 'You: ' : isGroup(k) ? esc(first(last.from)) + ': ' : '') + esc(preview(last).slice(0, 80)) : c[k]?.request ? 'Wants to chat' : isGroup(k) ? 'New group' : 'Say hi 👋'}</span></div>
         <em>${last ? short(last.at) : ''}${un[k] ? `<br><span class=u>${un[k]}</span>` : ''}</em></button>`).join('') ||
         `<div class=hm-empty><b>No chats yet</b>Tap <b>+</b> to add someone with their Hush ID, or show them yours with the QR button.</div>`}</div>
       <button class=hm-fab data-go=add aria-label="New chat">${I.plus}</button></div>`;
     wireCommon();
     const s = view.el.querySelector('.hm-search'); s.oninput = () => { view.q = s.value; const p = s.selectionStart; repaint(); const n = view.el.querySelector('.hm-search'); n.focus(); n.setSelectionRange(p, p); };
+    view.el.querySelectorAll('[data-folder]').forEach(b => b.onclick = () => { view.folder = b.dataset.folder; repaint(); });
+    const bc = view.el.querySelector('[data-bcast]'); if (bc) bc.onclick = () => broadcastUI();
     view.el.querySelectorAll('[data-chat]').forEach(b => { b.onclick = () => openChat(b.dataset.chat);
       b.oncontextmenu = e => { e.preventDefault(); chatMenu(e.clientX, e.clientY, b.dataset.chat); };
       let t; b.addEventListener('touchstart', e => { const p = e.touches[0]; t = setTimeout(() => chatMenu(p.clientX, p.clientY, b.dataset.chat), 550); }, { passive: true });
@@ -678,7 +692,7 @@ window.HushMsg = function (A) {
       body = linkify(m.text) + (url && m.text.trim() === url.trim() ? `<a href=# class=hm-link data-u="${esc(url)}">🔗 ${esc((() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } })())}</a>` : ''); }
     if (m.once && m.file) { body = m.opened ? `<div class=hm-file><i>👁</i><div><b>View-once photo</b><small>${m.from === 'me' ? 'Sent' : 'Opened'}</small></div></div>` : m.from === 'me' ? `<div class=hm-file><i>👁</i><div><b>View-once photo</b><small>Disappears after they open it</small></div></div>` : `<div class=hm-file data-once="${m.id}"><i>👁</i><div><b>View-once photo</b><small>${m.file.done ? 'Tap to open — you can view it once' : 'Receiving…'}</small></div></div>`; cls = ''; }
     const st = (m.ttl ? ' ⏲' : '') + (m.edited ? ' · edited' : '') + (m.from === 'me' ? ' ' + ({ sent: (m.read?.length ? '✓✓' : '✓'), sending: '…', queued: '◷', failed: '⚠ tap to retry' }[m.status] || '') : '');
-    return `<div class="hm-m ${who} ${cls} ${rx ? 'hasrx' : ''} ${m.status === 'failed' ? 'failed' : ''}" data-m="${m.id}">${showName ? `<span class=hm-who style="color:${colorOf(m.from)}">${esc(nameOf(m.from))}</span>` : ''}${q ? `<span class=q>${esc(preview(q).slice(0, 80))}</span>` : ''}${body}<span class=tm>${time(m.at)}${st}</span>${rx ? `<span class=rx>${rx}</span>` : ''}</div>`;
+    return `<div class="hm-m ${who} ${cls} ${rx ? 'hasrx' : ''} ${m.status === 'failed' ? 'failed' : ''}" data-m="${m.id}">${showName ? `<span class=hm-who style="color:${colorOf(m.from)}">${esc(nameOf(m.from))}${groups()[key]?.labels?.[m.from] ? ` <span style="font-weight:500;opacity:.75;font-size:11px;border:1px solid currentColor;border-radius:6px;padding:0 4px">${esc(groups()[key].labels[m.from])}</span>` : ''}</span>` : ''}${q ? `<span class=q>${esc(preview(q).slice(0, 80))}</span>` : ''}${body}<span class=tm>${time(m.at)}${st}</span>${rx ? `<span class=rx>${rx}</span>` : ''}</div>`;
   }
   const THEMES = {
     default: { name: 'Default', dot: 'var(--acc)', css: '' },
@@ -735,6 +749,9 @@ window.HushMsg = function (A) {
     view.el.querySelectorAll('[data-vote]').forEach(b => b.onclick = e => { e.stopPropagation(); const m = list.find(x => x.id === b.closest('[data-m]').dataset.m); if (!m) return;
       const i = +b.dataset.vote, cur = (m.votes || {}).me; publish(key, 7, cur === i ? '' : 'poll:' + i, [['e', m.id], ['k', '14']]);
       const all = chats(), x = (all[key] || []).find(y => y.id === m.id); x.votes = x.votes || {}; if (cur === i) delete x.votes.me; else x.votes.me = i; LS.set('chats', all); repaint(); });
+    view.el.querySelectorAll('[data-when]').forEach(a => a.onclick = e => { e.preventDefault(); e.stopPropagation(); const at = +a.dataset.when, m = list.find(x => x.id === a.closest('[data-m]')?.dataset.m);
+      if (!confirm('Remind me ' + new Date(at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }) + '?')) return;
+      LS.set('reminders', [...LS.get('reminders', []), { at, text: (chatName(key) + ': ' + (m?.text || '')).slice(0, 200) }].slice(-100)); try { Notification.requestPermission?.(); } catch {} A.toast('⏰ Reminder set — Hush will remind you'); });
     view.el.querySelectorAll('[data-tog]').forEach(b => b.onclick = e => { e.stopPropagation(); const m = list.find(x => x.id === b.dataset.tog); if (m && m.tog) together.join(key, m.tog, m.from === 'me'); });
     view.el.querySelectorAll('[data-once]').forEach(b => b.onclick = async e => { e.stopPropagation(); const m = list.find(x => x.id === b.dataset.once); if (!m || !m.file.done) return;
       await viewer(m.file.id, true); const all = chats(), x = (all[key] || []).find(y => y.id === m.id); if (x) { x.opened = true; LS.set('chats', all); }
@@ -887,7 +904,7 @@ window.HushMsg = function (A) {
   }
   function chatMenu(x, y, key) {
     const g = isGroup(key);
-    menu(x, y, `<button class=i data-a=theme>🎨 Chat theme</button><button class=i data-a=ttl>⏲ Disappearing messages${chatSet(key).ttl ? ' · ' + ttlLabel(chatSet(key).ttl) : ''}</button>${key === 'self' ? '' : `<button class=i data-a=protect>🛡 Protected chat${chatSet(key).protect ? ' · on' : ''}</button>`}${key === 'self' ? '' : `<button class=i data-a=rename>${g ? 'Rename group' : 'Rename'}</button>`}${g ? '<button class=i data-a=people>People in this group</button>' : `<button class=i data-a=verify>${verified(key) ? '✓ Verified — view safety code' : 'Verify safety code'}</button><button class=i data-a=id>Show their Hush ID</button>`}<button class=i data-a=clear>Clear chat</button>${g ? '' : '<button class=i data-a=block>Block</button>'}<button class=i data-a=del>${g ? 'Leave & delete group' : 'Delete chat & contact'}</button>`,
+    menu(x, y, `<button class=i data-a=theme>🎨 Chat theme</button><button class=i data-a=ttl>⏲ Disappearing messages${chatSet(key).ttl ? ' · ' + ttlLabel(chatSet(key).ttl) : ''}</button><button class=i data-a=find>🔎 Search this chat</button><button class=i data-a=links>📚 Reading list (links shared here)</button><button class=i data-a=fav>${(LS.get('favs', [])).includes(key) ? '★ Unfavorite' : '☆ Favorite'}</button>${isGroup(key) ? '<button class=i data-a=labels>🏷 Member labels</button>' : ''}${key === 'self' ? '' : `<button class=i data-a=protect>🛡 Protected chat${chatSet(key).protect ? ' · on' : ''}</button>`}${key === 'self' ? '' : `<button class=i data-a=rename>${g ? 'Rename group' : 'Rename'}</button>`}${g ? '<button class=i data-a=people>People in this group</button>' : `<button class=i data-a=verify>${verified(key) ? '✓ Verified — view safety code' : 'Verify safety code'}</button><button class=i data-a=id>Show their Hush ID</button>`}<button class=i data-a=clear>Clear chat</button>${g ? '' : '<button class=i data-a=block>Block</button>'}<button class=i data-a=del>${g ? 'Leave & delete group' : 'Delete chat & contact'}</button>`,
       (el, done) => el.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { done(); const a = b.dataset.a, c = contacts();
         if (a === 'theme') return setTimeout(() => menu(x, y, Object.entries(THEMES).map(([k, t]) => `<button class=i data-t=${k}><span style="display:inline-block;width:14px;height:14px;border-radius:50%;vertical-align:-2px;margin-right:8px;background:${t.dot}"></span>${t.name}</button>`).join(''),
           (el2, d2) => el2.querySelectorAll('[data-t]').forEach(b2 => b2.onclick = () => { d2(); const th = LS.get('themes', {}); th[key] = b2.dataset.t; LS.set('themes', th); repaint(); })), 0);
@@ -900,6 +917,11 @@ window.HushMsg = function (A) {
         else if (a === 'verify') { view.verify = key; view.screen = 'verify'; repaint(); }
         else if (a === 'people') A.toast('You, ' + members(key).map(nameOf).join(', '));
         else if (a === 'id') prompt('Their Hush ID', npub(key));
+        else if (a === 'fav') { const f = LS.get('favs', []); LS.set('favs', f.includes(key) ? f.filter(x => x !== key) : [...f, key]); repaint(); }
+        else if (a === 'find') { findInChat(key); }
+        else if (a === 'links') { readingList(key); }
+        else if (a === 'labels') { const ms = members(key); const v = overlay(`<h3>🏷 Member labels</h3><p>A short role next to each name — “Coach”, “Mom”, “Organizer”. Everyone in the group sees them.</p>${ms.map(pk => `<div class=hm-opt><div>${esc(nameOf(pk))}</div><input class=hm-in data-lab="${pk}" maxlength=24 value="${esc(groups()[key]?.labels?.[pk] || '')}" style="max-width:150px;margin:0"></div>`).join('')}<div style="display:flex;justify-content:flex-end;gap:8px"><button class="hm-btn ghost" data-x>Cancel</button><button class=hm-btn id=lab-s>Save</button></div>`);
+          v.querySelector('#lab-s').onclick = () => { const g = groups(); for (const i of v.querySelectorAll('[data-lab]')) { const pk = i.dataset.lab, val = i.value.trim().slice(0, 24); if ((g[key]?.labels?.[pk] || '') !== val) control(key, [['hush-label', pk, val]]); g[key] = { ...(g[key] || {}), labels: { ...(g[key]?.labels || {}), [pk]: val } }; } LS.set('groups', g); v.remove(); repaint(); }; }
         else if (a === 'protect') { const cs = chatSet(key), on = !cs.protect; control(key, [['hush-protect', on ? '1' : '0']]); cs.protect = on; saveChatSet(key, cs); repaint(); A.toast(on ? '🛡 Protected: nobody in this chat can save, copy or forward from Hush. (They could still photograph their screen.)' : 'Protected chat off'); }
         else if (a === 'clear') { if (confirm('Clear all messages in ' + chatName(key) + ' on this device?')) { const all = chats(); delete all[key]; LS.set('chats', all); repaint(); } }
         else if (a === 'block') { c[key] = { ...(c[key] || {}), blocked: true }; LS.set('contacts', c); view.screen = 'list'; repaint(); A.toast('Blocked — you won’t see their messages'); }
@@ -1008,6 +1030,25 @@ window.HushMsg = function (A) {
   // The old device packs your ID, contacts, chats (text) and Echo, locks it twice (a random key in the QR code + a
   // 6-digit code you type), and leaves it, encrypted, on a file host through Tor for 15 minutes. The new device scans,
   // types the code, downloads and unlocks it. Both devices then share one Hush ID, so messages arrive on both.
+  function broadcastUI() { const fr = Object.keys(contacts()).filter(k => !contacts()[k].blocked && !contacts()[k].request && !contacts()[k].auto);
+    if (!fr.length) return A.toast('Add some contacts first');
+    const v = overlay(`<h3>📣 Broadcast</h3><p>Send one message to several people. Each gets it as a private 1-to-1 message — they can't see who else got it.</p><textarea class=hm-in id=bc-t rows=3 maxlength=4000 placeholder="Message"></textarea>
+      ${fr.map(pk => `<label class=hm-opt style="cursor:pointer"><div>${esc(nameOf(pk))}</div><input type=checkbox data-bc="${pk}"></label>`).join('')}<div style="display:flex;justify-content:flex-end;gap:8px"><button class="hm-btn ghost" data-x>Cancel</button><button class=hm-btn id=bc-go>Send</button></div>`);
+    v.querySelector('#bc-go').onclick = () => { const t = v.querySelector('#bc-t').value.trim(), to = [...v.querySelectorAll('[data-bc]:checked')].map(x => x.dataset.bc); if (!t || !to.length) return A.toast('Write a message and pick people');
+      for (const pk of to) sendText(pk, t, null); v.remove(); repaint(); A.toast('📣 Sent to ' + to.length + ' people'); }; }
+  function findInChat(key) { const list = chats()[key] || [];
+    const v = overlay(`<h3>🔎 Search ${esc(chatName(key))}</h3><input class=hm-in id=fc-q placeholder="Words, or from:name" autofocus><div class=ec-seg style="display:flex;gap:6px;margin:6px 0">${[['', 'All'], ['photo', 'Photos'], ['link', 'Links'], ['file', 'Files'], ['voice', 'Voice']].map(([k, l]) => `<button data-ff="${k}" class="hm-btn ghost" style="padding:4px 10px">${l}</button>`).join('')}</div><div id=fc-r style="max-height:50vh;overflow:auto"></div>`);
+    let kind = ''; const run = () => { const q = v.querySelector('#fc-q').value.trim().toLowerCase(), fm = (q.match(/from:(\S+)/) || [])[1], words = q.replace(/from:\S+/, '').trim();
+      const res = list.filter(m => !m.sys && !m.unsent && (!words || (m.text || '').toLowerCase().includes(words) || (m.file?.name || '').toLowerCase().includes(words)) && (!fm || (m.from === 'me' ? 'me you' : nameOf(m.from).toLowerCase()).includes(fm))
+        && (!kind || (kind === 'photo' && m.file?.mime?.startsWith('image/')) || (kind === 'link' && /https?:\/\//.test(m.text || '')) || (kind === 'file' && m.file && !m.file.mime?.startsWith('image/') && !m.file.kind) || (kind === 'voice' && m.file?.kind === 'voice'))).slice(-80).reverse();
+      v.querySelector('#fc-r').innerHTML = res.map(m => `<button class=hm-row data-jm="${m.id}" style="width:100%"><div class=t><b>${esc(m.from === 'me' ? 'You' : nameOf(m.from))}</b><span>${esc(preview(m).slice(0, 120))}</span></div><em>${short(m.at)}</em></button>`).join('') || '<p>Nothing found</p>';
+      v.querySelectorAll('[data-jm]').forEach(b => b.onclick = () => { v.remove(); const t = view.el.querySelector(`[data-m="${b.dataset.jm}"]`); if (t) { t.scrollIntoView({ block: 'center' }); t.classList.add('hm-flash'); setTimeout(() => t.classList.remove('hm-flash'), 1200); } }); };
+    v.querySelector('#fc-q').oninput = run; v.querySelectorAll('[data-ff]').forEach(b => b.onclick = () => { kind = b.dataset.ff; v.querySelectorAll('[data-ff]').forEach(x => x.style.background = x === b ? 'var(--ink)' : ''); v.querySelectorAll('[data-ff]').forEach(x => x.style.color = x === b ? 'var(--bg)' : ''); run(); }); run(); }
+  // Reading list: every link shared in this chat, newest first, with who shared it and whether you've opened it.
+  function readingList(key) { const list = chats()[key] || [], done = LS.get('readDone', {});
+    const items = []; for (const m of list) for (const u of ((m.text || '').match(/https?:\/\/[^\s<]+[^\s<.,;:!?)"'\]]/g) || [])) items.push({ u, from: m.from, at: m.at });
+    const v = overlay(`<h3>📚 Reading list</h3><p>Links shared in ${esc(chatName(key))}.</p>${items.reverse().slice(0, 100).map(x => { let h = x.u; try { h = new URL(x.u).hostname.replace(/^www\./, ''); } catch {} return `<button class=hm-row data-rl="${esc(x.u)}" style="width:100%;${done[x.u] ? 'opacity:.55' : ''}"><div class=t><b>${done[x.u] ? '✓ ' : ''}${esc(h)}</b><span>${esc(x.u.slice(0, 80))}</span></div><em>${esc(x.from === 'me' ? 'You' : first(x.from))}<br>${short(x.at)}</em></button>`; }).join('') || '<p>No links shared yet.</p>'}`);
+    v.querySelectorAll('[data-rl]').forEach(b => b.onclick = () => { const d = LS.get('readDone', {}); d[b.dataset.rl] = Date.now(); LS.set('readDone', d); v.remove(); A.open(b.dataset.rl); }); }
   function overlay(html) { const v = document.createElement('div'); v.className = 'hm-view'; v.innerHTML = `<div class=hm-card style="width:min(420px,92vw);color:var(--ink);max-height:90vh;overflow:auto">${html}</div>`;
     document.body.append(v); v.onclick = e => { if (e.target === v || e.target.closest('[data-x]')) v.remove(); }; return v; }
   async function linkShow() {
