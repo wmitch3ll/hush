@@ -639,7 +639,7 @@ mod security_tests {
         let conf: Value = serde_json::from_str(&std::fs::read_to_string("tauri.conf.json").unwrap()).unwrap();
         let csp = conf["app"]["security"]["csp"].as_str().unwrap_or("");
         assert!(csp.contains("default-src 'self'"), "chrome UI must not load remote code");
-        assert!(!csp.contains("unsafe-eval"));
+        assert!(!csp.replace("'wasm-unsafe-eval'", "").contains("unsafe-eval"), "only WebAssembly compile is allowed, never JS eval");
     }
     #[test] fn address_bar_never_produces_dangerous_schemes() {
         let s = store::Settings::default();

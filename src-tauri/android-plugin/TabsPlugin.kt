@@ -512,7 +512,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     }
 
     /** Show the active tab's view (or none while a chrome sheet is open). */
-    private fun render() = act.runOnUiThread {
+    private fun render(): Unit = act.runOnUiThread {
         val root = act.findViewById<ViewGroup>(android.R.id.content)
         // Media keeps playing: a tab you chose to keep playing (or the tab you're watching while the tab list is open)
         // stays attached but moved off-screen, so the page isn't paused. Everything else is taken off screen.
@@ -559,11 +559,11 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             b.layoutParams = android.widget.FrameLayout.LayoutParams(-1, h1).apply { topMargin = topPx }
             val lp2 = android.widget.FrameLayout.LayoutParams(-1, avail - h1 - gap).apply { topMargin = topPx + h1 + gap }
             if (sb.parent == null) root.addView(sb, lp2) else sb.layoutParams = lp2
-            val d = splitBar ?: android.view.View(act).also { v -> splitBar = v; v.setBackgroundColor(0x55888888)
-                var y0 = 0f; var f0 = 0f; v.setOnTouchListener { _, e -> when (e.actionMasked) {
+            val d: android.view.View = splitBar ?: android.view.View(act).also { v: android.view.View -> splitBar = v; v.setBackgroundColor(0x55888888)
+                var y0 = 0f; var f0 = 0f; v.setOnTouchListener(android.view.View.OnTouchListener { _: android.view.View, e: android.view.MotionEvent -> val r: Boolean = when (e.actionMasked) {
                     android.view.MotionEvent.ACTION_DOWN -> { y0 = e.rawY; f0 = splitFrac; true }
                     android.view.MotionEvent.ACTION_MOVE -> { val av = (root.height - topPx - bottomPx).coerceAtLeast(1); splitFrac = (f0 + (e.rawY - y0) / av).coerceIn(0.2f, 0.8f); render(); true }
-                    else -> true } } }
+                    else -> true }; r }) }
             val dl = android.widget.FrameLayout.LayoutParams(-1, gap).apply { topMargin = topPx + h1 }
             if (d.parent == null) root.addView(d, dl) else d.layoutParams = dl
             d.bringToFront() } }
