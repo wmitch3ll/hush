@@ -409,7 +409,7 @@ var bubbleKey=null;var splitWith=null;
 function openGuide(){$("#xs").innerHTML='<div id="guidex" style="padding:14px 10px"></div>';show("xs");
   HUSH_GUIDE.open($("#guidex"),{mobile:true,done:()=>show(null),act:a=>{const go={cmd:()=>show("cmd"),tabs:()=>{drawSwitcher();show("switcher")},site:()=>{drawSite();show("site")},
     settings:()=>{drawSettings();show("settings")},split:()=>splitMenu(),msgs:()=>show("msgs"),echo:()=>show("echos"),reading:()=>{drawReading();show("reading")},
-    gest:()=>{drawSettings();show("settings")},tor:()=>{show(null);toast("Tap the 🧅 onion in the address bar")},assistant:()=>{show(null);toast("Menu › ✨ Assistant")}}[a];
+    gest:()=>{drawSettings();show("settings")},tor:()=>{show(null);toast("Tap the 🧅 onion in the address bar")},assistant:()=>openAssistant()}[a];
     try{show(null);go&&go()}catch(e){toast("Open it from the menu")}}})}
 // Split screen (2–4 tabs): tap a pane for its sound + highlight; videos fill their pane with full controls.
 const splitSet=new Set();
@@ -526,6 +526,8 @@ function drawMenu(){const el=$("#menu"),t=T(),live=!!(t&&t.native);
    ${listenSt?`<div class="row"><button class="btn" id="l-prev">‹ Prev</button><button class="btn" id="l-pp">${listenSt==="paused"?"Resume":"Pause"}</button><button class="btn" id="l-next">Next ›</button><button class="btn" id="l-rate">${lRate}×</button></div>`:""}
    <button class="item" id="m-echo"><div>Echo<small>${EC.unread()?EC.unread()+" new · ":""}share with friends, privately</small></div></button>
    <button class="item" id="m-msg"><div>Murmur<small>${HM.unread()?HM.unread()+" unread · ":""}private chat through Tor</small></div></button>
+   <button class="item" id="m-ai"><div>✨ Assistant<small>offline AI on this phone — summarize pages, ask anything</small></div></button>
+   <button class="item" id="m-split"><div>⬒ Split screen<small>${splitSet.size?(splitSet.size+1)+" tabs open · layout, scenes, close":"up to 4 tabs · tap one for its sound"}</small></div></button>
    <div class="item"><div>Tor mode <button class="btn sm" id="m-tori" aria-label="What is Tor?" style="padding:0 8px;min-width:0">ⓘ</button><small>${torOn?"on — every tab goes through Tor":"hide your IP and location from every site"}</small></div><button class="sw ${torOn?"on":""}" id="m-tor"></button></div>
    ${torOn?'<button class="item" id="m-newid"><div>New Tor identity<small>fresh circuits and a new IP, then reload</small></div></button>':""}
    <button class="item" id="m-arch"><div>Archived tabs<small>${+pref("archive")?"tabs unused for "+(+pref("archive")>=24?pref("archive")/24+" day(s)":pref("archive")+" hours")+" are archived":"off — tap to set up"}</small></div></button>
@@ -553,7 +555,7 @@ function drawMenu(){const el=$("#menu"),t=T(),live=!!(t&&t.native);
   if($("#l-pp"))$("#l-pp").onclick=()=>{native("listen",{action:listenSt==="paused"?"resume":"pause"})};
   if($("#l-next"))$("#l-next").onclick=()=>native("listen",{action:"next"});if($("#l-prev"))$("#l-prev").onclick=()=>native("listen",{action:"prev"});
   if($("#l-rate"))$("#l-rate").onclick=()=>{const R=[1,1.25,1.5,1.75,2,0.75];lRate=R[(R.indexOf(lRate)+1)%R.length];native("listen",{action:"rate",rate:lRate});drawMenu()};
-  $("#m-tor").onclick=()=>setTor(!torOn);$("#m-tori").onclick=e=>{e.stopPropagation();torInfo()};$("#m-msg").onclick=openMsgs;$("#m-echo").onclick=openEcho;if($("#m-newid"))$("#m-newid").onclick=async()=>{try{await inv("tor_new_identity");inv("nav",{action:"reload"}).catch(()=>{});toast("New identity")}catch(e){toast(String(e))}show(null)};
+  $("#m-tor").onclick=()=>setTor(!torOn);$("#m-tori").onclick=e=>{e.stopPropagation();torInfo()};$("#m-ai").onclick=()=>openAssistant();$("#m-split").onclick=()=>splitMenu();$("#m-msg").onclick=openMsgs;$("#m-echo").onclick=openEcho;if($("#m-newid"))$("#m-newid").onclick=async()=>{try{await inv("tor_new_identity");inv("nav",{action:"reload"}).catch(()=>{});toast("New identity")}catch(e){toast(String(e))}show(null)};
   $("#m-arch").onclick=()=>{$("#xs").innerHTML=head("Archived tabs")+'<div id="arx" style="padding:0 4px 20px"></div>';wire($("#xs"));HX.archivePanel($("#arx"),u=>{newTab(false,true);go(u)});show("xs")};
   $("#m-rl").onclick=()=>{drawReading();show("reading")};$("#m-focus").onclick=()=>{drawFocus();show("focus")};$("#m-about").onclick=()=>{drawAbout();show("about")}}
 
@@ -591,6 +593,7 @@ function drawSite(){const el=$("#site"),t=T(),h=hostOf(t.url),off=allow.has(h),s
     if(v==="auto")delete state.site_dark[h];else state.site_dark[h]=v==="on";applyDarkNow();drawSite()});
   $("#st-read").onclick=()=>{show(null);inv("page_action",{action:"reader"})};$("#st-find").onclick=()=>{show(null);findMode(true)};$("#st-copy").onclick=()=>copy(t.url)}
 
+function openAssistant(){$("#xs").innerHTML=head("Assistant");const d=document.createElement("div");$("#xs").append(d);wire($("#xs"));HX.assistant(d,{pageText:()=>native("pageText").then(r=>r&&r.text||"")});show("xs")}
 function openCmd(){vibe();const el=$("#cmd");
   const ACT=[["New tab",()=>newTab()],["New private tab",()=>newTab(true)],["Find in page",()=>{show(null);findMode(true)}],["Reader view",()=>{show(null);inv("page_action",{action:"reader"})}],
     ["Dark mode for websites: "+(pref("force_dark")==="true"?"on → off":"off → on"),async()=>{await setPref("force_dark",pref("force_dark")==="true"?"false":"true");applyDarkNow();show(null)}],
@@ -598,7 +601,7 @@ function openCmd(){vibe();const el=$("#cmd");
     ["Site settings & QR",()=>{if(T()?.native){drawSite();show("site")}}],["All tabs",openSwitcher],["History",()=>{drawHistory();show("history")}],
     ["Downloads",()=>{drawDownloads();show("downloads")}],["Settings",()=>{drawSettings();show("settings")}],
     ["Reading list",()=>{drawReading();show("reading")}],["Focus mode",()=>{drawFocus();show("focus")}],["Voice search",()=>{show(null);voice()}],
-    ["Save page as PDF",()=>{show(null);native("printPage")}],["Pop-out video (picture-in-picture)",()=>{show(null);native("pip")}],["About & updates",()=>{drawAbout();show("about")}],["Close tab",()=>{show(null);closeTab(cur)}],["✨ Assistant (on this device)",()=>{$("#xs").innerHTML=head("Assistant");const d=document.createElement("div");$("#xs").append(d);wire($("#xs"));HX.assistant(d,{pageText:()=>native("pageText").then(r=>r&&r.text||"")});show("xs")}],["⬒ Split screen…",()=>splitMenu()],["📘 Hush guide",()=>openGuide()],["Sleep timer for this video",()=>{show(null);actions("Pause the video in…",[[15,"15 min"],[30,"30 min"],[60,"1 hour"],[0,"Off"]].map(([n,l])=>[l,()=>{clearTimeout(window.__sleepT);if(!n)return toast("Sleep timer off");window.__sleepT=setTimeout(()=>{inv("page_action",{action:"media-pause"}).catch(()=>{});toast("😴 Paused")},n*60000);toast("😴 Pausing in "+l)}]))}],["Send this page to a friend",()=>{const t=T();if(!t||!/^https?:/.test(t.url))return toast("Open a page first");const l=(()=>{try{return HM.api.chatList()}catch(e){return[]}})();if(!l.length){openMsgs();return toast("Add a friend in Murmur first")}actions("Send to…",l.slice(0,20).map(c=>[c.name,()=>{HM.api.sendTo(c.key,t.url);toast("🔒 Sent privately through Tor")}]))}],["Panic: close private tabs, lock Murmur",()=>panic()],
+    ["Save page as PDF",()=>{show(null);native("printPage")}],["Pop-out video (picture-in-picture)",()=>{show(null);native("pip")}],["About & updates",()=>{drawAbout();show("about")}],["Close tab",()=>{show(null);closeTab(cur)}],["✨ Assistant (on this device)",()=>openAssistant()],["⬒ Split screen…",()=>splitMenu()],["📘 Hush guide",()=>openGuide()],["Sleep timer for this video",()=>{show(null);actions("Pause the video in…",[[15,"15 min"],[30,"30 min"],[60,"1 hour"],[0,"Off"]].map(([n,l])=>[l,()=>{clearTimeout(window.__sleepT);if(!n)return toast("Sleep timer off");window.__sleepT=setTimeout(()=>{inv("page_action",{action:"media-pause"}).catch(()=>{});toast("😴 Paused")},n*60000);toast("😴 Pausing in "+l)}]))}],["Send this page to a friend",()=>{const t=T();if(!t||!/^https?:/.test(t.url))return toast("Open a page first");const l=(()=>{try{return HM.api.chatList()}catch(e){return[]}})();if(!l.length){openMsgs();return toast("Add a friend in Murmur first")}actions("Send to…",l.slice(0,20).map(c=>[c.name,()=>{HM.api.sendTo(c.key,t.url);toast("🔒 Sent privately through Tor")}]))}],["Panic: close private tabs, lock Murmur",()=>panic()],
     ...wsList().filter(w=>w!==curWs()).map(w=>["Workspace: "+w,()=>{show(null);switchWs(w)}])];
   el.innerHTML=head("Commands")+`<input class="txt" id="cmdq" placeholder="Type a command, tab or site" autocapitalize="off" spellcheck="false"><div class="sug" id="cmdr" style="padding:0"></div>`;
   wire(el);show("cmd");const q=$("#cmdq");setTimeout(()=>q.focus(),60);
