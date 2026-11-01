@@ -10,8 +10,8 @@ self.onmessage = async e => {
     try {
       const { env } = T; env.allowLocalModels = false; env.useBrowserCache = true;
       env.backends.onnx.wasm.numThreads = 1;
-      env.backends.onnx.wasm.wasmPaths = { mjs: new URL('./vendor/ort/ort-wasm-simd-threaded.jsep.mjs', self.location.href).href,
-        wasm: `https://cdn.jsdelivr.net/npm/onnxruntime-web@${m.ort}/dist/ort-wasm-simd-threaded.jsep.wasm` };
+      env.backends.onnx.wasm.wasmPaths = { mjs: new URL('./vendor/ort/ort-wasm-simd-threaded.asyncify.mjs', self.location.href).href,
+        wasm: `https://cdn.jsdelivr.net/npm/onnxruntime-web@${m.ort}/dist/ort-wasm-simd-threaded.asyncify.wasm` };
       const prog = p => { if (p && p.status === 'progress' && p.total) post('progress', { file: String(p.file || ''), loaded: p.loaded, total: p.total }); };
       proc = await T.AutoProcessor.from_pretrained(m.model, { progress_callback: prog });
       const Cls = T.Gemma4ForConditionalGeneration || T.AutoModelForImageTextToText || T.AutoModelForCausalLM;
