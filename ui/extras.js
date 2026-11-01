@@ -343,32 +343,53 @@ window.HushX = function (A) {
   const tabNote = { get: u => { try { return JSON.parse(localStorage.getItem('hush.tabnotes') || '{}')[noteKey(u)] || ''; } catch (e) { return ''; } },
     set: (u, t) => { try { const all = JSON.parse(localStorage.getItem('hush.tabnotes') || '{}'), k = noteKey(u); if (!k) return; if (t.trim()) all[k] = t.slice(0, 2000); else delete all[k]; localStorage.setItem('hush.tabnotes', JSON.stringify(all)); } catch (e) {} } };
   // ---------------- On-device assistant (Gemma 4). Off until you turn it on; then everything runs on this device.
-  const AI_MODELS = { e2b: { id: 'onnx-community/gemma-4-E2B-it-ONNX', name: 'Gemma 4 E2B', size: 'about 1.5 GB', note: 'Fast; runs on most phones and laptops' },
-    e4b: { id: 'onnx-community/gemma-4-E4B-it-ONNX', name: 'Gemma 4 E4B', size: 'about 3 GB', note: 'Smarter; needs a recent laptop or desktop' } };
-  const ai = (() => { let w = null, st = 'off', err = '', prog = {}, seq = 0; const waits = {}, subs = new Set();
+  // kind: 'lm' = text-only model (small, light on memory); 'mm' = Gemma 4 (also loads its image/audio parts, so it needs a lot of memory).
+  const AI_MODELS = { lite: { id: 'onnx-community/gemma-3-1b-it-ONNX', kind: 'lm', name: 'Gemma 3 1B (Lite)', size: 'about 1 GB', mem: 3, note: 'Light on memory — the one for phones' },
+    e2b: { id: 'onnx-community/gemma-4-E2B-it-ONNX', kind: 'mm', name: 'Gemma 4 E2B', size: 'about 1.5 GB download', mem: 8, note: 'Smarter; needs a phone or PC with 8 GB+ of memory' },
+    e4b: { id: 'onnx-community/gemma-4-E4B-it-ONNX', kind: 'mm', name: 'Gemma 4 E4B', size: 'about 3 GB download', mem: 16, note: 'Smartest; for a desktop or laptop with 16 GB+' } };
+  const MOBILE = /Android|iPhone|iPad/i.test(navigator.userAgent);
+  // Crash guard: loading a model too big for the device's memory can close the whole app. A marker is set while
+  // loading and cleared when it finishes; if it's still there at the next start, the app died while loading, so the
+  // assistant is NOT loaded again automatically (that would crash on every start) and you're offered the Lite model.
+  const BOOT = 'hush.ai.loading';
+  const lsg = k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, lss = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} };
+  const ai = (() => { let w = null, st = 'off', err = '', prog = {}, seq = 0, crash = false; const waits = {}, subs = new Set();
     const cfg = () => { try { return JSON.parse(localStorage.getItem('hush.ai') || '{}'); } catch (e) { return {}; } };
     const tell = () => subs.forEach(f => { try { f(); } catch (e) {} });
+    let gotBytes = 0, wantBytes = 0, pct = 0;
     async function load() { if (w || !navigator.gpu) { if (!navigator.gpu) { st = 'error'; err = 'This device’s graphics chip can’t run the assistant (no WebGPU).'; tell(); } return; }
-      st = 'loading'; err = ''; tell(); let ort = '1.22.0'; try { ort = (await (await fetch('vendor/ort/VERSION')).text()).trim() || ort; } catch (e) {}
-      try { w = new Worker('assistant-worker.js', { type: 'module' }); } catch (e) { st = 'error'; err = 'Couldn’t start the assistant: ' + e.message; return tell(); }
-      w.onmessage = e => { const m = e.data; if (m.t === 'progress') { prog[m.file] = [m.loaded, m.total]; tell(); }
-        else if (m.t === 'ready') { st = 'ready'; tell(); } else if (m.t === 'error' && !m.id) { st = 'error'; err = m.e; w.terminate(); w = null; tell(); }
+      st = 'loading'; err = ''; prog = {}; pct = 0; lss(BOOT, String(Date.now())); tell(); let ort = '1.22.0'; try { ort = (await (await fetch('vendor/ort/VERSION')).text()).trim() || ort; } catch (e) {}
+      try { w = new Worker('assistant-worker.js', { type: 'module' }); } catch (e) { st = 'error'; err = 'Couldn’t start the assistant: ' + e.message; lss(BOOT, null); return tell(); }
+      const fail = e => { st = 'error'; err = e; lss(BOOT, null); try { w.terminate(); } catch (_) {} w = null; tell(); };
+      w.onerror = e => fail('The assistant stopped: ' + (e.message || 'out of memory?') + (MOBILE ? ' Try the Lite model.' : ''));
+      w.onmessage = e => { const m = e.data; if (m.t === 'progress') { prog[m.file] = [m.loaded, m.total];
+          // One steady bar: files arrive one after another, so the overall percent never jumps backwards.
+          let a = 0, b = 0; for (const [l, t] of Object.values(prog)) { a += l; b += t; } pct = Math.max(pct, b ? Math.min(0.97, a / b) : 0); tell(); }
+        else if (m.t === 'stage') { stage = m.s; tell(); }
+        else if (m.t === 'ready') { st = 'ready'; pct = 1; lss(BOOT, null); tell(); } else if (m.t === 'error' && !m.id) fail(m.e);
         else if (m.id && waits[m.id]) { const q = waits[m.id]; if (m.t === 'tok') { q.out += m.x; q.on && q.on(q.out); } else if (m.t === 'done') { delete waits[m.id]; q.res(q.out.trim()); } else if (m.t === 'error') { delete waits[m.id]; q.rej(new Error(m.e)); } } };
-      w.postMessage({ t: 'load', model: (AI_MODELS[cfg().model] || AI_MODELS.e2b).id, ort }); }
+      const md = AI_MODELS[cfg().model] || AI_MODELS.lite; w.postMessage({ t: 'load', model: md.id, kind: md.kind, ort }); }
+    let stage = '';
     return { cfg, on: () => !!cfg().on, status: () => st, error: () => err, sub: f => (subs.add(f), () => subs.delete(f)),
-      progress: () => { let a = 0, b = 0; for (const [l, t] of Object.values(prog)) { a += l; b += t; } return b ? a / b : 0; },
+      progress: () => pct, stage: () => stage,
+      crashed: () => !!lsg(BOOT),
       enable(model) { localStorage.setItem('hush.ai', JSON.stringify({ on: true, model })); load(); },
       disable() { localStorage.setItem('hush.ai', JSON.stringify({ on: false })); if (w) w.terminate(); w = null; st = 'off'; tell(); },
-      start() { if (cfg().on && !w) load(); },
+      start() { if (!cfg().on || w) return;
+        if (lsg(BOOT)) { lss(BOOT, null); st = 'error'; err = 'Hush closed while loading the assistant last time — this device probably doesn’t have enough memory for ' + ((AI_MODELS[cfg().model] || {}).name || 'that model') + '. Pick the Lite model below.'; crash = true; return tell(); }
+        load(); },
+      wasCrash: () => crash,
       ask(prompt, on, max) { return new Promise((res, rej) => { if (st !== 'ready') return rej(new Error('The assistant isn’t ready yet')); const id = ++seq; waits[id] = { res, rej, on, out: '' }; w.postMessage({ t: 'ask', id, prompt, max }); }); } }; })();
   function assistant(el, o) { // o: { pageText():Promise<string>, close() }
     const draw = () => { const st = ai.status(), c = ai.cfg();
       if (!c.on) { el.innerHTML = `<div style="padding:16px;display:grid;gap:12px"><h2 style="margin:0">✨ Assistant</h2><p style="margin:0;color:var(--mute)">Summarize pages, explain things and draft replies with an AI that runs <b>entirely on this device</b>. Nothing you read or ask is sent anywhere.</p>
-        ${Object.entries(AI_MODELS).map(([k, m]) => `<button class=row data-m=${k} style="text-align:left;display:block;width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--card)"><b>${m.name}</b> · ${m.size}<br><small style="color:var(--mute)">${m.note}</small></button>`).join('')}
-        <p style="margin:0;font-size:12px;color:var(--mute)">The model is downloaded once from Hugging Face (Google’s open Gemma 4, Apache 2.0 license) and kept on this device. ${navigator.gpu ? '' : '<b>This device can’t run it: no WebGPU support.</b>'}</p></div>`;
+        ${Object.entries(AI_MODELS).map(([k, m]) => { const rec = k === (MOBILE ? 'lite' : 'e2b'), tight = (navigator.deviceMemory || (MOBILE ? 4 : 8)) < m.mem && m.mem > 3;
+          return `<button class=row data-m=${k} style="text-align:left;display:block;width:100%;padding:12px;border:1px solid ${rec ? 'var(--acc)' : 'var(--line)'};border-radius:12px;background:var(--card)"><b>${m.name}</b>${rec ? ' <small style="color:var(--acc)">· recommended</small>' : ''} · ${m.size}<br><small style="color:var(--mute)">${m.note}${tight ? ' — <b>may be too big for this device and close Hush while loading</b>' : ''}</small></button>`; }).join('')}
+        <p style="margin:0;font-size:12px;color:var(--mute)">The model is downloaded once from Hugging Face (Google’s open Gemma models) and kept on this device. ${navigator.gpu ? '' : '<b>This device can’t run it: no WebGPU support.</b>'}</p></div>`;
         el.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { if (!navigator.gpu) return A.toast('This device can’t run the assistant'); if (confirm('Download ' + AI_MODELS[b.dataset.m].name + ' (' + AI_MODELS[b.dataset.m].size + ')? Use Wi-Fi.')) { ai.enable(b.dataset.m); draw(); } }); return; }
-      if (st !== 'ready') { el.innerHTML = `<div style="padding:16px;display:grid;gap:10px"><h2 style="margin:0">✨ Assistant</h2>${st === 'error' ? `<p>⚠ ${esc(ai.error())}</p><button class=btn data-retry>Try again</button>` : `<p>Getting the assistant ready… ${Math.round(ai.progress() * 100)}%</p><div style="height:6px;border-radius:3px;background:var(--line);overflow:hidden"><i style="display:block;height:100%;width:${Math.round(ai.progress() * 100)}%;background:var(--acc)"></i></div><p style="font-size:12px;color:var(--mute)">First time only — it’s kept on this device afterwards.</p>`}<button class=btn data-off>Turn off & remove</button></div>`;
-        el.querySelector('[data-retry]')?.addEventListener('click', () => { ai.disable(); ai.enable(c.model); draw(); }); el.querySelector('[data-off]').onclick = () => { ai.disable(); try { caches.keys().then(k => k.forEach(n => caches.delete(n))); } catch (e) {} draw(); }; return; }
+      if (st !== 'ready') { el.innerHTML = `<div style="padding:16px;display:grid;gap:10px"><h2 style="margin:0">✨ Assistant</h2>${st === 'error' ? `<p>⚠ ${esc(ai.error())}</p>${c.model !== 'lite' ? '<button class=btn data-lite>Switch to the Lite model</button>' : ''}<button class=btn data-retry>Try again</button>` : `<p>${ai.stage() === 'warm' ? 'Loading it into memory — almost there… (this can take a minute)' : 'Downloading… ' + Math.round(ai.progress() * 100) + '%'}</p><div style="height:6px;border-radius:3px;background:var(--line);overflow:hidden"><i style="display:block;height:100%;width:${Math.round(ai.progress() * 100)}%;background:var(--acc)"></i></div><p style="font-size:12px;color:var(--mute)">First time only — it’s kept on this device afterwards.</p>`}<button class=btn data-off>Turn off & remove</button></div>`;
+        el.querySelector('[data-retry]')?.addEventListener('click', () => { ai.disable(); ai.enable(c.model); draw(); });
+        el.querySelector('[data-lite]')?.addEventListener('click', () => { ai.disable(); ai.enable('lite'); draw(); }); el.querySelector('[data-off]').onclick = () => { ai.disable(); try { caches.keys().then(k => k.forEach(n => caches.delete(n))); } catch (e) {} draw(); }; return; }
       el.innerHTML = `<div style="padding:14px;display:flex;flex-direction:column;gap:10px;height:100%;box-sizing:border-box"><h2 style="margin:0">✨ Assistant <small style="font:500 12px system-ui;color:var(--mute)">on this device</small></h2>
         <div style="display:flex;gap:6px;flex-wrap:wrap"><button class=btn data-q=sum>Summarize this page</button><button class=btn data-q=key>Key points</button><button class=btn data-q=simple>Explain it simply</button></div>
         <div id=ai-out style="flex:1;overflow:auto;white-space:pre-wrap;line-height:1.5;user-select:text;border:1px solid var(--line);border-radius:12px;padding:12px;min-height:120px;color:var(--ink)">Ask anything, or pick an action above.</div>
