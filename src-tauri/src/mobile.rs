@@ -27,8 +27,8 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tauri::command]
-pub async fn open_tab(app: AppHandle, input: String, private: Option<bool>) -> Result<String, String> {
-    let v = call(&app, "openTab", json!({ "url": resolve_app(&app, &input), "isPrivate": private.unwrap_or(false) }))?;
+pub async fn open_tab(app: AppHandle, input: String, private: Option<bool>, space: Option<String>) -> Result<String, String> {
+    let v = call(&app, "openTab", json!({ "url": resolve_app(&app, &input), "isPrivate": private.unwrap_or(false), "space": space.unwrap_or_default() }))?;
     Ok(v["id"].as_str().unwrap_or_default().to_string())
 }
 #[tauri::command] pub async fn switch_tab(app: AppHandle, label: String) { let _ = call(&app, "switchTab", json!({ "id": label })); }

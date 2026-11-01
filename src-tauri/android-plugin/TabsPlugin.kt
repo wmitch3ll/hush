@@ -49,7 +49,7 @@ import app.tauri.plugin.*
  */
 @TauriPlugin
 class TabsPlugin(private val act: Activity) : Plugin(act) {
-    private class Tab(val id: String, var url: String, var wv: WebView?, var saved: Bundle? = null, val priv: Boolean = false) {
+    private class Tab(val id: String, var url: String, var wv: WebView?, var saved: Bundle? = null, val priv: Boolean = false, val space: String = "") {
         var lastUsed = System.currentTimeMillis()
         @Volatile var audio = false
         var box: SwipeRefreshLayout? = null   // pull-to-refresh container around the WebView
@@ -319,6 +319,8 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         // Private tabs live in a separate, throw-away profile: own cookies, storage and cache, deleted with the last private tab.
         // This must be the first call on the WebView.
         if (t.priv && privateSupported()) try { WebViewCompat.setProfile(w, PRIVATE) } catch (e: Throwable) {}
+        // Spaces with their own sign-ins: each such Space keeps its own cookies and storage in a named profile.
+        else if (t.space.isNotEmpty() && privateSupported()) try { WebViewCompat.setProfile(w, "space-" + t.space) } catch (e: Throwable) {}
         // Scroll direction for the bottom toolbar (only direction changes and "near the top" are sent).
         var acc = 0; var lastDir = 0
         w.setOnScrollChangeListener { _, _, y, _, oy ->
@@ -329,7 +331,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                 if (d != lastDir) { lastDir = d; emit("scroll", JSObject().apply { put("id", t.id); put("dir", d); put("y", y) }) } } }
         w.settings.apply {
             javaScriptEnabled = true; domStorageEnabled = true; mediaPlaybackRequiresUserGesture = false   // videos autoplay
-            setSupportMultipleWindows(false); javaScriptCanOpenWindowsAutomatically = false   // popup deny
+            setSupportMultipleWindows(true); javaScriptCanOpenWindowsAutomatically = false   // popups are dropped in onCreateWindow (not loaded over the page)
             safeBrowsingEnabled = true; allowFileAccess = false; allowContentAccess = false
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW; setGeolocationEnabled(!t.priv)
             mediaPlaybackRequiresUserGesture = true
@@ -341,6 +343,8 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         // YouTube / anti-adblock fixes must run before the page's own scripts: document-start injection (WebView 88+).
         val earlyScripts = try { WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT) } catch (e: Throwable) { false }
         if (earlyScripts) try { WebViewCompat.addDocumentStartJavaScript(w, Native.scriptletJs(), setOf("*")) } catch (e: Throwable) {}
+        // Popup / click-jack guard (streaming sites): invisible ad layers, new-window ads, script popups.
+        if (earlyScripts) try { WebViewCompat.addDocumentStartJavaScript(w, Native.hardenJs(), setOf("*")) } catch (e: Throwable) {}
         // Tor mode: WebRTC could reveal your real IP outside the proxy, so it's removed from every page.
         if (torOn && earlyScripts) try { WebViewCompat.addDocumentStartJavaScript(w, NO_RTC_JS, setOf("*")) } catch (e: Throwable) {}
         // Tor mode: every phone looks the same (UTC, letterboxing, fonts, hardware).
@@ -373,6 +377,8 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                             else emit("pick", JSObject().apply { put("host", host); put("sel", sel) }) }; true }
                     // Two-finger gestures and the quick wheel (tools.js): only a short shape / action id is passed on.
                     "hush-float" -> { act.runOnUiThread { onFloatUrl(t, r.url) }; true }
+                    // harden.js: a link to another site that wanted a new window → Hush opens it in a background tab.
+                    "hush-peek" -> { val u = r.url.getQueryParameter("u") ?: ""; if (u.startsWith("https://") || u.startsWith("http://")) emit("linkTab", JSObject().apply { put("url", u) }); true }
                     "hush-gesture" -> { val h = (r.url.host ?: "").lowercase()
                         if (h.startsWith("a-") && h.length < 20 && h.drop(2).all { it in 'a'..'z' }) emit("gesture", JSObject().apply { put("action", h.drop(2)) })
                         else if (h.length in 1..4 && h.all { it in "lrudt" }) emit("gesture", JSObject().apply { put("g", h.uppercase()) }); true }
@@ -551,7 +557,8 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         val id = "t" + java.util.UUID.randomUUID().toString().take(8)
         val a = i.parseArgs(Args::class.java)
         val priv = a.isPrivate && privateSupported()
-        tabs[id] = Tab(id, a.url, null, priv = priv); active = id; visible = true; render()
+        val sp = a.space.lowercase().filter { it.isLetterOrDigit() }.take(24)
+        tabs[id] = Tab(id, a.url, null, priv = priv, space = if (priv) "" else sp); active = id; visible = true; render()
         i.resolve(JSObject().put("id", id).put("private", priv))
     }
     /** id = "none" hides every tab (a chrome sheet is open); any other id shows that tab. */
@@ -714,7 +721,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     @InvokeArg class HostArgs { var host: String = "" }
     @InvokeArg class DiscardArgs { var minutes: Int = 0 }
     @InvokeArg class NavArgs { var action: String = "" }
-    @InvokeArg class Args { var url: String = ""; var isPrivate: Boolean = false }
+    @InvokeArg class Args { var url: String = ""; var isPrivate: Boolean = false; var space: String = "" }
     @InvokeArg class IdArgs { var id: String = "" }
 
     companion object {

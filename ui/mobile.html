@@ -224,6 +224,7 @@ addEventListener("resize",()=>insets());
 // ---------- workspaces ----------
 const wsList=()=>pref("workspaces").split("|").filter(Boolean);
 const curWs=()=>wsList().includes(pref("ws"))?pref("ws"):wsList()[0];
+const sepWs=w=>(pref("ws_sep")||"").split("|").includes(w);const spaceOf=w=>sepWs(w)?w:"";
 const inWs=()=>tabs.filter(t=>t.ws===curWs());
 async function switchWs(name,dir){await setPref("ws",name);const last=inWs().at(-1);if(last)cur=last.id;else newTab(false,true);
   render();if(sheet==="switcher")drawSwitcher(dir);toast(name)}
@@ -234,7 +235,7 @@ function newTab(priv,quiet){maybeFloat(cur);const t={id:nid++,native:null,url:""
 function select(id,anim){const t=tabs.find(x=>x.id===id);if(!t)return;if(t.ws!==curWs())setPref("ws",t.ws);toolsShow(true);if(id!==cur)maybeFloat(cur);if(floating===t.native){floating=null;native("floatClose",{stop:false}).catch(()=>{})}if(bgMedia===id){bgMedia=null;native("media",{id:t.native,action:"release"}).catch(()=>{})}cur=id;t.last=Date.now();show(null);
   if(anim){const p=$("#pill");p.classList.add(anim);setTimeout(()=>p.classList.remove(anim),180)}
   if(t.url&&!t.native)openNative(t);render()}
-async function openNative(t){try{const r=await inv("open_tab",{input:t.url,private:t.priv});t.native=typeof r==="string"?r:r;render()}catch(e){toast("Couldn’t open that page")}}
+async function openNative(t){try{const r=await inv("open_tab",{input:t.url,private:t.priv,space:spaceOf(t.ws)});t.native=typeof r==="string"?r:r;render()}catch(e){toast("Couldn’t open that page")}}
 function syncNative(){const t=T();inv("switch_tab",{label:!sheet&&!typing&&t&&t.native?t.native:"none"}).catch(()=>{})}
 async function closeTab(id){const t=tabs.find(x=>x.id===id);if(t&&t.native&&floating===t.native){floating=null;native("floatClose",{stop:true}).catch(()=>{})}if(t&&t.native)inv("close_tab",{label:t.native}).catch(()=>{});
   tabs=tabs.filter(x=>x.id!==id);if(!inWs().length)newTab(false,true);else if(cur===id)cur=inWs().at(-1).id;render();saveSession();if(sheet==="switcher")drawSwitcher()}
@@ -242,7 +243,7 @@ function step(d){const w=inWs();if(w.length<2){toast(d>0?"No tab to the right":"
   if(j<0||j>=w.length){toast(d>0?"Last tab":"First tab");return}vibe();select(w[j].id,d>0?"sl":"sr");toast(bare(w[j].url)||"New tab")}
 async function go(v){
   v=v.trim();if(!v)return;const t=T();typing=false;$("#url").blur();progress(true);
-  try{ if(t.native) await inv("navigate",{input:v}); else { t.url=v; t.native=await inv("open_tab",{input:v,private:t.priv}); } }
+  try{ if(t.native) await inv("navigate",{input:v}); else { t.url=v; t.native=await inv("open_tab",{input:v,private:t.priv,space:spaceOf(t.ws)}); } }
   catch(e){progress(false);return toast("Couldn’t open that page")}
   render();
 }
@@ -329,6 +330,7 @@ $("#reload").onclick=()=>{const t=T();if(t&&t.native){progress(true);inv("nav",{
 
 // ---------- events from the Android plugin (window.__hushEvent) ----------
 window.__hushEvent=(name,d)=>{
+  if(name==="linkTab"){const u=d.url;if(!/^https?:/.test(u))return;const keep=cur,t=newTab(false,true);t.url=u;cur=keep;inv("open_tab",{input:u,space:spaceOf(t.ws)}).then(id=>{t.native=id;inv("switch_tab",{label:T().native||"none"});render()});toast("Opened in a background tab");return}
   if(name==="tabUrl"){const t=tabs.find(x=>x.native===d.id);if(!t)return;t.url=d.url;t.title=d.title||t.title;t.canBack=d.canBack;t.canFwd=d.canFwd;
     if(d.state==="finished"){if(!t.priv&&d.url.startsWith("http"))inv("history_add",{url:d.url,title:t.title||bare(d.url)}).catch(()=>{});saveSession()}
     if(d.state==="started"&&!torOn&&/^https?:/.test(d.url)&&listHas("tor_sites",bare(d.url))){setTor(true);toast("🧅 Tor mode on — you set this site to always use Tor")}
@@ -357,7 +359,7 @@ window.__hushEvent=(name,d)=>{
     actions(d.kind==="image"?"Image":u,[
       ...(d.kind==="image"?[]:[["Peek — preview without leaving",()=>native("peek",{url:u}).catch(e=>toast(String(e)))]]),
       ["Open in new tab",()=>{const t=newTab(false,true);t.url=u;openNative(t);render();toast("Opened in new tab")}],
-      ["Open in background",()=>{const keep=cur,t=newTab(false,true);t.url=u;cur=keep;inv("open_tab",{input:u}).then(id=>{t.native=id;inv("switch_tab",{label:T().native||"none"});render()});toast("Opened in background")}],
+      ["Open in background",()=>{const keep=cur,t=newTab(false,true);t.url=u;cur=keep;inv("open_tab",{input:u,space:spaceOf(t.ws)}).then(id=>{t.native=id;inv("switch_tab",{label:T().native||"none"});render()});toast("Opened in background")}],
       ["Open in private tab",()=>{const t=newTab(true,true);t.url=u;openNative(t);render()}],
       ["Copy link",()=>copy(u)],["Show QR code",()=>qrSheet(u)]])}
   else if(name==="icon"){if(typeof d.data==="string"&&d.data.startsWith("data:image/png;base64,")&&d.data.length<20000)saveIcon(d.host||"",d.data)}
@@ -457,9 +459,9 @@ function drawSwitcher(dir){const el=$("#switcher"),list=inWs();
     <div class="cards" id="cards">${list.map(t=>`<div class="card ${t.id===cur?"cur":""} ${t.priv?"priv":""}" data-id="${t.id}">${t.priv?`<span class="tag">private</span>`:""}${t.destruct?`<span class="tag" style="left:auto;right:44px">⏲ ${HX.destructLabel(t)}</span>`:""}<button class="x" data-x="${t.id}" aria-label="Close tab">✕</button>${t.audio||t.muted?`<button class="snd" data-snd="${t.id}" aria-label="${t.muted?"Unmute":"Mute"} tab">${t.muted?MUT:SPK}</button>`:""}
       <div class="shot" ${t.thumb?`style="background-image:url('${esc(t.thumb)}')"`:""}>${t.thumb?"":(t.url?esc((bare(t.url)||"?")[0].toUpperCase()):"hush.")}</div>
       <div class="meta"><b>${esc(t.title||bare(t.url)||"New tab")}</b><small>${t.url?esc(bare(t.url)):"Start page"}</small></div></div>`).join("")}</div>
-    <p class="hint" style="text-align:center">Swipe a card sideways to close it · hold a card for more · swipe here ← → for other workspaces</p>`;
+    <p class="hint" style="text-align:center">Swipe a card sideways to close it · hold a card for more · hold a workspace for its own sign-ins</p>`;
   wire(el);$("#sw-new").onclick=()=>newTab();$("#sw-priv").onclick=()=>newTab(true);
-  el.querySelectorAll("[data-ws]").forEach(b=>b.onclick=()=>switchWs(b.dataset.ws));
+  el.querySelectorAll("[data-ws]").forEach(b=>gesture(b,{tap:()=>switchWs(b.dataset.ws),hold:()=>{const w=b.dataset.ws;actions(w,[[sepWs(w)?"🔐 Own sign-ins: on — turn off":"🔐 Give this workspace its own sign-ins",async()=>{const l=(pref("ws_sep")||"").split("|").filter(Boolean);await setPref("ws_sep",(l.includes(w)?l.filter(x=>x!==w):[...l,w]).join("|"));toast(sepWs(w)?"New tabs in "+w+" keep their own logins":"New tabs in "+w+" share logins")}]])}}));
   el.querySelector("[data-ws-new]").onclick=()=>{const n=prompt("New workspace name");if(n&&n.trim()){const name=n.trim().replace(/\|/g,"").slice(0,24);
     if(!wsList().includes(name))setPref("workspaces",[...wsList(),name].join("|")).then(()=>switchWs(name))}};
   el.querySelectorAll(".card").forEach(c=>{const id=+c.dataset.id;

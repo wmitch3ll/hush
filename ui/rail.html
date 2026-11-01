@@ -88,7 +88,7 @@ function draw(){
   const on=document.querySelector('.t.on');if(on&&!S.collapsed)on.scrollIntoView({block:'nearest',inline:'nearest'});
 }
 function menu(e,id){const t=S.tabs.find(x=>x.id==id);if(!t)return;const m=$('#menu');
-  const items=[['Split view with this tab','split'],[t.muted?'Unmute tab':'Mute tab','mute'],['Duplicate tab','dup'],...(t.destruct?[['Cancel self-destruct','destruct:0']]:[['Self-destruct in 5 min','destruct:5'],['Self-destruct in 15 min','destruct:15'],['Self-destruct in 1 hour','destruct:60']]),['Copy link','copy'],
+  const items=[[t.ess?'Remove from Essentials':'★ Add to Essentials (every workspace)','ess'],['Split view with this tab','split'],[t.muted?'Unmute tab':'Mute tab','mute'],['Duplicate tab','dup'],...(t.destruct?[['Cancel self-destruct','destruct:0']]:[['Self-destruct in 5 min','destruct:5'],['Self-destruct in 15 min','destruct:15'],['Self-destruct in 1 hour','destruct:60']]),['Copy link','copy'],
     ...S.wsList.filter(w=>w!=S.ws).map(w=>['Move to '+w,'move:'+w]),['Close other tabs','others'],['Close tab','close']];
   m.innerHTML=items.map(([l,a])=>`<button data-a="${esc(a)}" role=menuitem>${esc(l)}</button>`).join('');
   m.style.left=Math.min(e.clientX,innerWidth-180)+'px';m.style.top=Math.min(e.clientY,innerHeight-items.length*32-10)+'px';m.classList.add('on');

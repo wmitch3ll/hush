@@ -364,10 +364,16 @@ fn handle_pick(app: &AppHandle, tab: &str, u: &url::Url) {
 }
 
 #[tauri::command]
-pub async fn open_tab(app: AppHandle, input: String, private: Option<bool>, tor: Option<bool>) -> Result<String, String> {
+pub async fn open_tab(app: AppHandle, input: String, private: Option<bool>, tor: Option<bool>, space: Option<String>) -> Result<String, String> {
     if tor.unwrap_or(false) { return make_tab_tor(&app, input, false); }
-    make_tab(&app, input, private.unwrap_or(false), false)
+    // Spaces with their own sign-ins: the tab gets that Space's own profile folder (cookies, storage, logins).
+    let sp: String = space.unwrap_or_default().to_lowercase().chars().filter(|c| c.is_ascii_alphanumeric()).take(24).collect();
+    *SPACE.lock() = sp;
+    let r = make_tab(&app, input, private.unwrap_or(false), false);
+    SPACE.lock().clear();
+    r
 }
+static SPACE: std::sync::LazyLock<parking_lot::Mutex<String>> = std::sync::LazyLock::new(Default::default);
 
 // ---------- Peek: a link opens in a floating card over the page; expand it into a tab or close it ----------
 fn peek_rect(win: &Window) -> (f64, f64, f64, f64) {
@@ -502,7 +508,9 @@ fn make_tab_with(app: &AppHandle, input: String, private: bool, peek: bool, tor:
             .additional_browser_args("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required --force-webrtc-ip-handling-policy=disable_non_proxied_udp --webrtc-ip-handling-policy=disable_non_proxied_udp")
             .browser_extensions_enabled(false)
             .initialization_script("(()=>{for(const k of ['RTCPeerConnection','webkitRTCPeerConnection','RTCDataChannel'])try{delete window[k];Object.defineProperty(window,k,{value:undefined})}catch(e){}})();"),
-        None => builder.additional_browser_args(WV2_ARGS),
+        None => { let sp = SPACE.lock().clone();
+            if !sp.is_empty() && !private { builder.data_directory(app.path().app_data_dir().map_err(|e| e.to_string())?.join("spaces").join(sp)).additional_browser_args(WV2_ARGS) }
+            else { builder.additional_browser_args(WV2_ARGS) } }
     };
     #[cfg(feature = "new-window-api")]
     let builder = builder.on_new_window(|_url, _features| tauri::webview::NewWindowResponse::Deny);

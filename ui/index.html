@@ -240,7 +240,7 @@ const peek=()=>{reveal(true);if(!overBar)scheduleHide()};   // briefly show the 
 function railState(){if(!T.event.emitTo)return;
   const cs=getComputedStyle(document.documentElement),vars={};for(const k of ['--bg','--card','--line','--ink','--mute','--acc','--glow'])vars[k]=cs.getPropertyValue(k).trim();
   const dark=matchMedia('(prefers-color-scheme: dark)').matches?pref('theme')!='light':pref('theme')=='dark';
-  T.event.emitTo('rail','rail-state',{tabs:(typeof inWs=='function'?inWs():tabs).map(t=>({id:t.id,url:t.url,title:t.title||'',priv:t.priv,tor:!!t.tor,destruct:HX.destructLabel(t),sleeping:!!t.sleeping,muted:!!t.muted})),
+  T.event.emitTo('rail','rail-state',{tabs:(typeof inWs=='function'?inWs():tabs).map(t=>({id:t.id,url:t.url,title:t.title||'',priv:t.priv,ess:!!t.ess,tor:!!t.tor,destruct:HX.destructLabel(t),sleeping:!!t.sleeping,muted:!!t.muted})),
     cur,split,pos:pref('tabs_pos'),ws:typeof curWs=='function'?curWs():'Personal',wsList:typeof wsList=='function'?wsList():[],collapsed:pref('tabs_mode')=='auto'&&!revealed&&railOff>.5,
     pinned:pref('tabs_mode')!='auto',previews:pref('previews'),vars,dark}).catch(()=>{})}
 // Clicks and hovers from the tab bar.
@@ -258,6 +258,7 @@ T.event.listen('rail-action',async({payload:a})=>{const t=a.id&&tab(a.id);
     case 'mute':if(t){t.muted=!t.muted;inv('set_muted',{tab:t.id,muted:t.muted});railState()}break;
     case 'destruct':if(t){t.destruct=a.min?Date.now()+a.min*60000:0;toast(a.min?'This tab closes in '+a.min+' min':'Self-destruct off');railState()}break;
     case 'dup':if(t)openTab(t.url,{priv:t.priv,tor:t.tor});break;
+    case 'ess':if(t){t.ess=!t.ess;saveSession();draw();toast(t.ess?'★ In Essentials — shows in every workspace':'Removed from Essentials')}break;
     case 'others':for(const o of inWs().filter(x=>x.id!=a.id))await closeTab(o.id,true);break;
     case 'move':if(t){t.ws=a.ws;if(cur==t.id){cur=inWs().at(-1)?.id??null;if(cur)inv('switch_tab',{label:cur})}draw();sync();saveSession()}break;
     case 'reorder':{const i=tabs.findIndex(x=>x.id==a.from);if(i<0||!tab(a.to))break;const m=tabs.splice(i,1)[0];tabs.splice(tabs.findIndex(x=>x.id==a.to),0,m);draw();saveSession()}break;
@@ -268,7 +269,9 @@ addEventListener('resize',()=>layout(true));
 // ---------- workspaces ----------
 const wsList=()=>pref('workspaces').split('|').filter(Boolean);
 const curWs=()=>wsList().includes(pref('ws'))?pref('ws'):wsList()[0];
-const inWs=()=>tabs.filter(t=>t.ws==curWs());
+// Spaces with their own sign-ins: tabs in these workspaces keep separate cookies and logins.
+const sepWs=w=>(pref('ws_sep')||'').split('|').includes(w);const spaceOf=w=>sepWs(w)?w:'';
+const inWs=()=>{const l=tabs.filter(t=>t.ws==curWs()||t.ess);return [...l.filter(t=>t.ess),...l.filter(t=>!t.ess)]};   // Essentials (★) show in every workspace, first
 async function switchWs(name){await setPref('ws',name);const last=inWs().at(-1);if(last)select(last.id);else{cur=null;draw();sync()}
   $('#ws').textContent=name[0].toUpperCase();toast('Workspace: '+name);peek()}
 async function addWs(name){name=name.trim().replace(/\|/g,'').slice(0,24);if(!name||wsList().includes(name))return;
@@ -311,10 +314,10 @@ function draw(){
   railState();
 }
 async function openTab(v,o={}){closePanel(true);newPending=false;if(!o.background&&!o.quiet)maybeFloat(cur,null);
-  const id=await inv('open_tab',{input:v,private:!!(o.priv||o.tor),tor:!!o.tor});tabs.push({id,url:'',priv:!!(o.priv||o.tor),tor:!!o.tor,ws:o.ws||curWs(),zoom:+pref('zoom')/100,last:Date.now()});
+  const id=await inv('open_tab',{input:v,private:!!(o.priv||o.tor),tor:!!o.tor,space:spaceOf(o.ws||curWs())});tabs.push({id,url:'',priv:!!(o.priv||o.tor),tor:!!o.tor,ws:o.ws||curWs(),zoom:+pref('zoom')/100,last:Date.now()});
   if(pref('zoom')!='100')inv('set_zoom',{factor:+pref('zoom')/100,tab:id}).catch(()=>{});
   if(!o.background){cur=id}draw();layout();sync();if(!o.quiet)peek();return id}
-async function wake(t){const id=await inv('open_tab',{input:t.url,private:t.priv,tor:!!t.tor});const old=t.id;t.id=id;t.sleeping=false;if(cur==old)cur=id;return id}
+async function wake(t){const id=await inv('open_tab',{input:t.url,private:t.priv,tor:!!t.tor,space:spaceOf(t.ws)});const old=t.id;t.id=id;t.sleeping=false;if(cur==old)cur=id;return id}
 function select(id){closePanel(true);const t=tab(id);if(!t)return;maybeFloat(cur,id);t.last=Date.now();if(t.sleeping){wake(t).then(nid=>{cur=nid;draw();sync()});return}if(t.ws!=curWs()){state.settings.ui.ws=t.ws;inv('set_setting',{key:'ui.ws',value:t.ws})}
   cur=id;if(bgMedia==id){bgMedia=null}npDraw();if(split==id){split=null;inv('set_split',{label:null})}inv('switch_tab',{label:id});draw();sync()}
 const closedStack=[];
@@ -327,7 +330,7 @@ function toggleSplit(id){if(id==cur)return toast('Pick a different tab to split 
 function go(v){v=v.trim();if(!v)return;closePanel(true);if(newPending||!tab(cur)||tab(cur).ws!=curWs()){openTab(v,{priv:newPending=='priv'})}else inv('navigate',{input:v});newPending=false;$('#bar').blur()}
 function newTab(priv){newPending=priv?'priv':true;$('#bar').value='';$('#bar').placeholder=priv?'New private tab — nothing is saved':'New tab — search or enter address';$('#bar').focus()}
 let saveT;function saveSession(){if(pref('restore')!='on')return;clearTimeout(saveT);saveT=setTimeout(()=>
-  inv('session_save',{tabs:tabs.filter(t=>!t.priv&&t.url.startsWith('https://')).map(t=>({url:t.url,ws:t.ws}))}).catch(()=>{}),800)}
+  inv('session_save',{tabs:tabs.filter(t=>!t.priv&&t.url.startsWith('https://')).map(t=>({url:t.url,ws:t.ess?'★'+t.ws:t.ws}))}).catch(()=>{}),800)}
 
 // ---------- address bar + suggestions ----------
 let sugSel=0, sugItems=[];
@@ -616,8 +619,9 @@ function paintPalette(){const r=$('#palr');if(!r)return;
 function renderWs(){const p=$('#panel');
   p.innerHTML=`<h2>Workspaces ${closeBtn}</h2><p style="color:var(--mute);margin:-8px 0 14px">Separate sets of tabs — like “Work” and “Personal”.</p>
   ${wsList().map(w=>`<div class=row><div><b>${esc(w)}</b><small>${tabs.filter(t=>t.ws==w).length} tabs${w==curWs()?' · current':''}</small></div>
-    <div class=acts style="display:flex;gap:6px">${w!=curWs()?`<button class=btn data-go="${esc(w)}">Switch</button>`:''}${wsList().length>1?`<button class=btn data-rm="${esc(w)}">Remove</button>`:''}</div></div>`).join('')}
+    <div class=acts style="display:flex;gap:6px"><button class="btn${sepWs(w)?' on':''}" data-sep="${esc(w)}" title="Keep this workspace's sign-ins, cookies and storage separate">${sepWs(w)?'🔐 Own sign-ins':'Shared sign-ins'}</button>${w!=curWs()?`<button class=btn data-go="${esc(w)}">Switch</button>`:''}${wsList().length>1?`<button class=btn data-rm="${esc(w)}">Remove</button>`:''}</div></div>`).join('')}
   <div class=row><input class=txt id=wsname placeholder="New workspace name" style="margin:0"><button class=btn id=wsadd>Add</button></div>`;
+  p.querySelectorAll('[data-sep]').forEach(b=>b.onclick=async()=>{const w=b.dataset.sep,l=(pref('ws_sep')||'').split('|').filter(Boolean);await setPref('ws_sep',(l.includes(w)?l.filter(x=>x!=w):[...l,w]).join('|'));toast(sepWs(w)?'🔐 New tabs in '+w+' get their own sign-ins':'New tabs in '+w+' share sign-ins');renderWs()});
   p.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{closePanel();switchWs(b.dataset.go)});
   p.querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{if(confirm('Remove “'+b.dataset.rm+'” and close its tabs?')){await removeWs(b.dataset.rm);renderWs()}});
   $('#wsadd').onclick=async()=>{await addWs($('#wsname').value);closePanel()};$('#wsname').onkeydown=e=>{if(e.key=='Enter')$('#wsadd').click()};wire(p)}
@@ -819,7 +823,7 @@ async function loadState(first){try{state=await inv('get_state');state.settings.
     a.innerHTML='<i></i><span></span>';a.querySelector('i').textContent=h[0]||'•';a.querySelector('span').textContent=b.title||h;a.title=b.url+'\nRight-click to remove';
     a.onclick=()=>openTab(b.url);a.oncontextmenu=async e=>{e.preventDefault();if(confirm('Remove bookmark '+(b.title||h)+'?')){await inv('bookmark_remove',{url:b.url});loadState()}};box.append(a)});
   layout(true);draw();if(!$('#home').hidden&&!document.activeElement?.closest?.('.hx-home'))renderHome();
-  if(first&&pref('restore')=='on'&&state.session?.length&&!tabs.length){for(const t of state.session)await openTab(t.url,{ws:wsList().includes(t.ws)?t.ws:curWs(),quiet:true,background:true});
+  if(first&&pref('restore')=='on'&&state.session?.length&&!tabs.length){for(const t of state.session){const ess=(t.ws||'').startsWith('★'),w=ess?t.ws.slice(1):t.ws;await openTab(t.url,{ws:wsList().includes(w)?w:curWs(),quiet:true,background:true});if(ess&&tabs.length)tabs[tabs.length-1].ess=true}
     const last=inWs().at(-1);if(last)select(last.id);toast('Restored '+state.session.length+' tabs')}
 }catch(e){console.error(e)}}
 layout(true);draw();loadState(true).then(()=>{if(!state.settings.ui.toured)openPanel('tour')});$('#bar').focus();

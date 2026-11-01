@@ -359,7 +359,7 @@ async fn set_setting(app: AppHandle, key: String, value: String) -> Result<(), S
         // Free-form UI preferences (layout, auto-hide, density...). The UI owns their meaning; Rust only stores them.
         k if k.starts_with("ui.") => {
             let name = &k[3..];
-            let max = if matches!(name, "bangs" | "focus_sites" | "workspaces" | "fp_off" | "tor_sites" | "js_allow" | "spaces" | "essentials" | "tab_notes") { 4000 } else { 200 };
+            let max = if matches!(name, "bangs" | "focus_sites" | "workspaces" | "fp_off" | "tor_sites" | "js_allow" | "spaces" | "essentials" | "tab_notes" | "ws_sep") { 4000 } else { 200 };
             if name.is_empty() || name.len() > 40 || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') || value.len() > max {
                 return Err("invalid ui setting".into());
             }
