@@ -11,3 +11,5 @@ export { entropyToMnemonic, mnemonicToEntropy, validateMnemonic } from '@scure/b
 export { wordlist as bip39English } from '@scure/bip39/wordlists/english';
 // QR scanner for Hush Cards (jsQR, Apache-2.0) — works where the browser has no built-in BarcodeDetector (Windows).
 export { default as jsQR } from 'jsqr';
+// Post-quantum layer for Murmur 1-to-1 messages: ML-KEM-768 (FIPS 203), noble-post-quantum (MIT) by Paul Miller.
+export { ml_kem768 } from '@noble/post-quantum/ml-kem.js';

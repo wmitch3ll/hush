@@ -50,10 +50,27 @@ window.HushMsg = function (A) {
     if (!k && /^[0-9a-f]{64}$/.test(legacy)) { try { await A.secret.set('murmur-key', legacy); k = legacy; } catch { k = legacy; } }
     if (k && legacy) { try { if (await A.secret.get('murmur-key') === legacy) localStorage.removeItem('hush.msg.key'); } catch {} }
     keyTried = true;
-    if (k && /^[0-9a-f]{64}$/.test(k)) { sk = unhex(k); me = N.getPublicKey(sk); }
+    if (k && /^[0-9a-f]{64}$/.test(k)) { sk = unhex(k); me = N.getPublicKey(sk); await loadPq(); }
     return !!sk;
   }
-  async function useKey(k) { await A.secret.set('murmur-key', k); sk = unhex(k); me = N.getPublicKey(sk); }
+  async function useKey(k, pqHex) { await A.secret.set('murmur-key', k); sk = unhex(k); me = N.getPublicKey(sk); if (pqHex) await A.secret.set('murmur-pq', pqHex).catch(() => {}); await loadPq(); }
+  // ---------------------------------------------------------------- Post-quantum layer (ML-KEM-768, like Signal's)
+  // Each device keeps an ML-KEM key pair in the OS vault and shares the public half with contacts in the (encrypted)
+  // profile card. 1-to-1 messages are then locked twice: first with a fresh key carried by ML-KEM, then sealed and
+  // gift-wrapped as usual (NIP-44/59). Someone recording traffic today would need to break both, even with a quantum computer.
+  const n44 = () => N.nip44.v2 || N.nip44;
+  let pq = null;   // { pk: Uint8Array, sk: Uint8Array, hex: string }
+  async function loadPq() { if (pq || !N.ml_kem768) return;
+    let h = null; try { h = await A.secret.get('murmur-pq'); } catch {}
+    if (!h || !/^[0-9a-f]+$/.test(h)) { const kp = N.ml_kem768.keygen(); h = hex(kp.publicKey) + ':' + hex(kp.secretKey); }
+    if (!h.includes(':')) return; const [p1, s1] = h.split(':'); pq = { pk: unhex(p1), sk: unhex(s1), hex: h }; try { await A.secret.set('murmur-pq', h); } catch {} }
+  const pqOn = key => !!(pq && N.ml_kem768 && prefs().pq !== false && !isGroup(key) && key !== 'self' && /^[0-9a-f]{2368}$/.test(contacts()[key]?.pq || ''));
+  function pqSeal(key, content) { const K = crypto.getRandomValues(new Uint8Array(32)), r = [];
+    for (const pkHex of [contacts()[key].pq, hex(pq.pk)]) { const { cipherText, sharedSecret } = N.ml_kem768.encapsulate(unhex(pkHex)); r.push({ c: btoa(String.fromCharCode(...cipherText)), k: n44().encrypt(hex(K), sharedSecret) }); }
+    return JSON.stringify({ v: 1, r, d: n44().encrypt(String(content || '') || ' ', K) }); }
+  function pqOpen(content) { if (!pq) return null; let j; try { j = JSON.parse(content); } catch { return null; } if (!j || j.v !== 1 || !Array.isArray(j.r)) return null;
+    for (const e of j.r.slice(0, 4)) { try { const ct = Uint8Array.from(atob(e.c), ch => ch.charCodeAt(0)), ss = N.ml_kem768.decapsulate(ct, pq.sk); const K = unhex(n44().decrypt(e.k, ss)); const t = n44().decrypt(j.d, K); return t === ' ' ? '' : t; } catch {} }
+    return null; }
   async function createKey() { await useKey(hex(N.generateSecretKey())); LS.set('since', now() - 3 * 86400); }
   const npub = pk => { try { return N.nip19.npubEncode(pk); } catch { return pk; } };
   const inviteOf = s => (String(s || '').match(/[?&]i=([0-9a-f]{16})/) || [])[1] || null;
@@ -165,6 +182,7 @@ window.HushMsg = function (A) {
     const ps = r.tags.filter(t => t[0] === 'p').map(t => t[1]).filter(p => /^[0-9a-f]{64}$/.test(p));
     const key = keyOf([r.pubkey, ...ps]) || (r.pubkey === me ? 'self' : ''); if (!key) return;
     if (members(key).some(pk => contacts()[pk]?.blocked) && !isGroup(key)) return;
+    if ((r.kind === 14 || r.kind === 15) && r.tags.some(t => t[0] === 'hush-pq')) { const pt = pqOpen(r.content); r = { ...r, content: pt == null ? '🔒 This message used post-quantum encryption that this device can’t open (restore your backup or link this device again).' : pt, pqOk: pt != null }; }
     const mine = r.pubkey === me, tag = n => (r.tags.find(t => t[0] === n) || []);
     const subject = tag('subject')[1];
     if (isGroup(key) && subject) { const g = groups(); if (g[key]?.name !== subject.slice(0, 60)) { g[key] = { ...(g[key] || {}), name: subject.slice(0, 60) }; LS.set('groups', g); } }
@@ -178,7 +196,7 @@ window.HushMsg = function (A) {
     if (nm && !mine) { const c = contacts(); if (!c[r.pubkey]?.named && c[r.pubkey]?.name !== nm.slice(0, 40)) { c[r.pubkey] = { ...(c[r.pubkey] || {}), name: nm.slice(0, 40), added: c[r.pubkey]?.added || Date.now(), ...(c[r.pubkey] ? {} : isGroup(key) ? { auto: true } : { request: true }) }; LS.set('contacts', c); } }
     if (r.kind === K_PCARD) { if (mine) return; const c = contacts(); if (!c[r.pubkey] || c[r.pubkey].blocked) return;
       try { const j = JSON.parse(r.content); const okm = m => m && /^[0-9a-f]{64}$/.test(m.x || '') && /^https:\/\//.test(m.url || '') ? m : null;
-        c[r.pubkey] = { ...c[r.pubkey], status: String(j.status || '').slice(0, 80), aura: /^#[0-9a-f]{6}$/i.test(j.aura || '') ? j.aura : '', avatar: okm(j.avatar), banner: okm(j.banner), cardAt: r.created_at,
+        c[r.pubkey] = { ...c[r.pubkey], pq: /^[0-9a-f]{2368}$/.test(j.pq || '') ? j.pq : (c[r.pubkey].pq || null), status: String(j.status || '').slice(0, 80), aura: /^#[0-9a-f]{6}$/i.test(j.aura || '') ? j.aura : '', avatar: okm(j.avatar), banner: okm(j.banner), cardAt: r.created_at,
           ...(c[r.pubkey].named || !j.name ? {} : { name: String(j.name).slice(0, 40) }) }; LS.set('contacts', c); if (view.open) repaint(); } catch {} return; }
     if (r.kind === K_TOG) { if (mine || now() - r.created_at > 120) return; try { together.remote(key, r.pubkey, JSON.parse(r.content)); } catch {} return; }
     if (r.kind === K_TYPING) { if (!mine && now() - r.created_at < 20) { (typing[key] = typing[key] || {})[r.pubkey] = Date.now() + 7000; if (view.open && view.chat === key) paintTyping(); setTimeout(() => view.open && view.chat === key && paintTyping(), 7100); } return; }
@@ -287,6 +305,7 @@ window.HushMsg = function (A) {
   const wrapFor = (rumor, pk) => N.nip59.createWrap(N.nip59.createSeal(rumor, sk, pk), pk);
   function publish(key, kind, content, extra = [], opt = {}) {
     const to = members(key), tags = [...to.map(p => ['p', p]), ...extra];
+    if ((kind === 14 || kind === 15) && pqOn(key)) { content = pqSeal(key, content); tags.push(['hush-pq', '1']); }
     if (kind === 14 && contacts()[key]?.invite && !contacts()[key]?.inviteAck) tags.push(['hush-invite', contacts()[key].invite]);
     if (kind === 14 && chatSet(key).ttl && !extra.some(t => /^hush-(edit|unsend|pin|ttlset|protect)$/.test(t[0]))) tags.push(['hush-ttl', String(chatSet(key).ttl)]);
     if (kind === 14 && profile().name) tags.push(['hush-name', profile().name.slice(0, 40)]);
@@ -1038,7 +1057,7 @@ window.HushMsg = function (A) {
       view.el.querySelector('#hm-words').innerHTML = `<ol class=hm-words>${w.map(x => `<li>${esc(x)}</li>`).join('')}</ol>`; view.el.querySelector('#hm-sw').remove(); };
     const doBackup = async (a, words) => {
       const extra = {}; for (const f of hooks.backup) { try { Object.assign(extra, await f()); } catch {} }
-      const data = { v: 1, key: hex(sk), contacts: contacts(), groups: groups(), profile: profile(), prefs: prefs(), relays: relays(), hosts: hosts(), extra, at: Date.now() };
+      const data = { v: 1, key: hex(sk), pq: pq ? pq.hex : null, contacts: contacts(), groups: groups(), profile: profile(), prefs: prefs(), relays: relays(), hosts: hosts(), extra, at: Date.now() };
       const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12)), it = 600000;
       const enc = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await pbkdf(a, salt, it), new TextEncoder().encode(JSON.stringify(data))));
       let b64 = ''; for (let i = 0; i < enc.length; i += 8192) b64 += String.fromCharCode.apply(null, enc.subarray(i, i + 8192));
@@ -1051,7 +1070,7 @@ window.HushMsg = function (A) {
       if (a.length < 8) return A.toast('Use at least 8 characters'); if (a !== b) return A.toast('Passwords don’t match'); if (!await askPin('Enter your PIN to make a backup')) return; doBackup(a, false); };
     view.el.querySelector('#hm-bw').onclick = async () => { if (!await askPin('Enter your PIN to make a backup')) return; doBackup(N.entropyToMnemonic(sk, N.bip39English), true); };
   }
-  async function finishRestore(k, data, msg) { await useKey(k); if (data) { LS.set('contacts', data.contacts || {}); LS.set('groups', data.groups || {}); if (data.profile) LS.set('profile', data.profile);
+  async function finishRestore(k, data, msg) { await useKey(k, data && /^[0-9a-f]+:[0-9a-f]+$/.test(data.pq || '') ? data.pq : null); if (data) { LS.set('contacts', data.contacts || {}); LS.set('groups', data.groups || {}); if (data.profile) LS.set('profile', data.profile);
       if (data.prefs) LS.set('prefs', data.prefs); if (data.chats && typeof data.chats === 'object') LS.set('chats', { ...chats(), ...data.chats });
       for (const f of hooks.restore) { try { await f(data.extra || {}); } catch {} } }
     LS.set('since', now() - 14 * 86400); view.screen = 'list'; start(); badge(); repaint(); A.toast(msg || 'Welcome back — your Hush ID is restored'); }
@@ -1113,7 +1132,7 @@ window.HushMsg = function (A) {
     try {
       const extra = {}; for (const f of hooks.backup) { try { Object.assign(extra, await f()); } catch {} }
       const ch = {}; for (const [k, l] of Object.entries(chats())) ch[k] = l.filter(m => !m.file && !m.unsent && !m.once).slice(-300);
-      const data = { v: 1, key: hex(sk), contacts: contacts(), groups: groups(), profile: profile(), prefs: prefs(), relays: relays(), hosts: hosts(), chats: ch, extra, at: Date.now() };
+      const data = { v: 1, key: hex(sk), pq: pq ? pq.hex : null, contacts: contacts(), groups: groups(), profile: profile(), prefs: prefs(), relays: relays(), hosts: hosts(), chats: ch, extra, at: Date.now() };
       const code = String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000)), salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
       const enc = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await pbkdf(code, salt, 300000), new TextEncoder().encode(JSON.stringify(data)));
       const meta = await uploadEncrypted(new Blob([enc], { type: 'application/octet-stream' }));
@@ -1226,9 +1245,9 @@ window.HushMsg = function (A) {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && view.open && view.screen === 'chat') sendRead(view.chat); });
   // Background: once set up, stay connected (through Tor) so messages arrive while you browse.
   // Share my profile card with every contact who hasn't got the latest one (on start, after edits, and to new contacts).
-  function shareCard(force) { if (!sk) return; const p = profile(), ver = JSON.stringify([p.name, p.status, p.aura, p.avatar?.x, p.banner?.x]);
+  function shareCard(force) { if (!sk) return; const p = profile(), ver = JSON.stringify([p.name, p.status, p.aura, p.avatar?.x, p.banner?.x, pq ? hex(pq.pk).slice(0, 16) : '']);
     const sent = LS.get('cardSent', {}), to = Object.keys(contacts()).filter(k => !contacts()[k].blocked && !contacts()[k].request && (force || sent[k] !== ver));
-    if (!to.length) return; wrapTo(to, K_PCARD, JSON.stringify({ name: p.name, status: p.status || '', aura: p.aura || '', avatar: p.avatar || null, banner: p.banner || null }));
+    if (!to.length) return; wrapTo(to, K_PCARD, JSON.stringify({ name: p.name, status: p.status || '', aura: p.aura || '', avatar: p.avatar || null, banner: p.banner || null, pq: pq ? hex(pq.pk) : null }));
     to.forEach(k => sent[k] = ver); LS.set('cardSent', sent); }
   async function boot() { if (!N) return; if (await loadKey()) { start(); badge(); setTimeout(() => shareCard(), 8000); } }
   return { api, open, close, boot, unread: unreadTotal, addFromLink: async s => { const pk = parseId(s); if (!pk || !await loadKey()) return false; addContact(pk, null, inviteOf(s)); return pk; }, ready: () => !!N };
