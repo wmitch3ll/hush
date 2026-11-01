@@ -214,9 +214,10 @@ function toolsShow(on){if(pref("toolbar")==="off"||on===!toolsHidden)return;tool
   if(on){document.body.classList.remove("tools-hide");insets()}            // make room first, then slide in
   else{document.body.classList.add("tools-hide");toolsT=setTimeout(insets,190)}}   // slide out, then give the page the space
 function insets(){
-  const a=$("#app").getBoundingClientRect(), b=$("#top").getBoundingClientRect(), k=ANDROID?devicePixelRatio:1, bottom=pref("bar_pos")==="bottom";
-  const cs=getComputedStyle($("#app")), top=bottom?a.top+parseFloat(cs.paddingTop):b.bottom;
-  const bot=bottom?innerHeight-b.top:innerHeight-a.bottom+parseFloat(cs.paddingBottom);
+  // The page fills exactly the space between the bars: measure that area itself, so the address bar AND the
+  // bottom button row (back / tabs / menu) are always left uncovered, whichever way round they sit.
+  const v=$("#view").getBoundingClientRect(), k=ANDROID?devicePixelRatio:1;
+  const top=v.top, bot=innerHeight-v.bottom;
   inv("set_chrome_inset",{px:Math.round(top*k),bottom:Math.round(Math.max(0,bot)*k)}).catch(()=>{});
 }
 addEventListener("resize",()=>insets());
