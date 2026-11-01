@@ -241,6 +241,15 @@ fn show_only(app: &AppHandle, label: &str) {
     raise_rail(app);
 }
 
+/// The current tab's text, for the on-device assistant (summaries stay on this computer).
+#[tauri::command]
+pub async fn page_text(app: AppHandle) -> Result<String, String> {
+    let l = app.state::<AppState>().active.lock().clone().ok_or("no tab")?;
+    let w = app.get_webview(&l).ok_or("no tab")?;
+    #[cfg(windows)] { let (tx, rx) = std::sync::mpsc::channel(); crate::intercept_win::page_text(&w, tx);
+        return tauri::async_runtime::spawn_blocking(move || rx.recv_timeout(std::time::Duration::from_secs(8)).map_err(|_| "The page didn’t answer".to_string())).await.map_err(|e| e.to_string())?; }
+    #[cfg(not(windows))] { let _ = w; Err("Not available on this system".into()) }
+}
 static SPLIT_MORE: std::sync::LazyLock<parking_lot::Mutex<Vec<String>>> = std::sync::LazyLock::new(Default::default);
 /// Split view with 3–4 tabs: up to two more tabs below the first two (empty list = back to two).
 #[tauri::command]
@@ -472,6 +481,8 @@ fn make_tab_with(app: &AppHandle, input: String, private: bool, peek: bool, tor:
     // Loop guard for the https upgrade: if the same http URL comes back right after we upgraded it
     // (site redirects https -> http), stop instead of bouncing forever. TODO(R-20): show an interstitial.
     let last_upgrade = std::sync::Arc::new(parking_lot::Mutex::new(String::new()));
+    // The page this tab is on, so a jump to another site can be checked against the popup-ad lists (EasyList $popup).
+    let cur_page = std::sync::Arc::new(parking_lot::Mutex::new(String::new()));
     let upgrade_reset = last_upgrade.clone();
 
     let builder = WebviewBuilder::new(&label, WebviewUrl::External(url))
@@ -517,7 +528,16 @@ fn make_tab_with(app: &AppHandle, input: String, private: bool, peek: bool, tor:
                     let _ = app_nav.emit_to("chrome", "focus-blocked", serde_json::json!({ "tab": lbl_nav, "url": u.as_str() }));
                     return false;
                 }
-                !b_nav.check_request(u.as_str(), u.as_str(), "document")
+                if b_nav.check_request(u.as_str(), u.as_str(), "document") { return false; }
+                // Popup / redirect ads: a page (or its video player) sending the whole tab to an ad network.
+                let from = cur_page.lock().clone();
+                let host = |s: &str| url::Url::parse(s).ok().and_then(|x| x.host_str().map(|h| h.trim_start_matches("www.").to_string())).unwrap_or_default();
+                if !from.is_empty() && host(&from) != host(u.as_str()) && b_nav.check_request(u.as_str(), &from, "popup") {
+                    let _ = app_nav.emit_to("chrome", "popup-blocked", serde_json::json!({ "tab": lbl_nav, "url": u.as_str() }));
+                    return false;
+                }
+                *cur_page.lock() = u.as_str().to_string();
+                true
             }
             // Scheme allowlist (R-55): everything else (file:, javascript:, intent:, tauri:, asset:, ipc:, custom app
             // schemes) is refused so a web page can never steer a tab into local files or the app's own origin.

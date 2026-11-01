@@ -204,6 +204,8 @@ pub fn boost_js(url: &str) -> String {
         serde_json::to_string(&css).unwrap_or("''".into()))
 }
 /// Only these named actions can be run in a page; `arg` is JSON-encoded, so it can't break out of the string.
+/// What the assistant reads from a page: title + main text, at most 24k characters.
+pub const PAGE_TEXT_JS: &str = "(()=>{const m=document.querySelector('article,main,[role=main]')||document.body;return (document.title+'\\n\\n'+(m?m.innerText:'')).replace(/\\n{3,}/g,'\\n\\n').slice(0,24000)})()";
 /// Fingerprint protection page script (see uniform.js).
 pub const UNIFORM_JS: &str = include_str!("uniform.js");
 #[cfg(test)]
@@ -599,7 +601,7 @@ pub fn run() {
             desktop::toggle_fullscreen, desktop::capture_tab, desktop::peek_open, desktop::peek_close, desktop::peek_expand,
             desktop::screenshot, desktop::save_png, boost_set, remove_custom_filter, bookmarks_reorder,
             extensions::extension_list, extensions::extension_install, extensions::extension_remove,
-            desktop::arc_import, desktop::set_split_more, desktop::open_tab, desktop::switch_tab, desktop::close_tab, desktop::navigate, desktop::nav,
+            desktop::arc_import, desktop::set_split_more, desktop::page_text, desktop::open_tab, desktop::switch_tab, desktop::close_tab, desktop::navigate, desktop::nav,
             desktop::clear_data, desktop::start_picker, desktop::set_layout, desktop::show_content,
             desktop::download_open, desktop::download_reveal, desktop::float_tab, desktop::float_close, tor::tor_start, tor::tor_new_identity, tor::tor_state, watch_check, msgnet::msg_ws_open, msgnet::msg_ws_send, msgnet::msg_ws_close, msgnet::blob_put, msgnet::blob_get, msgnet::secret_set, msgnet::secret_get, msgnet::secret_del])
         .setup(desktop::setup);

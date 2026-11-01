@@ -330,6 +330,7 @@ $("#reload").onclick=()=>{const t=T();if(t&&t.native){progress(true);inv("nav",{
 
 // ---------- events from the Android plugin (window.__hushEvent) ----------
 window.__hushEvent=(name,d)=>{
+  if(name==="popupBlocked"){HX.bump("pop");toast("🚫 Blocked a popup ad — you stayed on the page");return}
   if(name==="linkTab"){const u=d.url;if(!/^https?:/.test(u))return;const keep=cur,t=newTab(false,true);t.url=u;cur=keep;inv("open_tab",{input:u,space:spaceOf(t.ws)}).then(id=>{t.native=id;inv("switch_tab",{label:T().native||"none"});render()});toast("Opened in a background tab");return}
   if(name==="tabUrl"){const t=tabs.find(x=>x.native===d.id);if(!t)return;t.url=d.url;t.title=d.title||t.title;t.canBack=d.canBack;t.canFwd=d.canFwd;
     if(d.state==="finished"&&torOn)HX.bump("tor");
@@ -389,7 +390,7 @@ function qrSheet(u){const el=$("#site");el.innerHTML=head("Scan to open")+`<div 
 let listenSt="",lRate=1,torOn=false,floating=null;
 function torInfo(){$("#xs").innerHTML=head("What is Tor?")+'<div style="padding:0 6px 24px">'+HX.TOR_INFO+'</div>';wire($("#xs"));show("xs")}
 // Hush Messenger (full-screen sheet). Stays connected through Tor in the background once set up.
-const HM=HushMsg({haptic:vibe,inv,secret:{get:n=>native('secretGet',{name:n}).then(r=>r&&typeof r.value==='string'?r.value:null),set:(n,v)=>native('secretSet',{name:n,value:v}),del:n=>native('secretDel',{name:n})},biometric:()=>native('biometric'),invRaw:(c,d,h)=>window.__TAURI__.core.invoke(c,d,{headers:h}),listen:(e,f)=>window.__TAURI__.event.listen(e,f),toast,mobile:true,open:u=>{show(null);newTab(false,true);go(u)},
+const HM=HushMsg({ai:{ready:()=>HX.ai.status()==="ready",ask:(p,on)=>HX.ai.ask(p,on,200)},haptic:vibe,inv,secret:{get:n=>native('secretGet',{name:n}).then(r=>r&&typeof r.value==='string'?r.value:null),set:(n,v)=>native('secretSet',{name:n,value:v}),del:n=>native('secretDel',{name:n})},biometric:()=>native('biometric'),invRaw:(c,d,h)=>window.__TAURI__.core.invoke(c,d,{headers:h}),listen:(e,f)=>window.__TAURI__.event.listen(e,f),toast,mobile:true,open:u=>{show(null);newTab(false,true);go(u)},
   page:()=>{const t=T();return t&&t.native&&!t.priv&&/^https?:/.test(t.url)?{url:t.url}:null},
   badge:n=>{for(const b of [$("#menu-btn"),$("#tb-menu")]){b.classList.toggle("msgdot",n>0);b.dataset.n=n>99?"99+":n}},qr:s=>{try{return hushQR.svg(s)}catch(e){return ""}},close:()=>{HM.close();show(null)},
   onIncoming:(key,txt,color)=>{if(sheet==="msgs")return;bubbleKey=key;native("bubble",{show:true,text:txt,color}).catch(()=>{})},
@@ -403,7 +404,7 @@ var bubbleKey=null;var splitWith=null;
 function openMsgs(chat){native("bubble",{show:false}).catch(()=>{});show("msgs");HM.open($("#msgs"),typeof chat==="string"?chat:null)}
 const EC=HushEcho({haptic:vibe,M:HM.api,toast,mobile:true,page:()=>{const t=T();return t&&t.native&&!t.priv&&/^https?:/.test(t.url)?{url:t.url}:null},open:u=>{show(null);newTab(false,true);go(u)},close:()=>{EC.close();show(null)},openMurmur:pk=>{EC.close();openMsgs(pk||null)},badge:n=>{}});
 function openEcho(){show("echos");EC.open($("#echos"))}
-setTimeout(()=>{EC.boot();setInterval(noteDraw,4000)},3000);
+setTimeout(()=>{EC.boot();setInterval(noteDraw,4000)},3000);setTimeout(()=>HX.ai.start(),6000);
 setTimeout(()=>HM.boot(),2000);
 // Floating video: leave a tab that's playing and it keeps going in a small player you can drag and resize.
 // Leaving a tab that's playing: Ask / Mini player / Keep playing / Stop (Settings › When you leave a playing video).
@@ -564,7 +565,7 @@ function openCmd(){vibe();const el=$("#cmd");
     ["Site settings & QR",()=>{if(T()?.native){drawSite();show("site")}}],["All tabs",openSwitcher],["History",()=>{drawHistory();show("history")}],
     ["Downloads",()=>{drawDownloads();show("downloads")}],["Settings",()=>{drawSettings();show("settings")}],
     ["Reading list",()=>{drawReading();show("reading")}],["Focus mode",()=>{drawFocus();show("focus")}],["Voice search",()=>{show(null);voice()}],
-    ["Save page as PDF",()=>{show(null);native("printPage")}],["Pop-out video (picture-in-picture)",()=>{show(null);native("pip")}],["About & updates",()=>{drawAbout();show("about")}],["Close tab",()=>{show(null);closeTab(cur)}],["Close split screen",()=>{splitWith=null;native("splitTab",{id:""}).catch(()=>{});show(null)}],["Sleep timer for this video",()=>{show(null);actions("Pause the video in…",[[15,"15 min"],[30,"30 min"],[60,"1 hour"],[0,"Off"]].map(([n,l])=>[l,()=>{clearTimeout(window.__sleepT);if(!n)return toast("Sleep timer off");window.__sleepT=setTimeout(()=>{inv("page_action",{action:"media-pause"}).catch(()=>{});toast("😴 Paused")},n*60000);toast("😴 Pausing in "+l)}]))}],["Send this page to a friend",()=>{const t=T();if(!t||!/^https?:/.test(t.url))return toast("Open a page first");const l=(()=>{try{return HM.api.chatList()}catch(e){return[]}})();if(!l.length){openMsgs();return toast("Add a friend in Murmur first")}actions("Send to…",l.slice(0,20).map(c=>[c.name,()=>{HM.api.sendTo(c.key,t.url);toast("🔒 Sent privately through Tor")}]))}],["Panic: close private tabs, lock Murmur",()=>panic()],
+    ["Save page as PDF",()=>{show(null);native("printPage")}],["Pop-out video (picture-in-picture)",()=>{show(null);native("pip")}],["About & updates",()=>{drawAbout();show("about")}],["Close tab",()=>{show(null);closeTab(cur)}],["✨ Assistant (on this device)",()=>{$("#xs").innerHTML=head("Assistant");const d=document.createElement("div");$("#xs").append(d);wire($("#xs"));HX.assistant(d,{pageText:()=>native("pageText").then(r=>r&&r.text||"")});show("xs")}],["Close split screen",()=>{splitWith=null;native("splitTab",{id:""}).catch(()=>{});show(null)}],["Sleep timer for this video",()=>{show(null);actions("Pause the video in…",[[15,"15 min"],[30,"30 min"],[60,"1 hour"],[0,"Off"]].map(([n,l])=>[l,()=>{clearTimeout(window.__sleepT);if(!n)return toast("Sleep timer off");window.__sleepT=setTimeout(()=>{inv("page_action",{action:"media-pause"}).catch(()=>{});toast("😴 Paused")},n*60000);toast("😴 Pausing in "+l)}]))}],["Send this page to a friend",()=>{const t=T();if(!t||!/^https?:/.test(t.url))return toast("Open a page first");const l=(()=>{try{return HM.api.chatList()}catch(e){return[]}})();if(!l.length){openMsgs();return toast("Add a friend in Murmur first")}actions("Send to…",l.slice(0,20).map(c=>[c.name,()=>{HM.api.sendTo(c.key,t.url);toast("🔒 Sent privately through Tor")}]))}],["Panic: close private tabs, lock Murmur",()=>panic()],
     ...wsList().filter(w=>w!==curWs()).map(w=>["Workspace: "+w,()=>{show(null);switchWs(w)}])];
   el.innerHTML=head("Commands")+`<input class="txt" id="cmdq" placeholder="Type a command, tab or site" autocapitalize="off" spellcheck="false"><div class="sug" id="cmdr" style="padding:0"></div>`;
   wire(el);show("cmd");const q=$("#cmdq");setTimeout(()=>q.focus(),60);

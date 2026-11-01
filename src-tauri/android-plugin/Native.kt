@@ -9,6 +9,8 @@ object Native {
     external fun scriptletJs(): String
     /** True when Focus mode is on and this page's site is on the focus list. */
     external fun focusBlock(url: String): Boolean
+    /** Script that returns the page title + main text (assistant). */
+    external fun pageTextJs(): String
     /** Popup / click-jack guard + link cleanup, run at document start. */
     external fun hardenJs(): String
     /** Security levels: may this page run JavaScript? */

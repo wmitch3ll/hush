@@ -42,11 +42,18 @@
     else if (e.ctrlKey || e.metaKey) { e.preventDefault(); e.stopImmediatePropagation(); report("tab", href); } }, true);
   addEventListener("auxclick", e => { if (!e.isTrusted || e.button !== 1) return; const href = linkOf(e); if (href) { e.preventDefault(); report("tab", href); } }, true);
   // window.open: only after a real click (<1s) and never as a window; same-origin opens in place, others denied.
-  window.open = function (u) {
+  const guardOpen = function (u) {
     if (Date.now() - last > 1000 || !u) return null;
     try { const t = new URL(u, location.href); if (t.origin === location.origin) location.href = t.href; } catch (_) {}
     return null;
   };
+  window.open = guardOpen;
+  // Ad scripts grab a fresh, unguarded window.open from a hidden blank frame: guard every frame's open too.
+  try { const d = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, "contentWindow");
+    Object.defineProperty(HTMLIFrameElement.prototype, "contentWindow", { configurable: true, get() { const w = d.get.call(this); try { if (w && w.open !== guardOpen) w.open = guardOpen; } catch (_) {} return w; } });
+    const fd = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, "contentDocument");
+    if (fd) Object.defineProperty(HTMLIFrameElement.prototype, "contentDocument", { configurable: true, get() { const doc = fd.get.call(this); try { if (doc && doc.defaultView && doc.defaultView.open !== guardOpen) doc.defaultView.open = guardOpen; } catch (_) {} return doc; } });
+  } catch (_) {}
   try { const u = new URL(location.href);
     ["fbclid","gclid","utm_source","utm_medium","utm_campaign","utm_term","utm_content","mc_eid","msclkid"].forEach(k => u.searchParams.delete(k));
     if (u.href !== location.href) history.replaceState(null, "", u.href); } catch (_) {}

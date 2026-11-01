@@ -29,3 +29,31 @@ jobs:
       - run: |
           git config user.name "hush-bot"; git config user.email "hush-bot@users.noreply.github.com"
           git add ui/vendor/nostr.js && git commit -m "Vendor nostr-tools bundle for the messenger" && git push || echo "no change"
+  ai:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Bundle Transformers.js (assistant)
+        shell: bash
+        run: |
+          set -o pipefail
+          {
+          mkdir -p /tmp/a && cd /tmp/a && npm init -y >/dev/null && npm i @huggingface/transformers@4 esbuild@0.24
+          cp "$GITHUB_WORKSPACE/tools/ai-entry.mjs" entry.mjs
+          mkdir -p "$GITHUB_WORKSPACE/ui/vendor/ort"
+          npx esbuild entry.mjs --bundle --format=esm --platform=browser --minify --target=es2022 --legal-comments=inline \
+            --external:onnxruntime-node --external:sharp --outfile="$GITHUB_WORKSPACE/ui/vendor/transformers.mjs"
+          ORT=$(node -p "require('onnxruntime-web/package.json').version"); echo "onnxruntime-web $ORT"
+          ls node_modules/onnxruntime-web/dist/ | grep -E 'jsep|asyncify|webgpu' || true
+          for f in node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.mjs node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.mjs; do [ -f "$f" ] && cp "$f" "$GITHUB_WORKSPACE/ui/vendor/ort/"; done
+          echo "$ORT" > "$GITHUB_WORKSPACE/ui/vendor/ort/VERSION"
+          ls -la "$GITHUB_WORKSPACE/ui/vendor/ort" "$GITHUB_WORKSPACE/ui/vendor/transformers.mjs"
+          } 2>&1 | tee /tmp/log.txt
+      - if: failure()
+        run: echo "::error title=ai::$(tail -25 /tmp/log.txt | sed -e 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+      - run: |
+          git config user.name "hush-bot"; git config user.email "hush-bot@users.noreply.github.com"
+          git pull --rebase || true
+          git add ui/vendor/transformers.mjs ui/vendor/ort && git commit -m "Vendor Transformers.js runtime for the on-device assistant" && git push || echo "no change"

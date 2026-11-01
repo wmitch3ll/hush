@@ -424,6 +424,7 @@ T.event.listen('shortcut',({payload:p})=>shortcut(p.key));
 const listHas=(k,h)=>(pref(k)||'').split(',').filter(Boolean).some(x=>h==x||h.endsWith('.'+x));
 const torSite=h=>listHas('tor_sites',h.replace(/^www\./,'')),jsSite=h=>listHas('js_allow',h.replace(/^www\./,''));
 async function toggleList(k,site){const l=(pref(k)||'').split(',').filter(Boolean);await setPref(k,(l.includes(site)?l.filter(x=>x!=site):[...l,site]).join(','))}
+T.event.listen('popup-blocked',({payload:p})=>{HX.bump('pop');if(p.tab==cur)toast('🚫 Blocked a popup ad — you stayed on the page')});
 T.event.listen('tab-url',({payload:p})=>{const t=tab(p.tab);if(!t)return;t.url=p.url;
   // Always-through-Tor sites: a normal tab that lands on one is reopened as a Tor tab.
   if(p.state=='started'&&!t.tor&&!t.priv&&/^https?:/.test(p.url)&&torSite(hostOf(p.url))){const id=t.id;openTab(p.url,{tor:true}).then(()=>closeTab(id,true));toast('🧅 Opened through Tor — you set this site to always use Tor');return}
@@ -444,7 +445,7 @@ T.event.listen('download',({payload:p})=>{
   draw();if(panel=='downloads')renderDownloads()});
 
 // ---------- panels ----------
-const RENDER={bookmarks:()=>renderBookmarks(),ext:()=>renderExt(),reading:()=>renderReading(),focus:()=>renderFocus(),about:()=>renderAbout(),send:()=>renderSend(),settings:()=>renderSettings(),downloads:()=>renderDownloads(),suggest:()=>renderSuggest(),pal:()=>renderPalette(),
+const RENDER={ai:()=>HX.assistant($('#panel'),{pageText:()=>inv('page_text')}),bookmarks:()=>renderBookmarks(),ext:()=>renderExt(),reading:()=>renderReading(),focus:()=>renderFocus(),about:()=>renderAbout(),send:()=>renderSend(),settings:()=>renderSettings(),downloads:()=>renderDownloads(),suggest:()=>renderSuggest(),pal:()=>renderPalette(),
   history:()=>renderHistory(),site:()=>renderSite(),ws:()=>renderWs(),
   boost:()=>{const p=$('#panel'),t=tab(cur),h=t?HX.host(t.url):'';if(!h){closePanel();return}p.innerHTML=`<h2>Boosts · ${esc(h)} ${closeBtn}</h2><div id=bx></div>`;
     HX.boost($('#bx'),h,()=>inv('nav',{action:'reload'}).catch(()=>{}));wire(p)},
@@ -536,7 +537,7 @@ $('#np-mini').onclick=()=>bgMedia&&miniPlayer(bgMedia);$('#np-x').onclick=()=>{i
 T.event.listen('float-action',({payload:p})=>{if(p.a=='open'){floating=null;select(p.tab)}else if(p.a=='close')floating=null;
   else if(p.a=='moved')setPref('float_pos',[p.x,p.y,p.w].map(Math.round).join(','))});
 // ---------- Hush Messenger ----------
-const HM=HushMsg({inv,secret:{get:n=>inv('secret_get',{name:n}),set:(n,v)=>inv('secret_set',{name:n,value:v}),del:n=>inv('secret_del',{name:n})},invRaw:(c,d,h)=>T.core.invoke(c,d,{headers:h}),listen:(e,f)=>T.event.listen(e,f),toast,mobile:false,open:u=>{closePanel();openTab(u)},page:()=>{const t=tab(cur);return t&&/^https?:/.test(t.url)&&!t.priv?{url:t.url}:null},
+const HM=HushMsg({ai:{ready:()=>HX.ai.status()=='ready',ask:(p,on)=>HX.ai.ask(p,on,200)},inv,secret:{get:n=>inv('secret_get',{name:n}),set:(n,v)=>inv('secret_set',{name:n,value:v}),del:n=>inv('secret_del',{name:n})},invRaw:(c,d,h)=>T.core.invoke(c,d,{headers:h}),listen:(e,f)=>T.event.listen(e,f),toast,mobile:false,open:u=>{closePanel();openTab(u)},page:()=>{const t=tab(cur);return t&&/^https?:/.test(t.url)&&!t.priv?{url:t.url}:null},
   badge:n=>{for(const id of ['#msgcnt','#dmc']){$(id).textContent=n>99?'99+':n;$(id).style.display=n?'grid':'none'}},qr:s=>{try{return hushQR.svg(s)}catch(e){return ''}},close:()=>{closePanel();closeDock()},
   media:(a,v)=>inv('page_action',{action:'media-'+a,arg:v==null?undefined:String(v)}).catch(()=>{}),
   togetherBar:(st,cb)=>{const e=$('#tog');if(!st){e.classList.remove('on');e.textContent='';return}e.innerHTML='';const t=document.createElement('span');t.textContent=st.title;e.append(t);
@@ -566,7 +567,7 @@ $('#dockr').onpointerdown=e=>{e.preventDefault();const x0=e.clientX,w0=+pref('do
 $('#msgb').onclick=()=>toggleDock('murmur');setTimeout(()=>HM.boot(),1500);
 const EC=HushEcho({M:HM.api,toast,mobile:false,page:()=>{const t=tab(cur);return t&&/^https?:/.test(t.url)&&!t.priv?{url:t.url}:null},open:u=>{closePanel();openTab(u)},close:()=>{closePanel();closeDock()},openMurmur:pk=>{closePanel(true);closeDock();openDock('murmur');if(pk)setTimeout(()=>HM.api.openChat(pk),300)},
   badge:n=>{for(const id of ['#echocnt','#dec']){$(id).textContent=n>99?'99+':n;$(id).style.display=n?'grid':'none'}}});
-$('#echob').onclick=()=>toggleDock('echo');setTimeout(()=>{EC.boot();setInterval(noteDraw,4000)},3000);
+$('#echob').onclick=()=>toggleDock('echo');setTimeout(()=>{EC.boot();setInterval(noteDraw,4000)},3000);setTimeout(()=>HX.ai.start(),6000);
 let peeking=false;
 function peekUI(u){$('#peekbar').classList.toggle('on',peeking);if(peeking){$('#bar').value=u||'';toast('Peeking — Esc to close')}else draw()}
 async function peekClose(){peeking=false;await inv('peek_close').catch(()=>{});peekUI()}
@@ -601,6 +602,7 @@ document.addEventListener('click',e=>{if(e.target.id=='s-arc')ACTIONS()[0][2]()}
 let sleepT=null;function sleepTimer(){const t=tab(cur);if(!t)return toast('Open a video first');const m=prompt('Pause the video in how many minutes? (0 = cancel)',sleepT?'0':'30');if(m==null)return;clearTimeout(sleepT);sleepT=null;
   const n=+m;if(!(n>0))return toast('Sleep timer off');const id=t.id;sleepT=setTimeout(()=>{inv('page_action',{action:'media-pause',tab:id}).catch(()=>{});sleepT=null;toast('😴 Sleep timer: paused')},n*60000);toast('😴 Pausing in '+n+' min')}
 const ACTIONS=()=>[
+  ['✨ Ask the assistant','On this device',()=>openPanel('ai')],['✨ Summarize this page','On this device',()=>{openPanel('ai');setTimeout(()=>$('#panel [data-q=sum]')?.click(),200)}],
   ['Sleep timer for this video','',()=>{closePanel();sleepTimer()}],
   ['Import from Arc','Pinned tabs & folders → bookmarks',async()=>{closePanel();try{const l=await inv('arc_import');let n=0;for(const b of l){try{await inv('bookmark_add',{title:b.title||b.url,url:b.url});n++}catch(e){}}await loadState();toast('Imported '+n+' tabs from Arc as bookmarks')}catch(e){toast(String(e))}}],
   ['Send this page to a friend','Murmur',()=>sharePick()],['Panic: close private & Tor tabs, lock Murmur','Ctrl+Shift+X',()=>panic()],['Note on this page','',()=>tab(cur)&&openPanel('site')],

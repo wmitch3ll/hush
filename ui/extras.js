@@ -335,13 +335,52 @@ window.HushX = function (A) {
   function report(blockedWeek, M) { let c = {}; try { const r = JSON.parse(localStorage.getItem('hush.report') || '{}'); if (r.w === weekKey()) c = r.c || {}; } catch (e) {}
     let sent = 0; try { const ch = JSON.parse(localStorage.getItem('hush.msg.chats') || '{}'); const t0 = Date.now() - 7 * 86400e3; for (const l of Object.values(ch)) for (const m of l) if (m.from === 'me' && m.at > t0) sent++; } catch (e) {}
     const f = n => n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(n);
-    const items = [[blockedWeek, 'ads & trackers blocked'], [c.tor || 0, 'pages opened through Tor'], [sent, 'messages sent encrypted'], [c.meta || 0, 'photos cleaned of location data']].filter(x => x[0] > 0);
+    const items = [[blockedWeek, 'ads & trackers blocked'], [c.tor || 0, 'pages opened through Tor'], [sent, 'messages sent encrypted'], [c.pop || 0, 'popup ads stopped'], [c.meta || 0, 'photos cleaned of location data']].filter(x => x[0] > 0);
     if (!items.length) return 'Ads, trackers and cookie banners are blocked automatically.';
     return `<span style="display:block;font-weight:600;margin-bottom:2px">Your week with Hush</span>` + items.map(([n, l]) => `<b>${f(n)}</b> ${l}`).join(' · '); }
   // Tab notes: a private note pinned to a page, kept only on this device.
   const noteKey = u => { try { const x = new URL(u); x.hash = ''; return x.origin + x.pathname.replace(/\/$/, '') + x.search; } catch (e) { return ''; } };
   const tabNote = { get: u => { try { return JSON.parse(localStorage.getItem('hush.tabnotes') || '{}')[noteKey(u)] || ''; } catch (e) { return ''; } },
     set: (u, t) => { try { const all = JSON.parse(localStorage.getItem('hush.tabnotes') || '{}'), k = noteKey(u); if (!k) return; if (t.trim()) all[k] = t.slice(0, 2000); else delete all[k]; localStorage.setItem('hush.tabnotes', JSON.stringify(all)); } catch (e) {} } };
+  // ---------------- On-device assistant (Gemma 4). Off until you turn it on; then everything runs on this device.
+  const AI_MODELS = { e2b: { id: 'onnx-community/gemma-4-E2B-it-ONNX', name: 'Gemma 4 E2B', size: 'about 1.5 GB', note: 'Fast; runs on most phones and laptops' },
+    e4b: { id: 'onnx-community/gemma-4-E4B-it-ONNX', name: 'Gemma 4 E4B', size: 'about 3 GB', note: 'Smarter; needs a recent laptop or desktop' } };
+  const ai = (() => { let w = null, st = 'off', err = '', prog = {}, seq = 0; const waits = {}, subs = new Set();
+    const cfg = () => { try { return JSON.parse(localStorage.getItem('hush.ai') || '{}'); } catch (e) { return {}; } };
+    const tell = () => subs.forEach(f => { try { f(); } catch (e) {} });
+    async function load() { if (w || !navigator.gpu) { if (!navigator.gpu) { st = 'error'; err = 'This device’s graphics chip can’t run the assistant (no WebGPU).'; tell(); } return; }
+      st = 'loading'; err = ''; tell(); let ort = '1.22.0'; try { ort = (await (await fetch('vendor/ort/VERSION')).text()).trim() || ort; } catch (e) {}
+      try { w = new Worker('assistant-worker.js', { type: 'module' }); } catch (e) { st = 'error'; err = 'Couldn’t start the assistant: ' + e.message; return tell(); }
+      w.onmessage = e => { const m = e.data; if (m.t === 'progress') { prog[m.file] = [m.loaded, m.total]; tell(); }
+        else if (m.t === 'ready') { st = 'ready'; tell(); } else if (m.t === 'error' && !m.id) { st = 'error'; err = m.e; w.terminate(); w = null; tell(); }
+        else if (m.id && waits[m.id]) { const q = waits[m.id]; if (m.t === 'tok') { q.out += m.x; q.on && q.on(q.out); } else if (m.t === 'done') { delete waits[m.id]; q.res(q.out.trim()); } else if (m.t === 'error') { delete waits[m.id]; q.rej(new Error(m.e)); } } };
+      w.postMessage({ t: 'load', model: (AI_MODELS[cfg().model] || AI_MODELS.e2b).id, ort }); }
+    return { cfg, on: () => !!cfg().on, status: () => st, error: () => err, sub: f => (subs.add(f), () => subs.delete(f)),
+      progress: () => { let a = 0, b = 0; for (const [l, t] of Object.values(prog)) { a += l; b += t; } return b ? a / b : 0; },
+      enable(model) { localStorage.setItem('hush.ai', JSON.stringify({ on: true, model })); load(); },
+      disable() { localStorage.setItem('hush.ai', JSON.stringify({ on: false })); if (w) w.terminate(); w = null; st = 'off'; tell(); },
+      start() { if (cfg().on && !w) load(); },
+      ask(prompt, on, max) { return new Promise((res, rej) => { if (st !== 'ready') return rej(new Error('The assistant isn’t ready yet')); const id = ++seq; waits[id] = { res, rej, on, out: '' }; w.postMessage({ t: 'ask', id, prompt, max }); }); } }; })();
+  function assistant(el, o) { // o: { pageText():Promise<string>, close() }
+    const draw = () => { const st = ai.status(), c = ai.cfg();
+      if (!c.on) { el.innerHTML = `<div style="padding:16px;display:grid;gap:12px"><h2 style="margin:0">✨ Assistant</h2><p style="margin:0;color:var(--mute)">Summarize pages, explain things and draft replies with an AI that runs <b>entirely on this device</b>. Nothing you read or ask is sent anywhere.</p>
+        ${Object.entries(AI_MODELS).map(([k, m]) => `<button class=row data-m=${k} style="text-align:left;display:block;width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--card)"><b>${m.name}</b> · ${m.size}<br><small style="color:var(--mute)">${m.note}</small></button>`).join('')}
+        <p style="margin:0;font-size:12px;color:var(--mute)">The model is downloaded once from Hugging Face (Google’s open Gemma 4, Apache 2.0 license) and kept on this device. ${navigator.gpu ? '' : '<b>This device can’t run it: no WebGPU support.</b>'}</p></div>`;
+        el.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { if (!navigator.gpu) return A.toast('This device can’t run the assistant'); if (confirm('Download ' + AI_MODELS[b.dataset.m].name + ' (' + AI_MODELS[b.dataset.m].size + ')? Use Wi-Fi.')) { ai.enable(b.dataset.m); draw(); } }); return; }
+      if (st !== 'ready') { el.innerHTML = `<div style="padding:16px;display:grid;gap:10px"><h2 style="margin:0">✨ Assistant</h2>${st === 'error' ? `<p>⚠ ${esc(ai.error())}</p><button class=btn data-retry>Try again</button>` : `<p>Getting the assistant ready… ${Math.round(ai.progress() * 100)}%</p><div style="height:6px;border-radius:3px;background:var(--line);overflow:hidden"><i style="display:block;height:100%;width:${Math.round(ai.progress() * 100)}%;background:var(--acc)"></i></div><p style="font-size:12px;color:var(--mute)">First time only — it’s kept on this device afterwards.</p>`}<button class=btn data-off>Turn off & remove</button></div>`;
+        el.querySelector('[data-retry]')?.addEventListener('click', () => { ai.disable(); ai.enable(c.model); draw(); }); el.querySelector('[data-off]').onclick = () => { ai.disable(); try { caches.keys().then(k => k.forEach(n => caches.delete(n))); } catch (e) {} draw(); }; return; }
+      el.innerHTML = `<div style="padding:14px;display:flex;flex-direction:column;gap:10px;height:100%;box-sizing:border-box"><h2 style="margin:0">✨ Assistant <small style="font:500 12px system-ui;color:var(--mute)">on this device</small></h2>
+        <div style="display:flex;gap:6px;flex-wrap:wrap"><button class=btn data-q=sum>Summarize this page</button><button class=btn data-q=key>Key points</button><button class=btn data-q=simple>Explain it simply</button></div>
+        <div id=ai-out style="flex:1;overflow:auto;white-space:pre-wrap;line-height:1.5;user-select:text;border:1px solid var(--line);border-radius:12px;padding:12px;min-height:120px;color:var(--ink)">Ask anything, or pick an action above.</div>
+        <div style="display:flex;gap:6px"><input class=txt id=ai-in placeholder="Ask about this page, or anything" style="flex:1;margin:0"><button class=btn id=ai-go>Ask</button></div></div>`;
+      const out = el.querySelector('#ai-out'), run = async (q, usePage) => { out.textContent = '…'; let page = '';
+        if (usePage) { try { page = (await o.pageText()) || ''; } catch (e) {} if (!page.trim()) return out.textContent = 'Open a page first.'; }
+        const prompt = usePage ? `${q}\n\nPage:\n${page.slice(0, 20000)}` : q;
+        try { await ai.ask(prompt, t => { out.textContent = t; out.scrollTop = out.scrollHeight; }); } catch (e) { out.textContent = '⚠ ' + e.message; } };
+      el.querySelectorAll('[data-q]').forEach(b => b.onclick = () => run({ sum: 'Summarize this web page in 4–6 short sentences.', key: 'List the key points of this web page as short bullet points.', simple: 'Explain what this web page says in simple words, like to a 12-year-old.' }[b.dataset.q], true));
+      const go = () => { const q = el.querySelector('#ai-in').value.trim(); if (!q) return; run(/\b(this|the) (page|article|site)\b/i.test(q) ? q : q, /\b(this|the) (page|article|site)\b/i.test(q)); };
+      el.querySelector('#ai-go').onclick = go; el.querySelector('#ai-in').onkeydown = e => { if (e.key === 'Enter') go(); }; };
+    const un = ai.sub(() => { if (!el.isConnected) return un(); if (ai.status() !== 'ready' || !el.querySelector('#ai-out')) draw(); }); draw(); }
   const SEC = [['', 'Standard'], ['safer', 'Safer'], ['safest', 'Safest']];
   const LEAVE = [['ask', 'Ask me'], ['mini', 'Mini player'], ['background', 'Keep playing'], ['pause', 'Stop']];
 
@@ -379,6 +418,6 @@ window.HushX = function (A) {
       c.ontouchend = e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null; if (dx < -50 && i < S.length - 1) { i++; draw(); } else if (dx > 50 && i) { i--; draw(); } }; };
     draw();
   }
-  return { settingsSearch, tour, TOR_INFO, mediaPrompt, LEAVE, SEC, bump, report, tabNote, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
+  return { ai, assistant, settingsSearch, tour, TOR_INFO, mediaPrompt, LEAVE, SEC, bump, report, tabNote, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
     destructSweep, destructLabel, DESTRUCT, watchAdd, watchSweep, watchPanel, watchCount, syncLink, LS };
 };

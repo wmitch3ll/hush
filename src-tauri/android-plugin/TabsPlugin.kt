@@ -383,7 +383,8 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                         if (h.startsWith("a-") && h.length < 20 && h.drop(2).all { it in 'a'..'z' }) emit("gesture", JSObject().apply { put("action", h.drop(2)) })
                         else if (h.length in 1..4 && h.all { it in "lrudt" }) emit("gesture", JSObject().apply { put("g", h.uppercase()) }); true }
                     "http" -> { v.loadUrl(r.url.toString().replaceFirst("http://", "https://")); true }  // HTTPS-first
-                    "https" -> { if (r.isForMainFrame) try { val ok = Native.jsAllowed(r.url.toString()); if (v.settings.javaScriptEnabled != ok) v.settings.javaScriptEnabled = ok } catch (e: Throwable) {}; false }
+                    "https" -> { if (r.isForMainFrame && t.page.isNotEmpty() && Uri.parse(t.page).host?.removePrefix("www.") != r.url.host?.removePrefix("www.") && try { Native.shouldBlock(r.url.toString(), t.page, "popup") } catch (e: Throwable) { false }) { emit("popupBlocked", JSObject().apply { put("url", r.url.toString()) }); return true }
+                        if (r.isForMainFrame) try { val ok = Native.jsAllowed(r.url.toString()); if (v.settings.javaScriptEnabled != ok) v.settings.javaScriptEnabled = ok } catch (e: Throwable) {}; false }
                     "about", "data", "blob" -> false
                     else -> true   // intent:, file:, javascript:, market:, custom app schemes — refused
                 }
@@ -571,6 +572,9 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     }
 
     private var splitId: String? = null; private var splitFrac = 0.5f; private var splitBar: android.view.View? = null
+    /** The active tab's text, for the on-device assistant. */
+    @Command fun pageText(i: Invoke) { act.runOnUiThread { val w = active?.let { tabs[it]?.wv } ?: return@runOnUiThread i.reject("no tab")
+        w.evaluateJavascript(Native.pageTextJs()) { v -> try { i.resolve(JSObject().put("text", org.json.JSONTokener(v).nextValue() as? String ?: "")) } catch (e: Throwable) { i.resolve(JSObject().put("text", "")) } } } }
     /** Split screen: show this tab under the active one ("" turns split off). */
     @Command fun splitTab(i: Invoke) { val id = i.parseArgs(IdArgs::class.java).id; splitId = id.takeIf { it.isNotEmpty() && it != active && tabs.containsKey(it) }; render(); i.resolve() }
     @Command fun openTab(i: Invoke) {
