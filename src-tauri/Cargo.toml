@@ -23,7 +23,7 @@ parking_lot = "0.12"
 ureq = { version = "2", default-features = false, features = ["tls"] }  # user-triggered list updates only
 zip = { version = "2", default-features = false, features = ["deflate"] }   # desktop extensions (.crx unpack)
 sha2 = "0.10"
-base64 = "0.22"
+base64 = "0.23"
 # Built-in Tor (Arti). rustls (no OpenSSL) + bundled SQLite so it builds the same on Windows and Android.
 arti-client = { version = "0.47", default-features = false, features = ["tokio", "rustls", "compression", "static-sqlite", "onion-service-client"] }
 tor-rtcompat = { version = "0.47", default-features = false, features = ["tokio", "rustls"] }
