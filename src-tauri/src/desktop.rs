@@ -321,6 +321,40 @@ fn on_download(app: &AppHandle, tab: &str, ev: DownloadEvent<'_>) -> bool {
         _ => true,
     }
 }
+/// Arc importer: reads Arc's sidebar file (Windows) and returns its pinned tabs / folders as {title, url, space}.
+/// Arc stops working on December 22, 2026, so this helps people move their setup to Hush.
+#[tauri::command]
+pub fn arc_import() -> Result<Vec<serde_json::Value>, String> {
+    let mut files = vec![];
+    if let Ok(la) = std::env::var("LOCALAPPDATA") {
+        let la = std::path::PathBuf::from(la);
+        if let Ok(rd) = std::fs::read_dir(la.join("Packages")) { for e in rd.flatten() {
+            if e.file_name().to_string_lossy().starts_with("TheBrowserCompany.Arc") { files.push(e.path().join("LocalCache").join("Local").join("Arc").join("StorableSidebar.json")); } } }
+        files.push(la.join("Arc").join("StorableSidebar.json"));
+    }
+    if let Ok(h) = std::env::var("HOME") { files.push(std::path::PathBuf::from(h).join("Library/Application Support/Arc/StorableSidebar.json")); }
+    let Some(f) = files.into_iter().find(|p| p.exists()) else { return Err("Arc isn’t installed on this computer (or has no saved tabs)".into()) };
+    let v: serde_json::Value = serde_json::from_slice(&std::fs::read(&f).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    let mut out = vec![]; let mut seen = std::collections::HashSet::new();
+    fn walk(v: &serde_json::Value, out: &mut Vec<serde_json::Value>, seen: &mut std::collections::HashSet<String>) {
+        match v {
+            serde_json::Value::Object(m) => {
+                if let Some(u) = m.get("savedURL").and_then(|x| x.as_str()) {
+                    if (u.starts_with("https://") || u.starts_with("http://")) && u.len() < 2000 && seen.insert(u.to_string()) && out.len() < 2000 {
+                        let t = m.get("savedTitle").and_then(|x| x.as_str()).unwrap_or("").chars().take(200).collect::<String>();
+                        out.push(serde_json::json!({ "title": t, "url": u }));
+                    }
+                }
+                for x in m.values() { walk(x, out, seen); }
+            }
+            serde_json::Value::Array(a) => for x in a { walk(x, out, seen); },
+            _ => {}
+        }
+    }
+    walk(&v, &mut out, &mut seen);
+    if out.is_empty() { return Err("No saved tabs found in Arc".into()); }
+    Ok(out)
+}
 /// Open a finished download with its default app. Executables are revealed in their folder instead.
 #[tauri::command]
 pub async fn download_open(app: AppHandle, path: String) -> Result<(), String> {

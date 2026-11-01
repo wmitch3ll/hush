@@ -590,7 +590,9 @@ function renderDownloads(){
 }
 
 // Command palette (Ctrl+K): actions, tabs, workspaces, bookmarks, history — type to filter, Enter to run.
+document.addEventListener('click',e=>{if(e.target.id=='s-arc')ACTIONS()[0][2]()});
 const ACTIONS=()=>[
+  ['Import from Arc','Pinned tabs & folders → bookmarks',async()=>{closePanel();try{const l=await inv('arc_import');let n=0;for(const b of l){try{await inv('bookmark_add',{title:b.title||b.url,url:b.url});n++}catch(e){}}await loadState();toast('Imported '+n+' tabs from Arc as bookmarks')}catch(e){toast(String(e))}}],
   ['Send this page to a friend','Murmur',()=>sharePick()],['Panic: close private & Tor tabs, lock Murmur','Ctrl+Shift+X',()=>panic()],['Note on this page','',()=>tab(cur)&&openPanel('site')],
   ['New tab','Ctrl+T',()=>newTab(false)],['New private tab','Ctrl+Shift+N',()=>newTab(true)],
   ['Find in page','Ctrl+F',()=>{closePanel();tab(cur)&&findMode(true)}],['Reader view','Ctrl+E',()=>{closePanel();tab(cur)&&inv('page_action',{action:'reader'})}],
@@ -776,6 +778,7 @@ function renderSettings(){
       .map(([v,l])=>`<option value=${v} ${s.search==v?'selected':''}>${l}</option>`).join('')}</select>`)}
   ${s.search=='custom'?`<input class=txt id=s-custom placeholder="https://example.com/search?q=%s" value="${esc(s.custom_search)}">`:''}
   ${row('Search shortcuts','<kbd>!w</kbd> Wikipedia · <kbd>!yt</kbd> YouTube · <kbd>!a</kbd> Amazon · <kbd>!gh</kbd> GitHub · <kbd>!r</kbd> Reddit · <kbd>!m</kbd> maps · <kbd>!i</kbd> images'+(pref('bangs')?' · yours: '+esc(pref('bangs').split('|').map(x=>'!'+x.split('=')[0]).join(' ')):''),'<button class=btn id=s-bangs>Edit mine</button>')}
+  <h3>Moving from Arc?</h3>${row('Import from Arc','Arc stops working on December 22. Bring its pinned tabs and folders over as bookmarks.','<button class=btn id=s-arc>Import</button>')}
   <h3>Privacy</h3>
   ${row('Tor','Hide your IP address and location — the onion button (or Ctrl+Shift+O) opens the page in a Tor tab','<button class=btn id=s-tori title="What is Tor?">ⓘ What is Tor?</button>')}
   ${row('Fingerprint protection','Each site sees slightly different device details, so trackers can’t recognize you across sites. Turn it off per site from the shield if a page misbehaves.',sw('fp',pref('fp')!='off'))}
