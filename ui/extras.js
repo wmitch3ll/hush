@@ -351,12 +351,15 @@ window.HushX = function (A) {
   // Cloud option: Groq, with the user's own free key (console.groq.com). Fast and much smarter than a phone model;
   // requests go through Tor so Groq never sees your IP, but Groq does see what you ask.
   const GROQ_MODELS = ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
+  let groqVia = '';
   const groqKey = () => { try { return localStorage.getItem('hush.ai.groq') || ''; } catch (e) { return ''; } };
   async function groqAsk(prompt, on, max) {
     let last = '';
     for (const model of GROQ_MODELS) {
-      try { const r = JSON.parse(await window.__TAURI__.core.invoke('groq_chat', { key: groqKey(), body: JSON.stringify({ model, max_tokens: Math.min(2048, max || 700), temperature: 0.4,
-          messages: [{ role: 'system', content: 'You are ' + aiName() + ', a helpful, concise assistant inside the Hush privacy browser. Answer clearly; use short paragraphs or bullet points.' }, { role: 'user', content: String(prompt).slice(0, 60000) }] }) }));
+      try { const w = await window.__TAURI__.core.invoke('groq_chat', { key: groqKey(), direct: groqVia === 'direct' || undefined, body: JSON.stringify({ model, max_tokens: Math.min(2048, max || 700), temperature: 0.4,
+          messages: [{ role: 'system', content: 'You are ' + aiName() + ', a helpful, concise assistant inside the Hush privacy browser. Answer clearly; use short paragraphs or bullet points.' }, { role: 'user', content: String(prompt).slice(0, 60000) }] }) });
+        // Groq's firewall often blocks Tor; then Hush goes direct. Remember that for this session (saves a slow failed try each time).
+        groqVia = w.via || 'tor'; const r = JSON.parse(w.body || '{}');
         const t = (((r.choices || [])[0] || {}).message || {}).content || ''; on && on(t); return t.trim(); }
       catch (e) { last = String(e && e.message || e); if (/key|limit/i.test(last)) break; } }
     throw new Error(last || 'Groq didn’t answer');
@@ -398,7 +401,7 @@ window.HushX = function (A) {
         try { localStorage.setItem('hush.ai.groq', key); localStorage.setItem('hush.ai', JSON.stringify({ on: true, mode: 'groq' })); await groqAsk('Reply with: ready', null, 10); this.useGroq(key); return true; }
         catch (e) { localStorage.setItem('hush.ai.groq', prevK); localStorage.setItem('hush.ai', prev || '{}'); throw e; } },
       useGroq(key) { localStorage.setItem('hush.ai.groq', key); localStorage.setItem('hush.ai', JSON.stringify({ on: true, mode: 'groq' })); if (w) { w.terminate(); w = null; } lss(BOOT, null); st = 'ready'; tell(); },
-      cloud: () => cfg().mode === 'groq',
+      cloud: () => cfg().mode === 'groq', groqVia: () => groqVia,
       enable(model) { localStorage.setItem('hush.ai', JSON.stringify({ on: true, model })); load(); },
       disable() { localStorage.setItem('hush.ai', JSON.stringify({ on: false })); if (w) w.terminate(); w = null; st = 'off'; tell(); },
       start() { if (cfg().mode === 'groq') { st = groqKey() ? 'ready' : 'off'; return tell(); } if (!cfg().on || w) return;
@@ -427,7 +430,7 @@ window.HushX = function (A) {
           <li>Sign in with Google, GitHub or email. Free — no card needed.</li>
           <li>Tap <b>Create API Key</b>, name it “Hush”, and tap <b>Submit</b>.</li>
           <li>Hush spots the new key and shows <b>Use this key in Hush</b> — tap it. Done: you’ll land back here, ready to go.</li></ol>
-        <p style="margin:0;font-size:12.5px;color:var(--mute)">🔒 Requests go through Tor, so Groq never sees your IP or location — but it does see what you ask. For fully private answers, pick the on-device model instead.</p>
+        <p style="margin:0;font-size:12.5px;color:var(--mute)">🔒 Hush tries Tor first so Groq can’t see your IP. Groq’s firewall often blocks Tor, and then Hush connects directly — Groq then sees your IP address. Either way Groq sees what you ask. For fully private answers, use the on-device model.</p>
         <button class=btn data-gopen style="background:var(--ink);color:var(--bg);padding:12px;font-size:15px;justify-self:stretch;text-align:center">Get my free key →</button>
         <details><summary style="cursor:pointer;color:var(--mute);font-size:13px">Already have a key? Paste it</summary>
         <input class=txt id=gk placeholder="gsk_…" autocomplete=off spellcheck=false style="margin:0;font-family:ui-monospace,monospace" value="${esc(groqKey())}">
@@ -451,7 +454,7 @@ window.HushX = function (A) {
       if (st !== 'ready') { el.innerHTML = `<div style="padding:16px;display:grid;gap:10px"><h2 style="margin:0">${esc(aiName())} <button class=btn data-rename style="font-size:12px;padding:2px 10px;vertical-align:middle">Rename</button></h2>${st === 'error' ? `<p>⚠ ${esc(ai.error())}</p>${c.model !== 'lite' ? '<button class=btn data-lite>Switch to the Lite model</button>' : ''}<button class=btn data-retry>Try again</button>` : `<p>${ai.stage() === 'warm' ? 'Setting it up on your graphics chip — almost there… (first time can take 1–3 minutes; keep Hush open)' : 'Downloading… ' + Math.round(ai.progress() * 100) + '%'}</p><div style="height:6px;border-radius:3px;background:var(--line);overflow:hidden"><i style="display:block;height:100%;width:${Math.round(ai.progress() * 100)}%;background:var(--acc)"></i></div><p style="font-size:12px;color:var(--mute)">First time only — it’s kept on this device afterwards.</p>`}<button class=btn data-off>Turn off & remove</button></div>`;
         el.querySelector('[data-retry]')?.addEventListener('click', () => { ai.disable(); ai.enable(c.model); draw(); });
         el.querySelector('[data-lite]')?.addEventListener('click', () => { ai.disable(); ai.enable('lite'); draw(); }); el.querySelector('[data-off]').onclick = () => { ai.disable(); try { caches.keys().then(k => k.forEach(n => caches.delete(n))); } catch (e) {} draw(); }; return; }
-      el.innerHTML = `<div style="padding:14px;display:flex;flex-direction:column;gap:10px;height:100%;box-sizing:border-box"><h2 style="margin:0">${esc(aiName())} <button class=btn data-rename style="font-size:12px;padding:2px 10px;vertical-align:middle">Rename</button> <small style="font:500 12px system-ui;color:var(--mute)">${ai.cloud() ? 'via Groq · through Tor' : 'on this device'}</small> <button class=btn data-switch style="font-size:12px;padding:2px 10px;vertical-align:middle">Change</button></h2>
+      el.innerHTML = `<div style="padding:14px;display:flex;flex-direction:column;gap:10px;height:100%;box-sizing:border-box"><h2 style="margin:0">${esc(aiName())} <button class=btn data-rename style="font-size:12px;padding:2px 10px;vertical-align:middle">Rename</button> <small style="font:500 12px system-ui;color:var(--mute)">${ai.cloud() ? (ai.groqVia() === 'direct' ? 'via Groq · direct (Groq blocks Tor, so it sees your IP)' : 'via Groq · through Tor') : 'on this device'}</small> <button class=btn data-switch style="font-size:12px;padding:2px 10px;vertical-align:middle">Change</button></h2>
         <div style="display:flex;gap:6px;flex-wrap:wrap"><button class=btn data-q=sum>Summarize this page</button><button class=btn data-q=key>Key points</button><button class=btn data-q=simple>Explain it simply</button></div>
         <div id=ai-out style="flex:1;overflow:auto;white-space:pre-wrap;line-height:1.5;user-select:text;border:1px solid var(--line);border-radius:12px;padding:12px;min-height:120px;color:var(--ink)">Ask anything, or pick an action above.</div>
         <div style="display:flex;gap:6px"><input class=txt id=ai-in placeholder="Ask ${esc(aiName())} about this page, or anything" style="flex:1;margin:0"><button class=btn id=ai-go>Ask</button></div></div>`;
