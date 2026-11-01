@@ -398,6 +398,10 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                     // split.js: you tapped this half → it gets the highlight and the sound.
                     "hush-split" -> { act.runOnUiThread { if (splitIds.isNotEmpty() && t.id in panes() && splitFocus != t.id) { splitFocus = t.id; render(); applySplit() } }; true }
                     // harden.js: a link to another site that wanted a new window → Hush opens it in a background tab.
+                    // harden.js on console.groq.com: hand a freshly made Groq key to the assistant (only from Groq's own site).
+                    "hush-groq" -> { val k = r.url.getQueryParameter("k") ?: ""
+                        if (Uri.parse(t.page).host == "console.groq.com" && k.startsWith("gsk_") && k.length < 200 && k.all { it.isLetterOrDigit() || it == '_' })
+                            emit("groqKey", JSObject().apply { put("key", k); put("id", t.id) }); true }
                     "hush-peek" -> { val u = r.url.getQueryParameter("u") ?: ""; if (u.startsWith("https://") || u.startsWith("http://")) emit("linkTab", JSObject().apply { put("url", u) }); true }
                     "hush-gesture" -> { val h = (r.url.host ?: "").lowercase()
                         if (h.startsWith("a-") && h.length < 20 && h.drop(2).all { it in 'a'..'z' }) emit("gesture", JSObject().apply { put("action", h.drop(2)) })
@@ -572,6 +576,9 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             fb.outlineProvider = object : android.view.ViewOutlineProvider() { override fun getOutline(v: android.view.View, o: android.graphics.Outline) { o.setRoundRect(0, 0, v.width, v.height, dp(12).toFloat()) } }
             fb.bringToFront() } } }
         val t = active?.let { tabs[it] } ?: return@runOnUiThread
+        // A menu/sheet is open: the split's divider and any in-pane fullscreen video go away with the pages, and come back after.
+        if (!visible) { splitBar?.let { (it.parent as? ViewGroup)?.removeView(it) }; paneFs.values.forEach { it.first.visibility = View.GONE } }
+        else paneFs.values.forEach { it.first.visibility = View.VISIBLE }
         if (!visible) return@runOnUiThread
         if (t.wv == null) { t.box = null; t.wv = make(t).also { w -> if (t.saved != null) w.restoreState(t.saved!!) else w.loadUrl(t.url) } }
         t.lastUsed = System.currentTimeMillis()

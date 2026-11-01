@@ -58,4 +58,23 @@
     ["fbclid","gclid","utm_source","utm_medium","utm_campaign","utm_term","utm_content","mc_eid","msclkid"].forEach(k => u.searchParams.delete(k));
     if (u.href !== location.href) history.replaceState(null, "", u.href); } catch (_) {}
   // Hardware / canvas / WebGL / audio fingerprinting is handled by farble.js (per-site randomized values).
+  // Groq key helper: on Groq's own key page only, when a new key appears, offer to hand it straight to Hush's
+  // assistant (no copy/paste). The key only ever goes to the Hush app on this device.
+  if (location.hostname === "console.groq.com" && window.top === window) {
+    let offered = "";
+    const scan = () => { try {
+        const vals = [...document.querySelectorAll("input,textarea,code,pre,span,div")].slice(0, 4000).map(e => e.value || (e.childElementCount ? "" : e.textContent) || "");
+        const m = vals.join(" ").match(/gsk_[A-Za-z0-9]{40,}/); if (!m || m[0] === offered) return; offered = m[0];
+        let bar = document.getElementById("hush-groq"); if (bar) bar.remove();
+        bar = document.createElement("hush-groq"); bar.id = "hush-groq"; const sh = bar.attachShadow({ mode: "closed" });
+        sh.innerHTML = `<style>:host{all:initial}.b{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483647;background:#111;color:#fff;border-radius:16px;padding:14px 16px;box-shadow:0 12px 40px #0008;font:15px system-ui;display:flex;gap:12px;align-items:center;max-width:92vw}
+          button{all:unset;cursor:pointer;background:#fff;color:#111;font-weight:700;padding:10px 16px;border-radius:999px;white-space:nowrap}.x{background:transparent;color:#aaa;padding:10px 6px}</style>
+          <div class=b><span>🔑 New key found</span><button data-y>Use this key in Hush</button><button class=x data-n>✕</button></div>`;
+        sh.querySelector("[data-y]").onclick = () => { location.href = "hush-groq://key?k=" + encodeURIComponent(offered); bar.remove(); };
+        sh.querySelector("[data-n]").onclick = () => bar.remove();
+        document.documentElement.append(bar);
+      } catch (_) {} };
+    new MutationObserver(() => { clearTimeout(scan.t); scan.t = setTimeout(scan, 400); }).observe(document, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["value"] });
+    setInterval(scan, 2000);
+  }
 })();

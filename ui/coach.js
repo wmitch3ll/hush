@@ -29,8 +29,11 @@ window.HUSH_COACH = (() => {
       if (where === 'center') bub.style.top = Math.max(20, innerHeight / 2 - bub.offsetHeight / 2) + 'px';
       else if (where === 'top') bub.style.top = 'calc(env(safe-area-inset-top,0px) + 16px)';
       else if (where === 'bottom') bub.style.bottom = 'calc(env(safe-area-inset-bottom,0px) + 16px)';
-      else if (where === 'above') bub.style.bottom = Math.min(innerHeight - 40, innerHeight - r.top + 16) + 'px';
-      else bub.style.top = Math.min(innerHeight - bub.offsetHeight - 12, r.bottom + 16) + 'px'; };
+      else if (where === 'above') bub.style.bottom = Math.max(12, Math.min(innerHeight - bub.offsetHeight - 12, innerHeight - r.top + 16)) + 'px';
+      else bub.style.top = Math.max(12, Math.min(innerHeight - bub.offsetHeight - 12, r.bottom + 16)) + 'px'; };
+    // Bring the highlighted thing into view once per step (e.g. an item low down in a menu).
+    const reveal = s => { try { const el = s.sel && document.querySelector(s.sel); if (!el) return; const r = el.getBoundingClientRect();
+      if (r.height && r.height < innerHeight * 0.8 && (r.top < 0 || r.bottom > innerHeight)) el.scrollIntoView({ block: 'center' }); } catch (_) {} };
     const show = k => { clearInterval(timer); advancing = false; i = k; const s = steps[i]; if (!s) return end(true);
       try { s.before && s.before(); } catch (_) {}
       const doIt = !!s.until;
@@ -40,7 +43,7 @@ window.HUSH_COACH = (() => {
       bub.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { const a = b.dataset.a; if (a === 'quit') end(false); else if (a === 'back') show(Math.max(0, i - 1)); else show(i + 1); });
       if (s.extra) s.extra(bub);
       hole.classList.toggle('hc-pulse', doIt);
-      place(s); requestAnimationFrame(() => place(s));
+      reveal(s); place(s); requestAnimationFrame(() => place(s)); setTimeout(() => { reveal(s); place(s); }, 350);
       o.onStep && o.onStep(i);
       // Re-place while things move (sheets sliding in) and watch for the action to be done.
       timer = setInterval(() => { place(s); if (doIt && !advancing) { let d = false; try { d = s.until(); } catch (_) {}

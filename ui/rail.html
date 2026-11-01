@@ -48,6 +48,24 @@ body.small .shot{aspect-ratio:16/7}body.noprev .shot{display:none}
 #menu.on{display:block}#menu button{display:block;width:100%;padding:7px 10px;border-radius:6px;text-align:left}#menu button:hover{background:var(--bg)}
 .hint{color:var(--mute);font-size:11px;padding:2px 12px 10px;flex:none}body.h .hint{display:none}
 @media (prefers-reduced-motion:reduce){.t{transition:none}}
+/* Legacy tabs: classic browser tabs across the top — folder-style tabs that shrink to fit, + at the end. */
+body.legacy{flex-direction:row;align-items:flex-end;box-shadow:none;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--bg) 82%,var(--ink) 18%)}
+body.legacy header{order:2;flex-direction:row;padding:0 6px 5px;align-self:flex-end}body.legacy #ws,body.legacy .sp,body.legacy .hint{display:none}
+body.legacy #new,body.legacy #newp{width:28px;height:28px;border-radius:8px}
+body.legacy #list{flex:1;flex-direction:row;align-items:flex-end;gap:0;padding:6px 0 0 8px;overflow:hidden;min-width:0}
+body.legacy .t{flex:1 1 220px;max-width:240px;min-width:44px;height:34px;width:auto;display:flex;align-items:center;border:0;border-radius:10px 10px 0 0;background:transparent;box-shadow:none;transform:none;padding:0 6px 0 10px;margin-right:1px}
+body.legacy .t::after{content:"";position:absolute;right:0;top:9px;bottom:9px;width:1px;background:var(--line)}body.legacy .t.on::after,body.legacy .t:hover::after{display:none}
+body.legacy .t:hover{background:color-mix(in srgb,var(--card) 55%,transparent);transform:none}
+body.legacy .t.on{background:var(--bg);box-shadow:none;border:0;z-index:1;min-width:140px}
+body.legacy .t.on::before{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--bg)}
+body.legacy .t.tor{box-shadow:inset 0 2px 0 #8b5cf6}body.legacy .t.priv{box-shadow:inset 0 2px 0 var(--mute)}body.legacy .t.split{box-shadow:inset 0 2px 0 var(--acc)}
+body.legacy .shot{display:none}
+body.legacy .fav{width:16px;height:16px;border-radius:4px;flex:none;display:grid;place-items:center;font:700 10px system-ui;background:var(--line);color:var(--ink);margin-right:7px}
+body.legacy .meta{flex:1;padding:0;min-width:0}body.legacy .meta b{font-weight:500;font-size:12.5px}
+body.legacy .x{position:static;opacity:.75;box-shadow:none;background:transparent;width:20px;height:20px;flex:none;margin-left:2px}body.legacy .x:hover{background:var(--line)}
+body.legacy .t:not(.on) .x{opacity:0}body.legacy .t:hover .x{opacity:.75}
+body.legacy .t.narrow .meta b,body.legacy .t.narrow .x{display:none}body.legacy .t.narrow{justify-content:center;padding:0}
+body.legacy .t.narrow .fav{margin:0}
 </style>
 <div id=edge></div>
 <header>
@@ -68,11 +86,11 @@ const THUMBS={},TITLES={},AUDIO={};
 
 function draw(){
   const b=document.body,h=S.pos=='top'||S.pos=='bottom';
-  b.className=[S.pos,h?'h':'v',S.collapsed?'collapsed':'',S.pinned?'pinned':'',S.previews=='off'?'noprev':S.previews=='small'?'small':''].join(' ');
+  b.className=S.legacy?'legacy pinned':[S.pos,h?'h':'v',S.collapsed?'collapsed':'',S.pinned?'pinned':'',S.previews=='off'?'noprev':S.previews=='small'?'small':''].join(' ');
   $('#ws').textContent=S.ws;
   $('#list').innerHTML=S.tabs.map(t=>{const th=THUMBS[t.id],ti=TITLES[t.id]||t.title||host(t.url)||'New tab',au=AUDIO[t.id];
     return `<div class="t ${t.id==S.cur?'on':''} ${t.priv?'priv':''} ${t.tor?'tor':''} ${t.sleeping?'sleep':''} ${t.id==S.split?'split':''}" data-id="${esc(t.id)}" draggable=true role=tab aria-selected=${t.id==S.cur} title="${esc(ti)}\n${esc(t.url)}">
-      <div class=shot ${th&&!t.priv?`style="background-image:url('${th}')"`:''}>${th&&!t.priv?'':(t.priv?'◌':esc((host(t.url)||'·')[0].toUpperCase()))}</div>
+      ${S.legacy?`<span class=fav>${t.priv?'◌':esc((host(t.url)||'·')[0].toUpperCase())}</span>`:''}<div class=shot ${th&&!t.priv?`style="background-image:url('${th}')"`:''}>${th&&!t.priv?'':(t.priv?'◌':esc((host(t.url)||'·')[0].toUpperCase()))}</div>
       <div class=meta>${au||t.muted?`<button class=au data-mute="${esc(t.id)}" title="${t.muted?'Unmute':'Mute'} (Ctrl+M)">${t.muted?'<svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM16 9l5 6M21 9l-5 6"/></svg>':'<svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM16 8a5 5 0 0 1 0 8"/></svg>'}</button>`:''}
         <b>${esc(ti)}</b>${t.destruct?`<i title="Self-destructs">⏲ ${esc(t.destruct)}</i>`:''}${t.sleeping?'<i>asleep</i>':''}</div>
       <button class=x data-x="${esc(t.id)}" aria-label="Close tab">✕</button></div>`}).join('')||'<div style="color:var(--mute);padding:20px 4px;text-align:center">No tabs in this workspace</div>';
@@ -85,6 +103,8 @@ function draw(){
     el.ondrop=e=>{e.preventDefault();el.classList.remove('over');const from=e.dataTransfer.getData('text/hush-tab');if(from&&from!=id)send('reorder',{from,to:id})}});
   document.querySelectorAll('[data-x]').forEach(x=>x.onclick=e=>{e.stopPropagation();send('close',{id:x.dataset.x})});
   document.querySelectorAll('[data-mute]').forEach(x=>x.onclick=e=>{e.stopPropagation();send('mute',{id:x.dataset.mute})});
+  // Legacy tabs shrink as you open more; very narrow ones show just their icon (the current tab keeps its ×).
+  if(S.legacy)document.querySelectorAll('.t').forEach(el=>el.classList.toggle('narrow',el.getBoundingClientRect().width<84&&!el.classList.contains('on')));
   const on=document.querySelector('.t.on');if(on&&!S.collapsed)on.scrollIntoView({block:'nearest',inline:'nearest'});
 }
 function menu(e,id){const t=S.tabs.find(x=>x.id==id);if(!t)return;const m=$('#menu');
@@ -102,6 +122,9 @@ document.documentElement.addEventListener('mouseenter',()=>send('hover'));
 document.documentElement.addEventListener('mouseleave',()=>send('leave'));
 addEventListener('keydown',e=>{if(e.key=='Escape')send('leave')});
 
+addEventListener('resize',()=>S.legacy&&draw());
+// Legacy tabs: scroll the wheel over the strip to switch tabs, double-click empty space for a new tab.
+$('#list').addEventListener('dblclick',e=>{if(S.legacy&&!e.target.closest('.t'))send('new')});
 T.event.listen('rail-state',({payload:p})=>{S=p;if(p.vars)for(const[k,v]of Object.entries(p.vars))document.documentElement.style.setProperty(k,v);
   document.documentElement.style.colorScheme=p.dark?'dark':'light';draw()});
 T.event.listen('thumb',({payload:p})=>{if(typeof p.data=='string'&&p.data.startsWith('data:image/jpeg;base64,')){THUMBS[p.tab]=p.data;draw()}});

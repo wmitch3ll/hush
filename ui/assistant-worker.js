@@ -15,17 +15,24 @@ self.onmessage = async e => {
       // Big file finished downloading → the rest is loading it onto the graphics chip ("almost there").
       const big = {};
       const prog = p => { if (!p) return; if (p.status === 'progress' && p.total) { big[p.file] = p.total; post('progress', { file: String(p.file || ''), loaded: p.loaded, total: p.total }); }
-        if (p.status === 'done' && (big[p.file] || 0) > 150e6) post('stage', { s: 'warm' }); };
+        if (p.status === 'done' && (big[p.file] || 0) > 20e6) post('stage', { s: 'warm' }); };
       kind = m.kind === 'lm' ? 'lm' : 'mm';
+      // Many phone graphics chips can't do half-precision math ("shader-f16"); the f16 model then hangs while it's
+      // being set up (the "stuck at 97%" problem). Use the plain 4-bit model on those chips.
+      let f16 = false; try { const ad = await navigator.gpu.requestAdapter(); f16 = !!(ad && ad.features && ad.features.has('shader-f16')); } catch (_) {}
+      const dtype = f16 ? 'q4f16' : 'q4'; post('info', { dtype });
       if (kind === 'lm') {
         // Text-only model: just the tokenizer and the language model — far less memory than Gemma 4's image/audio parts.
         tok = await T.AutoTokenizer.from_pretrained(m.model, { progress_callback: prog });
-        model = await T.AutoModelForCausalLM.from_pretrained(m.model, { dtype: 'q4f16', device: 'webgpu', progress_callback: prog });
+        model = await T.AutoModelForCausalLM.from_pretrained(m.model, { dtype, device: 'webgpu', progress_callback: prog });
       } else {
         proc = await T.AutoProcessor.from_pretrained(m.model, { progress_callback: prog }); tok = proc.tokenizer;
         const Cls = T.Gemma4ForConditionalGeneration || T.AutoModelForImageTextToText || T.AutoModelForCausalLM;
-        model = await Cls.from_pretrained(m.model, { dtype: 'q4f16', device: 'webgpu', progress_callback: prog });
+        model = await Cls.from_pretrained(m.model, { dtype, device: 'webgpu', progress_callback: prog });
       }
+      // Warm-up: the first run compiles the graphics-chip programs; do it now so the first question is quick.
+      post('stage', { s: 'warm' });
+      try { const w0 = tok('Hi'); await model.generate({ ...w0, max_new_tokens: 1 }); } catch (_) {}
       post('ready');
     } catch (err) { post('error', { e: String(err && err.message || err).slice(0, 300) }); }
   }

@@ -344,6 +344,23 @@ window.HushX = function (A) {
     set: (u, t) => { try { const all = JSON.parse(localStorage.getItem('hush.tabnotes') || '{}'), k = noteKey(u); if (!k) return; if (t.trim()) all[k] = t.slice(0, 2000); else delete all[k]; localStorage.setItem('hush.tabnotes', JSON.stringify(all)); } catch (e) {} } };
   // ---------------- On-device assistant (Gemma 4). Off until you turn it on; then everything runs on this device.
   // kind: 'lm' = text-only model (small, light on memory); 'mm' = Gemma 4 (also loads its image/audio parts, so it needs a lot of memory).
+  // Your assistant's name — like a Siri or a Jarvis, but yours. "AI Assistant" until you pick one.
+  const aiName = () => { try { return (localStorage.getItem('hush.ai.name') || '').trim().slice(0, 24) || 'AI Assistant'; } catch (e) { return 'AI Assistant'; } };
+  const aiNamed = () => { try { return !!(localStorage.getItem('hush.ai.name') || '').trim(); } catch (e) { return false; } };
+  const aiRename = v => { try { localStorage.setItem('hush.ai.name', String(v || '').replace(/[<>"&]/g, '').trim().slice(0, 24)); } catch (e) {} try { window.dispatchEvent(new Event('hush-ai-name')); } catch (e) {} };
+  // Cloud option: Groq, with the user's own free key (console.groq.com). Fast and much smarter than a phone model;
+  // requests go through Tor so Groq never sees your IP, but Groq does see what you ask.
+  const GROQ_MODELS = ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
+  const groqKey = () => { try { return localStorage.getItem('hush.ai.groq') || ''; } catch (e) { return ''; } };
+  async function groqAsk(prompt, on, max) {
+    let last = '';
+    for (const model of GROQ_MODELS) {
+      try { const r = JSON.parse(await window.__TAURI__.core.invoke('groq_chat', { key: groqKey(), body: JSON.stringify({ model, max_tokens: Math.min(2048, max || 700), temperature: 0.4,
+          messages: [{ role: 'system', content: 'You are ' + aiName() + ', a helpful, concise assistant inside the Hush privacy browser. Answer clearly; use short paragraphs or bullet points.' }, { role: 'user', content: String(prompt).slice(0, 60000) }] }) }));
+        const t = (((r.choices || [])[0] || {}).message || {}).content || ''; on && on(t); return t.trim(); }
+      catch (e) { last = String(e && e.message || e); if (/key|limit/i.test(last)) break; } }
+    throw new Error(last || 'Groq didn’t answer');
+  }
   const AI_MODELS = { lite: { id: 'onnx-community/gemma-3-1b-it-ONNX', kind: 'lm', name: 'Gemma 3 1B (Lite)', size: 'about 1 GB', mem: 3, note: 'Light on memory — the one for phones' },
     e2b: { id: 'onnx-community/gemma-4-E2B-it-ONNX', kind: 'mm', name: 'Gemma 4 E2B', size: 'about 1.5 GB download', mem: 8, note: 'Smarter; needs a phone or PC with 8 GB+ of memory' },
     e4b: { id: 'onnx-community/gemma-4-E4B-it-ONNX', kind: 'mm', name: 'Gemma 4 E4B', size: 'about 3 GB download', mem: 16, note: 'Smartest; for a desktop or laptop with 16 GB+' } };
@@ -365,35 +382,79 @@ window.HushX = function (A) {
       w.onmessage = e => { const m = e.data; if (m.t === 'progress') { prog[m.file] = [m.loaded, m.total];
           // One steady bar: files arrive one after another, so the overall percent never jumps backwards.
           let a = 0, b = 0; for (const [l, t] of Object.values(prog)) { a += l; b += t; } pct = Math.max(pct, b ? Math.min(0.97, a / b) : 0); tell(); }
-        else if (m.t === 'stage') { stage = m.s; tell(); }
-        else if (m.t === 'ready') { st = 'ready'; pct = 1; lss(BOOT, null); tell(); } else if (m.t === 'error' && !m.id) fail(m.e);
+        else if (m.t === 'stage') { if (m.s === 'warm' && stage !== 'warm') { warmAt = Date.now(); clearTimeout(dog);
+            // Watchdog: setting the model up should take a minute or two; if it never finishes, say so instead of sitting at 97%.
+            dog = setTimeout(() => { if (st === 'loading') fail('Setting up the model is taking too long — this phone’s graphics chip may not handle it. Try again, or use a cloud assistant.'); }, 6 * 60e3); }
+          stage = m.s; tell(); }
+        else if (m.t === 'ready') { clearTimeout(dog); st = 'ready'; pct = 1; lss(BOOT, null); tell(); } else if (m.t === 'error' && !m.id) fail(m.e);
         else if (m.id && waits[m.id]) { const q = waits[m.id]; if (m.t === 'tok') { q.out += m.x; q.on && q.on(q.out); } else if (m.t === 'done') { delete waits[m.id]; q.res(q.out.trim()); } else if (m.t === 'error') { delete waits[m.id]; q.rej(new Error(m.e)); } } };
       const md = AI_MODELS[cfg().model] || AI_MODELS.lite; w.postMessage({ t: 'load', model: md.id, kind: md.kind, ort }); }
-    let stage = '';
+    let stage = '', warmAt = 0, dog = 0;
     return { cfg, on: () => !!cfg().on, status: () => st, error: () => err, sub: f => (subs.add(f), () => subs.delete(f)),
       progress: () => pct, stage: () => stage,
       crashed: () => !!lsg(BOOT),
+      // Try a key (one tiny request through Tor); on success switch the assistant to Groq.
+      async connectGroq(key) { const prevK = groqKey(), prev = localStorage.getItem('hush.ai');
+        try { localStorage.setItem('hush.ai.groq', key); localStorage.setItem('hush.ai', JSON.stringify({ on: true, mode: 'groq' })); await groqAsk('Reply with: ready', null, 10); this.useGroq(key); return true; }
+        catch (e) { localStorage.setItem('hush.ai.groq', prevK); localStorage.setItem('hush.ai', prev || '{}'); throw e; } },
+      useGroq(key) { localStorage.setItem('hush.ai.groq', key); localStorage.setItem('hush.ai', JSON.stringify({ on: true, mode: 'groq' })); if (w) { w.terminate(); w = null; } lss(BOOT, null); st = 'ready'; tell(); },
+      cloud: () => cfg().mode === 'groq',
       enable(model) { localStorage.setItem('hush.ai', JSON.stringify({ on: true, model })); load(); },
       disable() { localStorage.setItem('hush.ai', JSON.stringify({ on: false })); if (w) w.terminate(); w = null; st = 'off'; tell(); },
-      start() { if (!cfg().on || w) return;
+      start() { if (cfg().mode === 'groq') { st = groqKey() ? 'ready' : 'off'; return tell(); } if (!cfg().on || w) return;
         if (lsg(BOOT)) { lss(BOOT, null); st = 'error'; err = 'Hush closed while loading the assistant last time — this device probably doesn’t have enough memory for ' + ((AI_MODELS[cfg().model] || {}).name || 'that model') + '. Pick the Lite model below.'; crash = true; return tell(); }
         load(); },
       wasCrash: () => crash,
-      ask(prompt, on, max) { return new Promise((res, rej) => { if (st !== 'ready') return rej(new Error('The assistant isn’t ready yet')); const id = ++seq; waits[id] = { res, rej, on, out: '' }; w.postMessage({ t: 'ask', id, prompt, max }); }); } }; })();
+      ask(prompt, on, max) { if (cfg().mode === 'groq') return groqAsk(prompt, on, max); return new Promise((res, rej) => { if (st !== 'ready') return rej(new Error('The assistant isn’t ready yet')); const id = ++seq; waits[id] = { res, rej, on, out: '' }; w.postMessage({ t: 'ask', id, prompt, max }); }); } }; })();
   function assistant(el, o) { // o: { pageText():Promise<string>, close() }
+    // First time: give it a name.
+    if (!aiNamed()) { el.innerHTML = `<div style="padding:18px;display:grid;gap:12px"><h2 style="margin:0">Name your assistant</h2>
+      <p style="margin:0;color:var(--mute)">It’s yours — it runs on this device and helps you read, summarize and reply. Give it a name, like you would a Siri or a Jarvis.</p>
+      <input class=txt id=ai-nm maxlength=24 placeholder="e.g. Nova, Jarvis, Echo, Sage" style="margin:0;font-size:16px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${['Nova', 'Jarvis', 'Sage', 'Atlas', 'Luna', 'Max'].map(n => `<button class=btn data-nm="${n}">${n}</button>`).join('')}</div>
+      <div style="display:flex;gap:8px"><button class=btn data-skip>Keep “AI Assistant”</button><span style="flex:1"></span><button class=btn data-ok style="background:var(--ink);color:var(--bg)">Continue</button></div></div>`;
+      const inp = el.querySelector('#ai-nm'), done = v => { aiRename(v || 'AI Assistant'); assistant(el, o); };
+      el.querySelectorAll('[data-nm]').forEach(b => b.onclick = () => { inp.value = b.dataset.nm; inp.focus(); });
+      el.querySelector('[data-ok]').onclick = () => done(inp.value.trim()); el.querySelector('[data-skip]').onclick = () => done('AI Assistant');
+      inp.onkeydown = e => { if (e.key === 'Enter') done(inp.value.trim()); }; setTimeout(() => inp.focus(), 60); return; }
+    el.addEventListener('click', e => { if (e.target.closest('[data-switch]')) { ai.disable(); view = ''; draw(); return; } const b = e.target.closest('[data-rename]'); if (!b) return; const v = prompt('Rename your assistant', aiName()); if (v && v.trim()) { aiRename(v); draw(); } });
+    let view = '';
     const draw = () => { const st = ai.status(), c = ai.cfg();
-      if (!c.on) { el.innerHTML = `<div style="padding:16px;display:grid;gap:12px"><h2 style="margin:0">✨ Assistant</h2><p style="margin:0;color:var(--mute)">Summarize pages, explain things and draft replies with an AI that runs <b>entirely on this device</b>. Nothing you read or ask is sent anywhere.</p>
+      if (view === 'groq') { el.innerHTML = `<div style="padding:16px;display:grid;gap:12px;line-height:1.5"><h2 style="margin:0">Set up ${esc(aiName())} with Groq</h2>
+        <p style="margin:0;color:var(--mute)">Groq runs big open AI models in the cloud — answers in about a second and much smarter than a phone model. The free plan gives <b>about 1,000 requests a day</b> (roughly 60 page summaries or hundreds of questions), just for you.</p>
+        <ol style="margin:0;padding-left:20px;display:grid;gap:8px">
+          <li>Tap <b>Get my free key</b> below — Groq’s key page opens in a Hush tab.</li>
+          <li>Sign in with Google, GitHub or email. Free — no card needed.</li>
+          <li>Tap <b>Create API Key</b>, name it “Hush”, and tap <b>Submit</b>.</li>
+          <li>Hush spots the new key and shows <b>Use this key in Hush</b> — tap it. Done: you’ll land back here, ready to go.</li></ol>
+        <p style="margin:0;font-size:12.5px;color:var(--mute)">🔒 Requests go through Tor, so Groq never sees your IP or location — but it does see what you ask. For fully private answers, pick the on-device model instead.</p>
+        <button class=btn data-gopen style="background:var(--ink);color:var(--bg);padding:12px;font-size:15px;justify-self:stretch;text-align:center">Get my free key →</button>
+        <details><summary style="cursor:pointer;color:var(--mute);font-size:13px">Already have a key? Paste it</summary>
+        <input class=txt id=gk placeholder="gsk_…" autocomplete=off spellcheck=false style="margin:0;font-family:ui-monospace,monospace" value="${esc(groqKey())}">
+        <p style="margin:0;font-size:12px;color:var(--mute)">Your key stays on this device.</p>
+        <div style="display:flex;gap:8px;margin-top:8px"><span style="flex:1"></span><button class=btn data-gsave>Save key</button></div></details>
+        <button class=btn data-back style="justify-self:start">Back</button></div>`;
+        el.querySelector('[data-back]').onclick = () => { view = ''; draw(); };
+        el.querySelector('[data-gopen]').onclick = () => { try { localStorage.setItem('hush.ai.groqWait', String(Date.now())); A.open('https://console.groq.com/keys'); } catch (e) { A.toast('Go to console.groq.com/keys'); } };
+        el.querySelector('[data-gsave]').onclick = async () => { const k = el.querySelector('#gk').value.trim(); if (!/^gsk_[A-Za-z0-9]{20,}$/.test(k)) return A.toast('That doesn’t look like a Groq key — it starts with gsk_');
+          A.toast('Checking the key through Tor…');
+          try { await ai.connectGroq(k); view = ''; A.toast(aiName() + ' is ready'); draw(); } catch (e) { A.toast(String(e && e.message || e)); } };
+        return; }
+      if (!c.on) { el.innerHTML = `<div style="padding:16px;display:grid;gap:12px"><h2 style="margin:0">${esc(aiName())} <button class=btn data-rename style="font-size:12px;padding:2px 10px;vertical-align:middle">Rename</button></h2><p style="margin:0;color:var(--mute)">Summarize pages, explain things and draft replies with an AI that runs <b>entirely on this device</b>. Nothing you read or ask is sent anywhere.</p>
+        <button class=row data-groq style="text-align:left;display:block;width:100%;padding:12px;border:1px solid var(--acc);border-radius:12px;background:var(--card)"><b>Cloud — Groq</b> <small style="color:var(--acc)">· fastest &amp; smartest</small> · free key<br><small style="color:var(--mute)">Instant answers from big AI models. Free (about 1,000 requests a day). Through Tor, but Groq sees what you ask. Takes 2 minutes to set up.</small></button>
+        <div style="font:600 12px system-ui;color:var(--mute);margin-top:4px">OR ON THIS DEVICE — fully private</div>
         ${Object.entries(AI_MODELS).map(([k, m]) => { const rec = k === (MOBILE ? 'lite' : 'e2b'), tight = (navigator.deviceMemory || (MOBILE ? 4 : 8)) < m.mem && m.mem > 3;
           return `<button class=row data-m=${k} style="text-align:left;display:block;width:100%;padding:12px;border:1px solid ${rec ? 'var(--acc)' : 'var(--line)'};border-radius:12px;background:var(--card)"><b>${m.name}</b>${rec ? ' <small style="color:var(--acc)">· recommended</small>' : ''} · ${m.size}<br><small style="color:var(--mute)">${m.note}${tight ? ' — <b>may be too big for this device and close Hush while loading</b>' : ''}</small></button>`; }).join('')}
         <p style="margin:0;font-size:12px;color:var(--mute)">The model is downloaded once from Hugging Face (Google’s open Gemma models) and kept on this device. ${navigator.gpu ? '' : '<b>This device can’t run it: no WebGPU support.</b>'}</p></div>`;
+        el.querySelector('[data-groq]').onclick = () => { view = 'groq'; draw(); };
         el.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { if (!navigator.gpu) return A.toast('This device can’t run the assistant'); if (confirm('Download ' + AI_MODELS[b.dataset.m].name + ' (' + AI_MODELS[b.dataset.m].size + ')? Use Wi-Fi.')) { ai.enable(b.dataset.m); draw(); } }); return; }
-      if (st !== 'ready') { el.innerHTML = `<div style="padding:16px;display:grid;gap:10px"><h2 style="margin:0">✨ Assistant</h2>${st === 'error' ? `<p>⚠ ${esc(ai.error())}</p>${c.model !== 'lite' ? '<button class=btn data-lite>Switch to the Lite model</button>' : ''}<button class=btn data-retry>Try again</button>` : `<p>${ai.stage() === 'warm' ? 'Loading it into memory — almost there… (this can take a minute)' : 'Downloading… ' + Math.round(ai.progress() * 100) + '%'}</p><div style="height:6px;border-radius:3px;background:var(--line);overflow:hidden"><i style="display:block;height:100%;width:${Math.round(ai.progress() * 100)}%;background:var(--acc)"></i></div><p style="font-size:12px;color:var(--mute)">First time only — it’s kept on this device afterwards.</p>`}<button class=btn data-off>Turn off & remove</button></div>`;
+      if (st !== 'ready') { el.innerHTML = `<div style="padding:16px;display:grid;gap:10px"><h2 style="margin:0">${esc(aiName())} <button class=btn data-rename style="font-size:12px;padding:2px 10px;vertical-align:middle">Rename</button></h2>${st === 'error' ? `<p>⚠ ${esc(ai.error())}</p>${c.model !== 'lite' ? '<button class=btn data-lite>Switch to the Lite model</button>' : ''}<button class=btn data-retry>Try again</button>` : `<p>${ai.stage() === 'warm' ? 'Setting it up on your graphics chip — almost there… (first time can take 1–3 minutes; keep Hush open)' : 'Downloading… ' + Math.round(ai.progress() * 100) + '%'}</p><div style="height:6px;border-radius:3px;background:var(--line);overflow:hidden"><i style="display:block;height:100%;width:${Math.round(ai.progress() * 100)}%;background:var(--acc)"></i></div><p style="font-size:12px;color:var(--mute)">First time only — it’s kept on this device afterwards.</p>`}<button class=btn data-off>Turn off & remove</button></div>`;
         el.querySelector('[data-retry]')?.addEventListener('click', () => { ai.disable(); ai.enable(c.model); draw(); });
         el.querySelector('[data-lite]')?.addEventListener('click', () => { ai.disable(); ai.enable('lite'); draw(); }); el.querySelector('[data-off]').onclick = () => { ai.disable(); try { caches.keys().then(k => k.forEach(n => caches.delete(n))); } catch (e) {} draw(); }; return; }
-      el.innerHTML = `<div style="padding:14px;display:flex;flex-direction:column;gap:10px;height:100%;box-sizing:border-box"><h2 style="margin:0">✨ Assistant <small style="font:500 12px system-ui;color:var(--mute)">on this device</small></h2>
+      el.innerHTML = `<div style="padding:14px;display:flex;flex-direction:column;gap:10px;height:100%;box-sizing:border-box"><h2 style="margin:0">${esc(aiName())} <button class=btn data-rename style="font-size:12px;padding:2px 10px;vertical-align:middle">Rename</button> <small style="font:500 12px system-ui;color:var(--mute)">${ai.cloud() ? 'via Groq · through Tor' : 'on this device'}</small> <button class=btn data-switch style="font-size:12px;padding:2px 10px;vertical-align:middle">Change</button></h2>
         <div style="display:flex;gap:6px;flex-wrap:wrap"><button class=btn data-q=sum>Summarize this page</button><button class=btn data-q=key>Key points</button><button class=btn data-q=simple>Explain it simply</button></div>
         <div id=ai-out style="flex:1;overflow:auto;white-space:pre-wrap;line-height:1.5;user-select:text;border:1px solid var(--line);border-radius:12px;padding:12px;min-height:120px;color:var(--ink)">Ask anything, or pick an action above.</div>
-        <div style="display:flex;gap:6px"><input class=txt id=ai-in placeholder="Ask about this page, or anything" style="flex:1;margin:0"><button class=btn id=ai-go>Ask</button></div></div>`;
+        <div style="display:flex;gap:6px"><input class=txt id=ai-in placeholder="Ask ${esc(aiName())} about this page, or anything" style="flex:1;margin:0"><button class=btn id=ai-go>Ask</button></div></div>`;
       const out = el.querySelector('#ai-out'), run = async (q, usePage) => { out.textContent = '…'; let page = '';
         if (usePage) { try { page = (await o.pageText()) || ''; } catch (e) {} if (!page.trim()) return out.textContent = 'Open a page first.'; }
         const prompt = usePage ? `${q}\n\nPage:\n${page.slice(0, 20000)}` : q;
@@ -439,6 +500,6 @@ window.HushX = function (A) {
       c.ontouchend = e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null; if (dx < -50 && i < S.length - 1) { i++; draw(); } else if (dx > 50 && i) { i--; draw(); } }; };
     draw();
   }
-  return { ai, assistant, settingsSearch, tour, TOR_INFO, mediaPrompt, LEAVE, SEC, bump, report, tabNote, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
+  return { ai, aiName, aiRename, assistant, settingsSearch, tour, TOR_INFO, mediaPrompt, LEAVE, SEC, bump, report, tabNote, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
     destructSweep, destructLabel, DESTRUCT, watchAdd, watchSweep, watchPanel, watchCount, syncLink, LS };
 };

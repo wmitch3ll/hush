@@ -244,24 +244,33 @@ async function openNative(t){try{const r=await inv("open_tab",{input:t.url,priva
 let touring=false;
 function syncNative(){const t=T();inv("switch_tab",{label:!sheet&&!typing&&!touring&&t&&t.native?t.native:"none"}).catch(()=>{})}
 // Hands-on welcome walkthrough (coach.js): you do each thing for real; the page itself is hidden while it runs.
-function startTour(){touring=true;show(null);syncNative();const u0=(T()||{}).url||"",tor0=torOn;
+function startTour(){touring=true;show(null);syncNative();const u0=(T()||{}).url||"",tor0=torOn,menu=()=>{if(sheet!=="menu"){drawMenu();show("menu")}};
+  const fin=()=>{touring=false;setPref("toured","1");show(null);syncNative()};
   HUSH_COACH.run([
-    {title:"Welcome to Hush 👋",text:"Hush blocks ads and trackers on every site, has Tor built in to hide where you are, and comes with private messaging (Murmur) and a private social network (Echo). This 2-minute walkthrough has you try each thing yourself.",place:"center"},
-    {sel:"#url",title:"Go to a site",text:"The address bar does both: type a site (espn.com) or anything you want to search. Shortcuts search one site directly — !yt for YouTube, !w Wikipedia, !a Amazon.",doText:"Tap the bar, type a site and press Go",until:()=>{const u=(T()||{}).url||"";return u!==u0&&/^https?:/.test(u)}},
-    {sel:"#shield",title:"See what Hush blocked",text:"The shield is your control for the site you’re on: how many ads and trackers were stopped, and switches just for this site.",doText:"Tap the shield",until:()=>sheet==="site"},
-    {sel:"#site",place:"top",title:"Per-site control",text:"If a site ever breaks, turn its protection off here — only for that site. You can also allow or block JavaScript, always open it in Tor, and check its connection.",doText:"Have a look, then tap Done",until:()=>sheet!=="site"},
-    {sel:"#tb-tabs",title:"Your tabs",text:"All your tabs as cards. Swipe a card away to close it; hold one for options like mute, keep playing, split screen and self-destruct.",doText:"Tap the tabs button",before:()=>show(null),until:()=>sheet==="switcher"},
-    {sel:"#switcher",place:"top",title:"Workspaces & split screen",text:"The chips at the top are workspaces — groups of tabs (sports, work…). Hold a tab and choose “Add to split screen” to watch up to 4 at once; tap a pane to give it the sound.",before:()=>{if(sheet!=="switcher"){drawSwitcher();show("switcher")}}},
-    {sel:"#tb-menu",title:"The menu",text:"Everything else lives here: Tor, Murmur, Echo, the assistant, split screen and settings.",doText:"Tap the menu button",before:()=>show(null),until:()=>sheet==="menu"},
-    {sel:"#m-tor",title:"Tor in one switch",text:"Tor bounces your connection through 3 relays so sites can’t see your IP address or location. Pages load a bit slower. Flip it on, and off again whenever you like.",doText:"Flip the Tor switch",before:()=>{if(sheet!=="menu"){drawMenu();show("menu")}},until:()=>torOn!==tor0},
-    {sel:"#m-split",title:"Split screen",text:"Watch two games, or a stream next to stats. Videos fill their pane with full controls, fullscreen stays inside the pane, and the pane you tap gets the sound. Save a setup as a Scene to reopen it in one tap.",before:()=>{if(sheet!=="menu"){drawMenu();show("menu")}}},
-    {sel:"#m-ai",title:"Offline assistant",text:"Summarize a page or ask questions with an AI that runs on your phone — nothing you read is sent anywhere. Download the Lite model once on Wi-Fi.",before:()=>{if(sheet!=="menu"){drawMenu();show("menu")}}},
-    {sel:"#m-msg",title:"Murmur — private messages",text:"Chat, send photos and call other Hush users. Everything is end-to-end encrypted and goes through Tor — no phone number needed. Add friends by QR code or a one-time invite.",before:()=>{if(sheet!=="menu"){drawMenu();show("menu")}}},
-    {sel:"#url",title:"Commands: the fast way",text:"Holding the address bar opens Commands: type what you want — “split”, “dark”, “panic”, a friend’s name — and it’s there.",doText:"Hold the address bar",before:()=>show(null),until:()=>sheet==="cmd"},
-    {title:"You’re set 🎉",text:"Want more? The Hush guide explains every feature with examples — it’s at the bottom of Settings › Help, along with this walkthrough.",place:"center",last:true,before:()=>show(null),
+    {title:"Welcome to Hush 👋",text:"Hush blocks ads and trackers everywhere, has Tor built in, splits the screen for up to 4 videos, and comes with private messaging (Murmur), a private social network (Echo) and an offline assistant. This walkthrough takes about 3 minutes — you’ll try each thing yourself.",place:"center"},
+    // 1. Browsing
+    {sel:"#url",title:"Go to a site",text:"The address bar does both: type a site (espn.com) or a search. Shortcuts search one site directly — !yt YouTube, !w Wikipedia, !a Amazon, !r Reddit. Swipe the bar left/right to switch tabs.",doText:"Tap the bar, type a site and press Go",until:()=>{const u=(T()||{}).url||"";return u!==u0&&/^https?:/.test(u)}},
+    {sel:"#shield",title:"Your shield",text:"Ads, trackers, cookie banners and popups are blocked on every site. The shield shows what was stopped here and has switches just for this site.",doText:"Tap the shield",until:()=>sheet==="site"},
+    {sel:"#site",place:"top",title:"Per-site control",text:"If a site ever breaks, turn its protection off here — only for that site. You can also allow or block JavaScript, always open it in Tor, leave yourself a note, and check its connection.",doText:"Have a look, then tap Done",until:()=>sheet!=="site"},
+    // 2. Tabs
+    {sel:"#tb-new",title:"Open a second tab",text:"The + opens a new tab. You’ll need two for the next part — split screen.",doText:"Tap + and go to any site (or Skip)",before:()=>show(null),until:()=>inWs().length>1&&inWs().filter(t=>t.native).length>1},
+    {sel:"#tb-tabs",title:"Your tabs & workspaces",text:"All your tabs as cards. Swipe one away to close it. The chips at the top are workspaces — groups of tabs like Sports or Work — and you can give a workspace its own sign-ins.",doText:"Tap the tabs button",before:()=>show(null),until:()=>sheet==="switcher"},
+    {sel:"#switcher",place:"top",title:"Split screen",text:"Watch up to 4 tabs at once — two games, or a stream next to stats. Hold a tab card that isn’t the current one and choose “Add to split screen”.",doText:"Hold a tab › Add to split screen",before:()=>{if(sheet!=="switcher"){drawSwitcher();show("switcher")}},until:()=>splitSet.size>0},
+    {title:"Using split screen",text:"Tap a pane to give it the sound — it gets a blue ring and the others keep playing muted. Videos fill their pane with full controls, and fullscreen stays inside the pane. Drag the line to resize. In ⋯ › Split screen you can switch to Spotlight (the tapped pane goes big), keep the screen awake, and save the setup as a Scene to reopen in one tap.",place:"center",before:()=>show(null)},
+    // 3. Privacy
+    {sel:"#tb-menu",title:"The menu",text:"Tor, private tabs, Murmur, Echo, the assistant, split screen and settings all live here.",doText:"Tap the menu button",before:()=>show(null),until:()=>sheet==="menu"},
+    {sel:"#m-tor",title:"Tor in one switch",text:"Tor bounces your connection through 3 relays so sites can’t see your IP address or location. Pages load a bit slower; every Hush user on Tor looks the same to websites.",doText:"Flip the Tor switch (or Skip)",before:menu,until:()=>torOn!==tor0},
+    {sel:"#m-new",title:"Private tabs",text:"A private tab keeps nothing — no history, and its cookies are gone when you close it. Hold a tab › Self-destruct to have any tab close and wipe itself after a set time.",before:menu},
+    {sel:"#url",title:"Commands — and the panic button",text:"Holding the address bar opens Commands: type what you want — “split”, “dark”, “sleep timer”, a friend’s name. “Panic” closes every private tab and locks Murmur in one tap.",doText:"Hold the address bar",before:()=>show(null),until:()=>sheet==="cmd"},
+    // 4. Apps
+    {sel:"#m-ai",title:"Offline assistant",text:"Summarize a page or ask questions with an AI that runs on your phone — nothing you read is sent anywhere. Download the Lite model once on Wi-Fi.",before:menu},
+    {sel:"#m-msg",title:"Murmur — private messages",text:"Chat, send photos and call other Hush users. End-to-end encrypted, always through Tor, no phone number. Add friends by QR code or a one-time invite; watch videos together in sync.",before:menu},
+    {sel:"#m-echo",title:"Echo — your private social network",text:"Post to close friends or circles you choose, or go public. Your feed is tuned on your phone, not by someone else’s algorithm.",before:menu},
+    {sel:"#m-set",title:"Settings & the guide",text:"Make Hush yours: looks, security level, bottom bar, background play. At the bottom, Settings › Help has the full guide to every feature and this walkthrough.",before:menu},
+    {title:"You’re set 🎉",text:"That’s the tour. Open the guide any time for more detail and examples.",place:"center",last:true,before:()=>show(null),
      extra:b=>{const g=document.createElement("button");g.textContent="Open the guide";g.onclick=()=>{HUSH_COACH_END();openGuide()};b.querySelector(".hc-row").insertBefore(g,b.querySelector("[data-a=back]"))}}
-  ],{onEnd:()=>{touring=false;setPref("toured","1");show(null);syncNative()}});
-  window.HUSH_COACH_END=()=>{document.getElementById("hc")?.remove();touring=false;setPref("toured","1");show(null);syncNative()}}
+  ],{onEnd:fin});
+  window.HUSH_COACH_END=()=>{document.getElementById("hc")?.remove();fin()}}
 async function closeTab(id){const t=tabs.find(x=>x.id===id);if(t&&t.native&&floating===t.native){floating=null;native("floatClose",{stop:true}).catch(()=>{})}if(t&&t.native)inv("close_tab",{label:t.native}).catch(()=>{});
   splitSet.delete(id);tabs=tabs.filter(x=>x.id!==id);if(!inWs().length)newTab(false,true);else if(cur===id)cur=inWs().at(-1).id;render();saveSession();if(sheet==="switcher")drawSwitcher()}
 function step(d){const w=inWs();if(w.length<2){toast(d>0?"No tab to the right":"No tab to the left");return}const i=w.findIndex(t=>t.id===cur),j=i+d;
@@ -355,6 +364,8 @@ $("#reload").onclick=()=>{const t=T();if(t&&t.native){progress(true);inv("nav",{
 
 // ---------- events from the Android plugin (window.__hushEvent) ----------
 window.__hushEvent=(name,d)=>{
+  // Groq's key page handed over a new key (harden.js): connect the assistant, close that tab, open the assistant.
+  if(name==="groqKey"){toast("🔑 Checking your key through Tor…");HX.ai.connectGroq(d.key).then(()=>{const t=tabs.find(x=>x.native===d.id);if(t&&inWs().length>1)closeTab(t.id);toast("✓ "+HX.aiName()+" is ready — powered by Groq");openAssistant()}).catch(e=>toast(String(e&&e.message||e)));return}
   if(name==="popupBlocked"){HX.bump("pop");toast("🚫 Blocked a popup ad — you stayed on the page");return}
   if(name==="linkTab"){const u=d.url;if(!/^https?:/.test(u))return;const keep=cur,t=newTab(false,true);t.url=u;cur=keep;inv("open_tab",{input:u,space:spaceOf(t.ws)}).then(id=>{t.native=id;inv("switch_tab",{label:T().native||"none"});render()});toast("Opened in a background tab");return}
   if(name==="tabUrl"){const t=tabs.find(x=>x.native===d.id);if(!t)return;t.url=d.url;t.title=d.title||t.title;t.canBack=d.canBack;t.canFwd=d.canFwd;
@@ -429,7 +440,7 @@ var bubbleKey=null;var splitWith=null;
 // The Hush guide (guide.js): "Try it" opens the real feature.
 function openGuide(){$("#xs").innerHTML='<div id="guidex" style="padding:14px 10px"></div>';show("xs");
   HUSH_GUIDE.open($("#guidex"),{mobile:true,done:()=>show(null),act:a=>{const go={cmd:()=>show("cmd"),tabs:()=>{drawSwitcher();show("switcher")},site:()=>{drawSite();show("site")},
-    settings:()=>{drawSettings();show("settings")},split:()=>splitMenu(),msgs:()=>show("msgs"),echo:()=>show("echos"),reading:()=>{drawReading();show("reading")},
+    settings:()=>{drawSettings();show("settings")},split:()=>splitMenu(),msgs:()=>openMsgs(),echo:()=>openEcho(),reading:()=>{drawReading();show("reading")},
     gest:()=>{drawSettings();show("settings")},tor:()=>{show(null);toast("Tap the 🧅 onion in the address bar")},assistant:()=>openAssistant()}[a];
     try{show(null);go&&go()}catch(e){toast("Open it from the menu")}}})}
 // Split screen (2–4 tabs): tap a pane for its sound + highlight; videos fill their pane with full controls.
@@ -482,7 +493,7 @@ async function setTor(on){show(null);try{
   if(on){toast("Connecting to Tor… the first time can take ~20 s");const port=await inv("tor_start");await native("torMode",{on:true,port});toast("Tor mode on — sites can’t see your IP")}
   else{await native("torMode",{on:false});toast("Tor mode off")}
   torOn=on;document.body.classList.toggle("tor",on);render()}catch(e){toast(String(e))}}
-const HX=HushX({inv,pref,setPref,toast,open:u=>go(u),state:()=>state,reload:()=>loadState(),mobile:true,act:id=>runAction(id),
+const HX=HushX({inv,pref,setPref,toast,open:u=>{show(null);go(u)},state:()=>state,reload:()=>loadState(),mobile:true,act:id=>runAction(id),
   watchPick:()=>{if(!T()?.native)return toast("Open the page you want to watch first");show(null);setTimeout(()=>native("pick",{mode:"watch"}),200);toast("Tap the price or text to watch")},
   zap:()=>{show(null);setTimeout(()=>native("pick"),200);toast("Tap the thing to remove")}});
 function renderHome(t){const v=$("#view");HX.home(v,{priv:!!t?.priv,icon,long:true,
@@ -547,7 +558,7 @@ function drawMenu(){const el=$("#menu"),t=T(),live=!!(t&&t.native);
    ${listenSt?`<div class="row"><button class="btn" id="l-prev">‹ Prev</button><button class="btn" id="l-pp">${listenSt==="paused"?"Resume":"Pause"}</button><button class="btn" id="l-next">Next ›</button><button class="btn" id="l-rate">${lRate}×</button></div>`:""}
    <button class="item" id="m-echo"><div>Echo<small>${EC.unread()?EC.unread()+" new · ":""}share with friends, privately</small></div></button>
    <button class="item" id="m-msg"><div>Murmur<small>${HM.unread()?HM.unread()+" unread · ":""}private chat through Tor</small></div></button>
-   <button class="item" id="m-ai"><div>✨ Assistant<small>offline AI on this phone — summarize pages, ask anything</small></div></button>
+   <button class="item" id="m-ai"><div>${esc(HX.aiName())}<small>your AI assistant, offline on this phone — summarize pages, ask anything</small></div></button>
    <button class="item" id="m-split"><div>⬒ Split screen<small>${splitSet.size?(splitSet.size+1)+" tabs open · layout, scenes, close":"up to 4 tabs · tap one for its sound"}</small></div></button>
    <div class="item"><div>Tor mode <button class="btn sm" id="m-tori" aria-label="What is Tor?" style="padding:0 8px;min-width:0">ⓘ</button><small>${torOn?"on — every tab goes through Tor":"hide your IP and location from every site"}</small></div><button class="sw ${torOn?"on":""}" id="m-tor"></button></div>
    ${torOn?'<button class="item" id="m-newid"><div>New Tor identity<small>fresh circuits and a new IP, then reload</small></div></button>':""}
@@ -594,7 +605,7 @@ function drawSite(){const el=$("#site"),t=T(),h=hostOf(t.url),off=allow.has(h),s
    ${t.priv?item("Private tab","Separate cookies & storage · nothing saved"):""}
    ${item("Always use Tor here",listHas("tor_sites",h)?"On — Tor mode turns on when you open this site":"Hide your IP from this site every time",`<button class="sw ${listHas("tor_sites",h)?"on":""}" id="st-tor"></button>`)}
    ${pref("sec_level")?item("JavaScript here",listHas("js_allow",h)?"Allowed — you trust this site":"Blocked by your security level",`<button class="sw ${listHas("js_allow",h)?"on":""}" id="st-js"></button>`):""}
-   <div class="item" style="display:block"><div style="margin-bottom:6px">Your note on this page<small>Only you see it — it’s here whenever you come back</small></div><textarea class="txt" id="st-note" rows="2" style="width:100%">${esc(HX.tabNote.get(t.url))}</textarea></div>
+   <div class="item" style="flex-direction:column;align-items:stretch;gap:8px"><div style="width:100%">Your note on this page<small>Only you see it — it’s here whenever you come back</small></div><textarea class="txt" id="st-note" rows="2" style="width:100%">${esc(HX.tabNote.get(t.url))}</textarea></div>
    ${item("Connection",torOn?"🧅 Through Tor — the site can’t see your IP":/^https:/.test(t.url)?"🔒 Encrypted (HTTPS)":"⚠ Not encrypted")}
    ${pref("fp")!=="off"?item("Fingerprint protection",fpOff(h)?"Off on this site":"On — randomized device details",`<button class="sw ${fpOff(h)?"":"on"}" id="st-fp"></button>`):""}
    <div id="st-perms"></div>
@@ -614,7 +625,7 @@ function drawSite(){const el=$("#site"),t=T(),h=hostOf(t.url),off=allow.has(h),s
     if(v==="auto")delete state.site_dark[h];else state.site_dark[h]=v==="on";applyDarkNow();drawSite()});
   $("#st-read").onclick=()=>{show(null);inv("page_action",{action:"reader"})};$("#st-find").onclick=()=>{show(null);findMode(true)};$("#st-copy").onclick=()=>copy(t.url)}
 
-function openAssistant(){$("#xs").innerHTML=head("Assistant");const d=document.createElement("div");$("#xs").append(d);wire($("#xs"));HX.assistant(d,{pageText:()=>native("pageText").then(r=>r&&r.text||"")});show("xs")}
+function openAssistant(){$("#xs").innerHTML=head(esc(HX.aiName()));const d=document.createElement("div");$("#xs").append(d);wire($("#xs"));HX.assistant(d,{pageText:()=>native("pageText").then(r=>r&&r.text||"")});show("xs")}
 function openCmd(){vibe();const el=$("#cmd");
   const ACT=[["New tab",()=>newTab()],["New private tab",()=>newTab(true)],["Find in page",()=>{show(null);findMode(true)}],["Reader view",()=>{show(null);inv("page_action",{action:"reader"})}],
     ["Dark mode for websites: "+(pref("force_dark")==="true"?"on → off":"off → on"),async()=>{await setPref("force_dark",pref("force_dark")==="true"?"false":"true");applyDarkNow();show(null)}],
@@ -622,7 +633,7 @@ function openCmd(){vibe();const el=$("#cmd");
     ["Site settings & QR",()=>{if(T()?.native){drawSite();show("site")}}],["All tabs",openSwitcher],["History",()=>{drawHistory();show("history")}],
     ["Downloads",()=>{drawDownloads();show("downloads")}],["Settings",()=>{drawSettings();show("settings")}],
     ["Reading list",()=>{drawReading();show("reading")}],["Focus mode",()=>{drawFocus();show("focus")}],["Voice search",()=>{show(null);voice()}],
-    ["Save page as PDF",()=>{show(null);native("printPage")}],["Pop-out video (picture-in-picture)",()=>{show(null);native("pip")}],["About & updates",()=>{drawAbout();show("about")}],["Close tab",()=>{show(null);closeTab(cur)}],["✨ Assistant (on this device)",()=>openAssistant()],["⬒ Split screen…",()=>splitMenu()],["📘 Hush guide",()=>openGuide()],["Sleep timer for this video",()=>{show(null);actions("Pause the video in…",[[15,"15 min"],[30,"30 min"],[60,"1 hour"],[0,"Off"]].map(([n,l])=>[l,()=>{clearTimeout(window.__sleepT);if(!n)return toast("Sleep timer off");window.__sleepT=setTimeout(()=>{inv("page_action",{action:"media-pause"}).catch(()=>{});toast("😴 Paused")},n*60000);toast("😴 Pausing in "+l)}]))}],["Send this page to a friend",()=>{const t=T();if(!t||!/^https?:/.test(t.url))return toast("Open a page first");const l=(()=>{try{return HM.api.chatList()}catch(e){return[]}})();if(!l.length){openMsgs();return toast("Add a friend in Murmur first")}actions("Send to…",l.slice(0,20).map(c=>[c.name,()=>{HM.api.sendTo(c.key,t.url);toast("🔒 Sent privately through Tor")}]))}],["Panic: close private tabs, lock Murmur",()=>panic()],
+    ["Save page as PDF",()=>{show(null);native("printPage")}],["Pop-out video (picture-in-picture)",()=>{show(null);native("pip")}],["About & updates",()=>{drawAbout();show("about")}],["Close tab",()=>{show(null);closeTab(cur)}],[HX.aiName()+" — AI assistant on this phone",()=>openAssistant()],["⬒ Split screen…",()=>splitMenu()],["📘 Hush guide",()=>openGuide()],["Sleep timer for this video",()=>{show(null);actions("Pause the video in…",[[15,"15 min"],[30,"30 min"],[60,"1 hour"],[0,"Off"]].map(([n,l])=>[l,()=>{clearTimeout(window.__sleepT);if(!n)return toast("Sleep timer off");window.__sleepT=setTimeout(()=>{inv("page_action",{action:"media-pause"}).catch(()=>{});toast("😴 Paused")},n*60000);toast("😴 Pausing in "+l)}]))}],["Send this page to a friend",()=>{const t=T();if(!t||!/^https?:/.test(t.url))return toast("Open a page first");const l=(()=>{try{return HM.api.chatList()}catch(e){return[]}})();if(!l.length){openMsgs();return toast("Add a friend in Murmur first")}actions("Send to…",l.slice(0,20).map(c=>[c.name,()=>{HM.api.sendTo(c.key,t.url);toast("🔒 Sent privately through Tor")}]))}],["Panic: close private tabs, lock Murmur",()=>panic()],
     ...wsList().filter(w=>w!==curWs()).map(w=>["Workspace: "+w,()=>{show(null);switchWs(w)}])];
   el.innerHTML=head("Commands")+`<input class="txt" id="cmdq" placeholder="Type a command, tab or site" autocapitalize="off" spellcheck="false"><div class="sug" id="cmdr" style="padding:0"></div>`;
   wire(el);show("cmd");const q=$("#cmdq");setTimeout(()=>q.focus(),60);
@@ -654,7 +665,7 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
   el.innerHTML=head("Settings")+`<input class="txt" id="s-q" placeholder="Search settings" style="margin:0 0 6px"><h3>Layout</h3>
    ${item("Address bar","Swipe it ← → to switch tabs",seg("bar_pos",[["top","Top"],["bottom","Bottom"]]))}
    ${item("Theme","True black saves battery",seg("theme",[["system","Auto"],["light","Light"],["dark","Dark"],["black","Black"]]))}
-   <div class="item" style="display:block"><div style="margin-bottom:10px">Browser color</div><div class="swatches">${Object.entries(COLORS).map(([k,v])=>
+   <div class="item" style="flex-direction:column;align-items:stretch;gap:8px"><div style="width:100%">Browser color</div><div class="swatches">${Object.entries(COLORS).map(([k,v])=>
      `<button data-color="${k}" class="${pref("color")===k?"on":""}" aria-label="${k}" style="background:${v?`hsl(${v[0]} ${v[1]}% 55%)`:"#555"}"></button>`).join("")}
      <label class="btn sm" style="position:relative;overflow:hidden">Custom<input type="color" id="s-color" value="${/^#/.test(pref("color"))?pref("color"):"#3b82f6"}" style="position:absolute;inset:0;opacity:0"></label></div></div>
    ${item("Look","A complete theme",'<span></span>')}<div id="s-look" style="padding:0 4px 10px"></div>
@@ -688,8 +699,8 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
    ${item("Video controls","Speed, ±10 s, loop and pop-out on any video",sw("video_bar",pref("video_bar")!=="off"))}
    ${item("Bottom toolbar","Back, forward, new tab, tabs and menu",sw("toolbar",pref("toolbar")!=="off"))}${pref("toolbar")!=="off"?item("Hide toolbar while scrolling","Slides away as you scroll down, back when you scroll up",sw("tools_autohide",pref("tools_autohide")==="true")):""}
    ${item("YouTube quality","Videos start at this quality",seg("video_quality",[["1080","1080p"],["720","720p"],["auto","Auto"]]))}
-   <div class="item" style="display:block"><div style="margin-bottom:8px">Security level<small>Standard: everything works · Safer: no JavaScript on unencrypted pages · Safest: JavaScript only on sites you allow</small></div>${seg("sec_level",HX.SEC)}</div>
-   <div class="item" style="display:block"><div style="margin-bottom:8px">When you leave a playing video<small>Ask each time · a mini player you can drag and resize · keep playing in the background · or stop</small></div>${seg("video_leave",HX.LEAVE)}</div>
+   <div class="item" style="flex-direction:column;align-items:stretch;gap:8px"><div style="width:100%">Security level<small>Standard: everything works · Safer: no JavaScript on unencrypted pages · Safest: JavaScript only on sites you allow</small></div>${seg("sec_level",HX.SEC)}</div>
+   <div class="item" style="flex-direction:column;align-items:stretch;gap:8px"><div style="width:100%">When you leave a playing video<small>Ask each time · a mini player you can drag and resize · keep playing in the background · or stop</small></div>${seg("video_leave",HX.LEAVE)}</div>
    ${item("Change watch","Get told when a price or text changes",'<button class="btn sm" id="s-watch">Open</button>')}
    <h3>Gestures</h3>
    <div class="item" style="display:block;line-height:1.9;font-size:13px">Address bar: swipe ← → switch tabs · swipe ${toPage()} all tabs · hold for commands<br>

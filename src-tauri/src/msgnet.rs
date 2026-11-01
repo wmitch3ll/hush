@@ -143,6 +143,44 @@ pub async fn blob_get(app: AppHandle, url: String) -> Result<tauri::ipc::Respons
     Ok(tauri::ipc::Response::new(body))
 }
 
+/// Public posts from open networks for Echo's Discover feed (Bluesky, Mastodon), fetched through Tor so those
+/// services never see your IP. Read-only GETs to a fixed list of public servers; returns the JSON reply as text.
+pub const PUBLIC_FEED_HOSTS: &[&str] = &["public.api.bsky.app", "mastodon.social", "mastodon.online", "mstdn.social", "fosstodon.org", "flipboard.social", "newsie.social", "mas.to", "hachyderm.io", "infosec.exchange", "techhub.social", "journa.host", "press.coop"];
+pub fn public_feed_ok(url: &str) -> bool {
+    url::Url::parse(url).ok().filter(|u| u.scheme() == "https" && u.port().is_none())
+        .and_then(|u| u.host_str().map(|h| PUBLIC_FEED_HOSTS.contains(&h) && (u.path().starts_with("/xrpc/app.bsky.") || u.path().starts_with("/api/v1/")))).unwrap_or(false)
+}
+#[tauri::command]
+pub async fn public_feed(app: AppHandle, url: String) -> Result<String, String> {
+    if !public_feed_ok(&url) { return Err("not an allowed public feed address".into()); }
+    let (st, body) = https(&app, "GET", &url, &[("Accept".into(), "application/json".into())], &[], 4 << 20).await?;
+    if !(200..300).contains(&st) { return Err(format!("feed error ({st})")); }
+    String::from_utf8(body).map_err(|_| "bad reply".into())
+}
+/// Cloud assistant (Groq, with the user's own free key): one chat request through Tor, so Groq never sees your IP.
+/// Only ever talks to api.groq.com's chat endpoint; the key stays on this device and is sent only to Groq.
+#[tauri::command]
+pub async fn groq_chat(app: AppHandle, key: String, body: String) -> Result<String, String> {
+    if key.len() < 20 || key.len() > 200 || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') { return Err("That doesn’t look like a Groq key".into()); }
+    if body.len() > 400_000 { return Err("too much text".into()); }
+    let (st, out) = https(&app, "POST", "https://api.groq.com/openai/v1/chat/completions",
+        &[("Authorization".into(), format!("Bearer {key}")), ("Content-Type".into(), "application/json".into()), ("Accept".into(), "application/json".into())], body.as_bytes(), 2 << 20).await?;
+    let txt = String::from_utf8_lossy(&out).to_string();
+    if st == 401 { return Err("Groq didn’t accept the key — check it in Settings".into()); }
+    if st == 429 { return Err("You’ve hit Groq’s free limit for now — try again in a minute (or tomorrow)".into()); }
+    if !(200..300).contains(&st) { return Err(format!("Groq error {st}: {}", txt.chars().take(200).collect::<String>())); }
+    Ok(txt)
+}
+#[cfg(test)] mod feed_tests {
+    #[test] fn only_public_feed_reads() {
+        assert!(super::public_feed_ok("https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=nasa.gov&limit=5"));
+        assert!(super::public_feed_ok("https://mastodon.social/api/v1/accounts/lookup?acct=Gargron"));
+        assert!(!super::public_feed_ok("https://evil.example/api/v1/x"));
+        assert!(!super::public_feed_ok("http://mastodon.social/api/v1/x"));
+        assert!(!super::public_feed_ok("https://mastodon.social/oauth/token"));
+    }
+}
+
 // ---------- Secrets (the Murmur / Echo identity key) in the OS vault ----------
 // Windows: DPAPI (encrypted to your Windows account). Other desktops: a file only your user can read.
 // Android uses the Keystore from Kotlin (TabsPlugin.secretGet/Set), not these commands.

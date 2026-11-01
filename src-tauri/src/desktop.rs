@@ -576,6 +576,11 @@ fn make_tab_with(app: &AppHandle, input: String, private: bool, peek: bool, tor:
     let builder = WebviewBuilder::new(&label, WebviewUrl::External(url))
         .on_navigation(move |u| match u.scheme() {
             "hush-pick" => { handle_pick(&app_nav, &lbl_nav, u); false }
+            // harden.js on console.groq.com: hand a freshly made Groq key to the assistant (only from Groq's own site).
+            "hush-groq" => { if cur_page.lock().starts_with("https://console.groq.com/") {
+                    if let Some(k) = u.query_pairs().find(|(k, _)| k == "k").map(|(_, v)| v.to_string()).filter(|k| k.starts_with("gsk_") && k.len() < 200 && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')) {
+                        let _ = app_nav.emit_to("chrome", "groq-key", serde_json::json!({ "key": k, "tab": lbl_nav })); } }
+                false }
             "hush-float" => { handle_float(&app_nav, &lbl_nav, u); false }
             "hush-split" => { split_focus(&app_nav, &lbl_nav); false }
             // Mouse gesture drawn in the page (tools.js): only the direction letters are passed on.

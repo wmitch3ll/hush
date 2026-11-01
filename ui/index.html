@@ -187,13 +187,16 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',applyColo
 // Layout. The address bar spans the window; the tab bar is a separate view ("rail.html") that slides OVER the page
 // when auto-hide is on (the page never resizes), or sits beside the page when pinned.
 const EDGE=6;
-const railSize=()=>{const tp=pref('tabs_pos'),vert=tp=='left'||tp=='right',big=pref('previews')!='small'&&pref('previews')!='off';
+// Legacy tabs: classic browser tabs in a row across the very top (above the address bar), always shown.
+const legacyTabs=()=>pref('legacy_tabs')=='on', tabsPos=()=>legacyTabs()?'top':pref('tabs_pos'), tabsPinned=()=>legacyTabs()||pref('tabs_mode')!='auto', LEG=40;
+const railSize=()=>{const tp=tabsPos(),vert=tp=='left'||tp=='right',big=pref('previews')!='small'&&pref('previews')!='off';
+  if(legacyTabs())return LEG;
   return vert?(pref('previews')=='off'?168:big?212:184):(pref('previews')=='off'?56:big?132:104)};
 let railOff=1, railAnim=null;   // 0 = fully shown, 1 = hidden (only the hover edge left)
 function layout(now){
   applyColor();
   const c=pref('density')=='compact', B=c?44:52;
-  const tp=pref('tabs_pos'), bp=pref('bar_pos'), pinned=pref('tabs_mode')!='auto';
+  const tp=tabsPos(), bp=pref('bar_pos'), pinned=tabsPinned();
   document.documentElement.dataset.theme=pref('theme')=='system'?'':pref('theme');
   document.body.classList.toggle('compact',c);
   const ins={top:0,right:0,bottom:0,left:0}, A=$('#addr'), P=$('#page'), L=$('#load');
@@ -204,9 +207,9 @@ function layout(now){
   // Hush Hub dock: Murmur / Echo / notes beside the page — the page makes room instead of being covered.
   const D=$('#dock'), dw=Math.max(300,Math.min(640,+pref('dock_w')||380));
   if(dockTab){const r=ins.right;ins.right+=dw;D.style.cssText=px({top:ins.top,bottom:ins.bottom,right:r,width:dw})}
-  A.style.cssText=px({[bp]:0,height:B,left:0,right:0});
+  A.style.cssText=legacyTabs()&&bp=='top'?px({top:LEG,height:B,left:0,right:0}):px({[bp]:0,height:B,left:0,right:0});
   P.style.cssText=px({top:ins.top,right:ins.right,bottom:ins.bottom,left:ins.left});
-  L.style.cssText=px({left:0,right:0,[bp=='top'?'top':'bottom']:B-1});
+  L.style.cssText=px({left:0,right:0,[bp=='top'?'top':'bottom']:B-1+(legacyTabs()&&bp=='top'?LEG:0)});
   $('#toast').style.cssText=px({right:ins.right+12,top:ins.top+8});
   layout.ins=ins;
   inv('set_layout',ins).catch(()=>{});
@@ -214,28 +217,29 @@ function layout(now){
 }
 // Where the tab bar goes, given how far it's slid out (railOff 0..1).
 function placeRail(){
-  const tp=pref('tabs_pos'), bp=pref('bar_pos'), vert=tp=='left'||tp=='right', pinned=pref('tabs_mode')!='auto';
+  const tp=tabsPos(), bp=pref('bar_pos'), vert=tp=='left'||tp=='right', pinned=tabsPinned();
   const B=pref('density')=='compact'?44:52, W=innerWidth, H=innerHeight, size=railSize();
   const off=pinned?0:railOff, hidden=Math.round((size-EDGE)*off);
   let x,y,w,h;
   if(vert){ y=bp=='top'?B:0; h=H-B; w=size; x=tp=='left'?-hidden:W-size+hidden; }
   else    { x=0; w=W; h=size; y=tp=='top'?(bp=='top'?B:0)-hidden:(bp=='bottom'?H-B-size:H-size)+hidden; }
+  if(legacyTabs()){x=0;y=0;w=W;h=LEG}
   inv('set_rail',{x,y,w,h,visible:true}).catch(()=>{});
 }
 function slideRail(target){
-  if(pref('tabs_mode')!='auto'){railOff=0;placeRail();return}
+  if(tabsPinned()){railOff=0;placeRail();return}
   cancelAnimationFrame(railAnim);const from=railOff,t0=performance.now(),dur=matchMedia('(prefers-reduced-motion: reduce)').matches?1:170;
   const ease=k=>k<.5?4*k*k*k:1-Math.pow(-2*k+2,3)/2;
   const step=now=>{const k=Math.min(1,(now-t0)/dur);railOff=from+(target-from)*ease(k);placeRail();if(k<1)railAnim=requestAnimationFrame(step);else railState()};
   railAnim=requestAnimationFrame(step);
 }
 function reveal(on){
-  if(pref('tabs_mode')!='auto')return;
+  if(tabsPinned())return;
   clearTimeout(hideT);
   if(on&&!revealed){revealed=true;railState();slideRail(0);if(cur&&tab(cur)&&!panel)inv('capture_tab',{tab:cur}).catch(()=>{})}
   if(!on&&revealed){revealed=false;railState();setTimeout(()=>{if(!revealed)slideRail(1)},90)}
 }
-function scheduleHide(){clearTimeout(hideT);if(pref('tabs_mode')!='auto')return;
+function scheduleHide(){clearTimeout(hideT);if(tabsPinned())return;
   hideT=setTimeout(()=>{if(!overBar)reveal(false)},Math.max(.5,+pref('hide_delay'))*1000)}
 const peek=()=>{reveal(true);if(!overBar)scheduleHide()};   // briefly show the tabs after a tab action
 // Everything the tab bar needs to draw itself (it has no state of its own).
@@ -243,8 +247,8 @@ function railState(){if(!T.event.emitTo)return;
   const cs=getComputedStyle(document.documentElement),vars={};for(const k of ['--bg','--card','--line','--ink','--mute','--acc','--glow'])vars[k]=cs.getPropertyValue(k).trim();
   const dark=matchMedia('(prefers-color-scheme: dark)').matches?pref('theme')!='light':/dark|black/.test(pref('theme'));
   T.event.emitTo('rail','rail-state',{tabs:(typeof inWs=='function'?inWs():tabs).map(t=>({id:t.id,url:t.url,title:t.title||'',priv:t.priv,ess:!!t.ess,tor:!!t.tor,destruct:HX.destructLabel(t),sleeping:!!t.sleeping,muted:!!t.muted})),
-    cur,split,pos:pref('tabs_pos'),ws:typeof curWs=='function'?curWs():'Personal',wsList:typeof wsList=='function'?wsList():[],collapsed:pref('tabs_mode')=='auto'&&!revealed&&railOff>.5,
-    pinned:pref('tabs_mode')!='auto',previews:pref('previews'),vars,dark}).catch(()=>{})}
+    cur,split,pos:tabsPos(),ws:typeof curWs=='function'?curWs():'Personal',wsList:typeof wsList=='function'?wsList():[],collapsed:!tabsPinned()&&!revealed&&railOff>.5,
+    pinned:tabsPinned(),legacy:legacyTabs(),previews:pref('previews'),vars,dark}).catch(()=>{})}
 // Clicks and hovers from the tab bar.
 T.event.listen('rail-action',async({payload:a})=>{const t=a.id&&tab(a.id);
   switch(a.type){
@@ -287,22 +291,32 @@ let split=null, findOn=false, statsT=null;
 let touring=false;
 function sync(){const t=tab(cur);inv('show_content',{visible:!panel&&!touring&&!!t&&t.ws==curWs()}).catch(()=>{})}
 // Hands-on welcome walkthrough (coach.js): you do each thing for real; the page is hidden while it runs.
-function startTour(){touring=true;closePanel(true);sync();const u0=(tab(cur)||{}).url||'',tor0=tabs.filter(t=>t.tor).length,split0=split;
+function startTour(){touring=true;closePanel(true);sync();const u0=(tab(cur)||{}).url||'',tor0=tabs.filter(t=>t.tor).length;
   const fin=()=>{touring=false;setPref('toured','1');closePanel(true);sync();draw()};
   HUSH_COACH.run([
-    {title:'Welcome to Hush 👋',text:'Hush blocks ads and trackers on every site, has Tor built in to hide where you are, and comes with private messaging (Murmur) and a private social network (Echo). This 2-minute walkthrough has you try each thing yourself.',place:'center'},
-    {sel:'#bar',title:'Go to a site',text:'The address bar does both: type a site (espn.com) or a search. Shortcuts search one site directly — !yt YouTube, !w Wikipedia, !a Amazon. Ctrl+L jumps here.',doText:'Click the bar, type a site and press Enter',until:()=>{const u=(tab(cur)||{}).url||'';return u!==u0&&/^https?:/.test(u)}},
-    {sel:'#shield',title:'Your shield',text:'Ads, trackers, cookie banners and popups are blocked on every site — the number shows how many on this page. If a site ever breaks, click the shield to turn protection off just there (and on again later).'},
-    {sel:'#onion',title:'Tor in one click',text:'The onion opens the page in a Tor tab: your IP address and location are hidden, and Tor tabs never touch your normal sign-ins. Pages load a bit slower.',doText:'Click the onion to open this page in Tor',until:()=>tabs.filter(t=>t.tor).length>tor0},
-    {sel:'#tabsbar',title:'Tabs & split screen',text:'Your tabs live here — drag to reorder, middle-click to close. Shift-click another tab to watch them side by side; shift-click more to add up to 4. Click a pane to give it the sound.',doText:'Shift-click a second tab to split (or Skip)',until:()=>split&&split!==split0},
-    {title:'Commands: the fast way',text:'Ctrl+K finds anything — tabs, bookmarks, friends, settings and actions like “split layout”, “scene”, “reader” or “assistant”.',doText:'Press Ctrl+K',place:'center',until:()=>panel==='pal'},
-    {sel:'#msgb',title:'Murmur — private messages',text:'Chat, send photos and call other Hush users. End-to-end encrypted, always through Tor, no phone number. Add friends by QR code or a one-time invite.',before:()=>closePanel(true)},
-    {sel:'#echob',title:'Echo — your private social network',text:'Share with close friends or circles you choose, or make a public profile. Your feed is tuned on your device, not by an algorithm somewhere else.'},
-    {title:'You’re set 🎉',text:'The Hush guide explains every feature with examples — find it at the bottom of Settings › Help, along with this walkthrough. The offline assistant is in Ctrl+K › Ask the assistant.',place:'center',last:true,
+    {title:'Welcome to Hush 👋',text:'Hush blocks ads and trackers everywhere, has Tor built in, splits the window for up to 4 videos, and comes with private messaging (Murmur), a private social network (Echo) and an offline assistant. This walkthrough takes about 3 minutes — you’ll try each thing yourself.',place:'center'},
+    // 1. Browsing
+    {sel:'#bar',title:'Go to a site',text:'The address bar does both: type a site (espn.com) or a search. Shortcuts search one site directly — !yt YouTube, !w Wikipedia, !a Amazon, !r Reddit. Ctrl+L jumps here.',doText:'Click the bar, type a site and press Enter',until:()=>{const u=(tab(cur)||{}).url||'';return u!==u0&&/^https?:/.test(u)}},
+    {sel:'#shield',title:'Your shield',text:'Ads, trackers, cookie banners and popups are blocked on every site — the number shows how many on this page. If a site ever breaks, click the shield to turn protection off just there.'},
+    // 2. Tabs
+    {sel:'#new',title:'Open a second tab',text:'Ctrl+T (or this button) opens a new tab. You’ll need two for the next part — split screen.',doText:'Open a new tab and go to any site (or Skip)',until:()=>tabs.filter(t=>t.ws==curWs()&&/^https?:/.test(t.url||'')).length>1},
+    {title:'Your tabs & workspaces',text:(legacyTabs()?'Your tabs run across the top like a classic browser.':'Your tabs slide in from the edge of the window with page previews — or turn on Legacy tabs in Settings for classic tabs across the top.')+' Drag to reorder, middle-click to close, right-click for mute, Essentials, self-destruct and more. Workspaces group tabs (Sports, Work…) and can have their own sign-ins.',place:'center'},
+    {title:'Split screen',text:'Watch up to 4 tabs at once — two games, or a stream next to stats. Shift-click another tab in your tab bar to split with it; shift-click more to add up to 4.',doText:'Shift-click a second tab (or Skip)',place:'center',until:()=>!!split},
+    {title:'Using split screen',text:'Click a pane to give it the sound — it gets a blue ring and the others keep playing muted. Videos fill their pane with full controls, and fullscreen stays inside the pane. In Ctrl+K: Split layout switches to Spotlight (the clicked pane goes big), and “Save split as a scene” reopens the same setup in one go.',place:'center'},
+    // 3. Privacy
+    {sel:'#onion',title:'Tor in one click',text:'The onion opens the page in a Tor tab: your IP address and location are hidden, and Tor tabs never touch your normal sign-ins. Pages load a bit slower.',doText:'Click the onion (or Skip)',until:()=>tabs.filter(t=>t.tor).length>tor0},
+    {title:'Private tabs & panic',text:'Ctrl+Shift+N opens a private tab that keeps nothing. Right-click any tab › Self-destruct to have it close and wipe itself later. Ctrl+Shift+X is the panic button: every private and Tor tab closes, Murmur and Echo lock, and Tor gets a new identity.',place:'center'},
+    {title:'Commands: the fast way',text:'Ctrl+K finds anything — tabs, bookmarks, friends, settings and actions like “split layout”, “scene”, “reader”, “sleep timer” or “assistant”.',doText:'Press Ctrl+K',place:'center',until:()=>panel==='pal'},
+    // 4. Apps
+    {title:'Offline assistant',text:'Ctrl+K › Ask the assistant: summarize a page or ask questions with an AI that runs on this computer — nothing you read is sent anywhere. The model downloads once.',place:'center',before:()=>closePanel(true)},
+    {sel:'#msgb',title:'Murmur — private messages',text:'Chat, send photos and call other Hush users. End-to-end encrypted, always through Tor, no phone number. Add friends by QR code or a one-time invite; watch videos together in sync.'},
+    {sel:'#echob',title:'Echo — your private social network',text:'Post to close friends or circles you choose, or go public. Your feed is tuned on your computer, not by someone else’s algorithm.'},
+    {sel:'#gear',title:'Settings & the guide',text:'Make Hush yours: looks, Legacy tabs, security level, split layout. At the bottom, Settings › Help has the full guide to every feature and this walkthrough.'},
+    {title:'You’re set 🎉',text:'That’s the tour. Open the guide any time for more detail and examples.',place:'center',last:true,
      extra:b=>{const g=document.createElement('button');g.textContent='Open the guide';g.onclick=()=>{document.getElementById('hc')?.remove();fin();openPanel('guide')};b.querySelector('.hc-row').insertBefore(g,b.querySelector('[data-a=back]'))}}
   ],{onEnd:fin})}
 function draw(){
-  const box=$('#tabs');box.textContent='';const horiz=pref('tabs_pos')=='top'||pref('tabs_pos')=='bottom';
+  const box=$('#tabs');box.textContent='';const horiz=tabsPos()=='top'||tabsPos()=='bottom';
   inWs().forEach((t,i)=>{const d=document.createElement('div');const h=hostOf(t.url).replace(/^www\./,'');
     if(t.sleeping)d.style.opacity='.45';
     d.className='tab'+(t.id==cur?' on':'')+(t.priv?' priv':'')+(t.id==split?' split':'');
@@ -429,7 +443,7 @@ function shortcut(k){
   else if(k=='shift+b')panel=='bookmarks'?closePanel():openPanel('bookmarks');
   else if(k=='\\'){const o=inWs().filter(t=>t.id!=cur).at(-1);if(split)toggleSplit(split);else if(o)toggleSplit(o.id)}
   else if(k=='tab')cycle(1); else if(k=='shift+tab')cycle(-1);
-  else if(k=='b'){if(pref('tabs_mode')!='auto'){toast('Tab bar is pinned — change it in Settings');return}revealed?reveal(false):peek()}
+  else if(k=='b'){if(tabsPinned()){toast('Tab bar is pinned — change it in Settings');return}revealed?reveal(false):peek()}
 }
 addEventListener('keydown',e=>{const m=e.ctrlKey||e.metaKey,k=e.key.toLowerCase();
   if(m&&e.key=='Tab'){e.preventDefault();shortcut(e.shiftKey?'shift+tab':'tab')}
@@ -452,6 +466,8 @@ T.event.listen('shortcut',({payload:p})=>shortcut(p.key));
 const listHas=(k,h)=>(pref(k)||'').split(',').filter(Boolean).some(x=>h==x||h.endsWith('.'+x));
 const torSite=h=>listHas('tor_sites',h.replace(/^www\./,'')),jsSite=h=>listHas('js_allow',h.replace(/^www\./,''));
 async function toggleList(k,site){const l=(pref(k)||'').split(',').filter(Boolean);await setPref(k,(l.includes(site)?l.filter(x=>x!=site):[...l,site]).join(','))}
+// Groq's key page handed over a new key (harden.js): connect the assistant, close that tab, open the assistant.
+T.event.listen('groq-key',({payload:p})=>{toast('🔑 Checking your key through Tor…');HX.ai.connectGroq(p.key).then(()=>{if(tabs.length>1&&tab(p.tab))closeTab(p.tab);toast('✓ '+HX.aiName()+' is ready — powered by Groq');openPanel('ai')}).catch(e=>toast(String(e&&e.message||e)))});
 T.event.listen('popup-blocked',({payload:p})=>{HX.bump('pop');if(p.tab==cur)toast('🚫 Blocked a popup ad — you stayed on the page')});
 T.event.listen('tab-url',({payload:p})=>{const t=tab(p.tab);if(!t)return;t.url=p.url;
   // Always-through-Tor sites: a normal tab that lands on one is reopened as a Tor tab.
@@ -633,7 +649,7 @@ document.addEventListener('click',e=>{if(e.target.id=='s-arc')ACTIONS()[0][2]()}
 let sleepT=null;function sleepTimer(){const t=tab(cur);if(!t)return toast('Open a video first');const m=prompt('Pause the video in how many minutes? (0 = cancel)',sleepT?'0':'30');if(m==null)return;clearTimeout(sleepT);sleepT=null;
   const n=+m;if(!(n>0))return toast('Sleep timer off');const id=t.id;sleepT=setTimeout(()=>{inv('page_action',{action:'media-pause',tab:id}).catch(()=>{});sleepT=null;toast('😴 Sleep timer: paused')},n*60000);toast('😴 Pausing in '+n+' min')}
 const ACTIONS=()=>[
-  ['✨ Ask the assistant','On this device',()=>openPanel('ai')],['✨ Summarize this page','On this device',()=>{openPanel('ai');setTimeout(()=>$('#panel [data-q=sum]')?.click(),200)}],
+  [`Ask ${HX.aiName()}`,'Your AI assistant, on this computer',()=>openPanel('ai')],[`${HX.aiName()}: summarize this page`,'On this computer',()=>{openPanel('ai');setTimeout(()=>$('#panel [data-q=sum]')?.click(),200)}],
   ['Sleep timer for this video','',()=>{closePanel();sleepTimer()}],
   ['Split layout: '+(pref('split_mode')=='spot'?'Spotlight → Grid':'Grid → Spotlight'),'Spotlight: the tab you click gets the big spot',async()=>{closePanel();await setPref('split_mode',pref('split_mode')=='spot'?'grid':'spot');splitModeSync()}],
   ['Keep screen awake in split view: '+(pref('split_awake')!='false'?'on':'off'),'While a split is open',async()=>{closePanel();await setPref('split_awake',pref('split_awake')!='false'?'false':'true');splitModeSync()}],
@@ -787,11 +803,12 @@ const row=(title,sub,ctl)=>`<div class=row><div>${title}${sub?`<small>${sub}</sm
 const sw=(k,on)=>`<button class="sw ${on?'on':''}" data-sw=${k}></button>`;
 function wipe(){if(confirm('Clear all cookies, cache and site data?')){inv('clear_data');toast('Browsing data cleared')}}
 function renderSettings(){
-  const s=state.settings, p=$('#panel'), auto=pref('tabs_mode')=='auto';
+  const s=state.settings, p=$('#panel'), auto=!tabsPinned();
   p.innerHTML=`<h2>Settings ${closeBtn}</h2><input class=txt id=s-q placeholder="Search settings — e.g. dark, tor, video" style="margin:-6px 0 14px">
   <h3>Layout</h3>
-  ${row('Tab bar position','',seg('tabs_pos',[['left','Left'],['right','Right'],['top','Top'],['bottom','Bottom']]))}
-  ${row('Tab bar','Auto-hide slides it over the page when you point at that edge (or press <kbd>Ctrl</kbd>+<kbd>B</kbd>) — the page never resizes',seg('tabs_mode',[['auto','Slide over'],['pinned','Always shown']]))}
+  ${row('Legacy tabs','Classic browser tabs in a row across the top, like Chrome or Brave — title, close button and + at the end. Turn off for the modern side bar with page previews.',sw('legacy_tabs',legacyTabs()))}
+  ${legacyTabs()?'':`${row('Tab bar position','',seg('tabs_pos',[['left','Left'],['right','Right'],['top','Top'],['bottom','Bottom']]))}
+  ${row('Tab bar','Auto-hide slides it over the page when you point at that edge (or press <kbd>Ctrl</kbd>+<kbd>B</kbd>) — the page never resizes',seg('tabs_mode',[['auto','Slide over'],['pinned','Always shown']]))}`}
   ${auto?row('Hide after','How long the tab bar stays after the mouse leaves',seg('hide_delay',[['1','1s'],['2','2s'],['3','3s'],['5','5s'],['10','10s']])):''}
   ${row('Address bar','',seg('bar_pos',[['top','Top'],['bottom','Bottom']]))}
   ${row('Density','',seg('density',[['normal','Comfortable'],['compact','Compact']]))}
@@ -855,7 +872,7 @@ function renderSettings(){
   p.querySelectorAll('[data-color]').forEach(b=>b.onclick=async()=>{await setPref('color',b.dataset.color);renderSettings()});
   $('#s-color').oninput=e=>{state.settings.ui.color=e.target.value;applyColor()};$('#s-color').onchange=async e=>{await setPref('color',e.target.value);renderSettings()};
   p.querySelectorAll('[data-sw]').forEach(b=>b.onclick=async()=>{const k=b.dataset.sw,on=b.classList.contains('on');
-    await setPref(k,k=='force_dark'?String(!on):(on?'off':'on'));if(k=='fp')toast('Applies to tabs you open from now on');if(k=='force_dark')applyDarkNow();if(k=='restore')saveSession();renderSettings()});
+    await setPref(k,k=='force_dark'?String(!on):(on?'off':'on'));if(k=='fp')toast('Applies to tabs you open from now on');if(k=='force_dark')applyDarkNow();if(k=='restore')saveSession();if(k=='legacy_tabs'){layout(true);toast(legacyTabs()?'Legacy tabs on':'Side bar tabs')}renderSettings()});
   $('#s-hist').onclick=e=>{e.preventDefault();openPanel('history')};
   $('#s-tori').onclick=()=>openPanel('torinfo');HX.settingsSearch(p,$('#s-q'),'.row');
   p.querySelectorAll('[data-tbt]').forEach(b=>b.onclick=async()=>{const h=tbHidden();h.has(b.dataset.tbt)?h.delete(b.dataset.tbt):h.add(b.dataset.tbt);await setPref('tb_hide',[...h].join(','));applyToolbar();renderSettings()});

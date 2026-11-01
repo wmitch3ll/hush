@@ -273,15 +273,72 @@ window.HushEcho = function (A) {
       const old = prof(); LS.set('me', { name, bio: view.el.querySelector('#ec-b').value.trim().slice(0, 300), public: pub, wasPublic: !!(old?.public || old?.wasPublic) });
       publishProfile(); subscribe(); keepAlive(); go(null, { tab: view.screen === 'edit' ? 'me' : 'home' }); A.toast(pub ? '🌐 Your profile is public' : '🔒 Your profile is friends-only'); };
   }
+  // ---------- Open web: public posts from Bluesky and Mastodon ----------
+  // So Echo has people to follow from day one. Read-only: posts are fetched through Tor (Bluesky and Mastodon never
+  // see your IP), shown with where they came from, and "Open" takes you to the original to reply or like there.
+  // No pictures are loaded from those servers (that would reveal you); posts with photos say so.
+  const OPEN_CATS = {
+    News: ['bsky:nytimes.com', 'bsky:npr.org', 'bsky:apnews.com', 'bsky:washingtonpost.com', 'bsky:theguardian.com', 'masto:ProPublica@newsie.social'],
+    Sports: ['bsky:theathletic.bsky.social', 'bsky:espn.com', 'bsky:nfl.bsky.social', 'bsky:nba.bsky.social'],
+    Tech: ['bsky:theverge.com', 'bsky:wired.com', 'bsky:arstechnica.com', 'masto:eff@mastodon.social', 'masto:torproject@mastodon.social', 'masto:Gargron@mastodon.social'],
+    Science: ['bsky:nasa.gov', 'bsky:science.org', 'bsky:newscientist.com', 'bsky:natgeo.com'],
+    Fun: ['bsky:theonion.com', 'bsky:xkcd.com', 'bsky:mcsweeneys.net'] };
+  const openAcc = () => LS.get('openFollow', []), openPosts = () => LS.get('openPosts', {}), openSet = v => LS.set('openFollow', [...new Set(v)].slice(0, 200));
+  const invoke = (c, a) => window.__TAURI__.core.invoke(c, a);
+  const otxt = h => { try { const d = new DOMParser().parseFromString(String(h).replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>\s*<p>/gi, '\n\n'), 'text/html'); return d.body.textContent || ''; } catch (_) { return ''; } };
+  async function openFetch(acc) {
+    const [kind, id] = [acc.slice(0, acc.indexOf(':')), acc.slice(acc.indexOf(':') + 1)];
+    if (kind === 'bsky') {
+      const j = JSON.parse(await invoke('public_feed', { url: 'https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?filter=posts_no_replies&limit=15&actor=' + encodeURIComponent(id) }));
+      return (j.feed || []).filter(f => !f.reason && f.post && f.post.record).map(f => { const p = f.post, a = p.author || {}, rk = String(p.uri || '').split('/').pop();
+        const imgs = (p.embed && (p.embed.images || (p.embed.media && p.embed.media.images))) || [];
+        return { id: 'b:' + p.uri, acc, net: 'bsky', name: a.displayName || a.handle, handle: '@' + a.handle, at: Date.parse(p.record.createdAt || p.indexedAt) || Date.now(),
+          text: String(p.record.text || '').slice(0, 3000), photos: imgs.length, video: !!(p.embed && /video/.test(p.embed.$type || '')), likes: p.likeCount || 0, reposts: p.repostCount || 0, replies: p.replyCount || 0,
+          url: 'https://bsky.app/profile/' + a.handle + '/post/' + rk }; });
+    }
+    const [user, host] = id.split('@');
+    const a = JSON.parse(await invoke('public_feed', { url: `https://${host}/api/v1/accounts/lookup?acct=${encodeURIComponent(user)}` }));
+    const l = JSON.parse(await invoke('public_feed', { url: `https://${host}/api/v1/accounts/${encodeURIComponent(a.id)}/statuses?limit=15&exclude_replies=true&exclude_reblogs=true` }));
+    return (l || []).map(x => ({ id: 'm:' + x.uri, acc, net: 'masto', name: a.display_name || a.username, handle: '@' + a.acct + (a.acct.includes('@') ? '' : '@' + host), at: Date.parse(x.created_at) || Date.now(),
+      text: otxt(x.content).slice(0, 3000), photos: (x.media_attachments || []).filter(m => m.type === 'image').length, video: (x.media_attachments || []).some(m => /video|gifv/.test(m.type)),
+      likes: x.favourites_count || 0, reposts: x.reblogs_count || 0, replies: x.replies_count || 0, url: x.url || x.uri }));
+  }
+  let openBusy = false;
+  async function openRefresh(accs, force) {
+    if (openBusy) return; const all = openPosts(), stamp = LS.get('openAt', {}), now = Date.now();
+    const due = [...new Set(accs)].filter(a => force || !(stamp[a] > now - 15 * 60e3)); if (!due.length) return;
+    openBusy = true; view.openLoading = true; view.open && paint();
+    for (let i = 0; i < due.length; i += 3) await Promise.all(due.slice(i, i + 3).map(async a => {
+      try { const l = await openFetch(a); for (const k of Object.keys(all)) if (all[k].acc === a) delete all[k]; for (const x of l) all[x.id] = x; stamp[a] = now; }
+      catch (e) { stamp[a] = now - 10 * 60e3; } }));
+    // Keep the cache small: newest 600 posts.
+    const keep = Object.values(all).sort((x, y) => y.at - x.at).slice(0, 600), out = {}; for (const x of keep) out[x.id] = x;
+    LS.set('openPosts', out); LS.set('openAt', stamp); openBusy = false; view.openLoading = false; view.open && paint();
+  }
+  const NET = { bsky: '🦋 Bluesky', masto: '🐘 Mastodon' };
+  function ocard(o) { const fol = openAcc().includes(o.acc);
+    return `<div class="ec-post ec-open">${`<div class=hm-av style="width:40px;height:40px;flex:none;background:${o.net === 'bsky' ? '#1185fe' : '#6364ff'};color:#fff">${esc((o.name || '?')[0].toUpperCase())}</div>`}<div class=b>
+      <div class=h><b>${esc(o.name)}</b><span>· ${esc(o.handle)}</span><span>· ${ago(o.at)}</span><span class=ec-aud title="Public post on ${o.net === 'bsky' ? 'Bluesky' : 'Mastodon'} — read-only in Echo">${NET[o.net]}</span></div>
+      ${o.text ? `<div class=t>${linkify(o.text)}</div>` : ''}${o.photos || o.video ? `<div class=ec-page data-u="${esc(o.url)}">${o.video ? '▶ Video' : '📷 ' + o.photos + ' photo' + (o.photos > 1 ? 's' : '')} — open to view</div>` : ''}
+      <div class=ec-act><span style="color:var(--mute);font-size:12.5px">💬 ${o.replies} · ↻ ${o.reposts} · ♥ ${o.likes}</span><span style="flex:1"></span>
+        <button data-ofollow="${esc(o.acc)}" class="${fol ? 'on' : ''}" style="font-size:12.5px">${fol ? '✓ Following' : '＋ Follow'}</button><button data-u="${esc(o.url)}" style="font-size:12.5px">Open ↗</button></div></div></div>`; }
+  function openSection() { const cat = view.ocat || 'News', accs = cat === 'Following' ? openAcc() : (OPEN_CATS[cat] || []);
+    const list = Object.values(openPosts()).filter(o => accs.includes(o.acc)).sort((a, b) => b.at - a.at).slice(0, 60);
+    setTimeout(() => openRefresh(accs), 0);
+    return `<div style="padding:12px 14px 0;font:600 12px system-ui;color:var(--mute)">FROM THE OPEN WEB · Bluesky & Mastodon, read through Tor</div>
+      <div class=ec-seg style="padding:6px 14px">${[...Object.keys(OPEN_CATS), ...(openAcc().length ? ['Following'] : [])].map(c => `<button data-ocat="${c}" class="${c === cat ? 'on' : ''}">${c}</button>`).join('')}<button data-oadd>＋ Add account</button></div>
+      ${list.map(ocard).join('') || `<div class=hm-empty>${view.openLoading ? 'Loading through Tor…' : 'Nothing yet — make sure Tor is connected.'}</div>`}`; }
   function tabs() { const n = unread();
     return `<div class=ec-tabs>${[['home', 'Home'], ['explore', 'Explore'], ['search', 'Search'], ['alerts', 'Alerts'], ['me', 'Me']].map(([k, l]) => `<button data-tab=${k} class="${view.tab === k ? 'on' : ''}">${l}${k === 'alerts' && n ? `<span class=n>${n}</span>` : ''}</button>`).join('')}</div>`; }
   function drawMain() {
     let body = '';
-    if (view.tab === 'home') { const f = tune(feed()); body = homeTop() + (f.map(p => card(p)).join('') || (M.status() !== 'on' ? '<div class=sk-row><div class="sk c"></div><div style="flex:1"><div class="sk l"></div><div class="sk l2"></div></div></div>'.repeat(3) : '') + `<div class=hm-empty><svg class=empty-art viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=1.2><circle cx=12 cy=12 r=3/><path d="M5.6 18.4a9 9 0 0 1 0-12.8M18.4 5.6a9 9 0 0 1 0 12.8M8.5 15.5a5 5 0 0 1 0-7M15.5 8.5a5 5 0 0 1 0 7"/></svg><b>Your feed is quiet</b>Posts from your Murmur friends and people you follow show up here. Tap ✎ to post something — it goes to friends only unless you choose Public.</div>`); }
+    if (view.tab === 'home') { const f = tune(feed()), fo = openAcc(); if (fo.length) setTimeout(() => openRefresh(fo), 0);
+      const mix = [...f.map(p => ({ at: p.boostAt || p.at, h: () => card(p) })), ...Object.values(openPosts()).filter(o => fo.includes(o.acc)).map(o => ({ at: o.at, h: () => ocard(o) }))].sort((a, b) => b.at - a.at).slice(0, 300);
+      body = homeTop() + (mix.map(x => x.h()).join('') || (M.status() !== 'on' ? '<div class=sk-row><div class="sk c"></div><div style="flex:1"><div class="sk l"></div><div class="sk l2"></div></div></div>'.repeat(3) : '') + `<div class=hm-empty><svg class=empty-art viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=1.2><circle cx=12 cy=12 r=3/><path d="M5.6 18.4a9 9 0 0 1 0-12.8M18.4 5.6a9 9 0 0 1 0 12.8M8.5 15.5a5 5 0 0 1 0-7M15.5 8.5a5 5 0 0 1 0 7"/></svg><b>Your feed is quiet</b>Posts from your Murmur friends and people you follow show up here. Tap ✎ to post something — it goes to friends only unless you choose Public.</div>`); }
     else if (view.tab === 'explore') { const pub = Object.values(posts()).filter(p => p.aud === 'public' && !expired(p) && !p.reply && !p.moment && !M.contacts()[p.pk]?.blocked).sort((a, b) => b.at - a.at).slice(0, 200);
       const tr = trending(), comms = LS.get('comms', []), packs = Object.values(LS.get('packs', {}));
       const sel = view.comm, list = sel ? Object.values(posts()).filter(p => p.comm === sel && !expired(p) && !p.reply).sort((a, b) => b.at - a.at) : pub;
-      body = `${tr.length ? `<div style="padding:10px 14px 0;font:600 12px system-ui;color:var(--mute)">TRENDING WITH PEOPLE YOU KNOW</div><div class=ec-seg style="padding:6px 14px">${tr.map(([k, n]) => `<button data-tag="${esc(k)}">#${esc(k)} · ${n}</button>`).join('')}</div>` : ''}
+      body = `${sel ? '' : openSection()}${tr.length ? `<div style="padding:10px 14px 0;font:600 12px system-ui;color:var(--mute)">TRENDING WITH PEOPLE YOU KNOW</div><div class=ec-seg style="padding:6px 14px">${tr.map(([k, n]) => `<button data-tag="${esc(k)}">#${esc(k)} · ${n}</button>`).join('')}</div>` : ''}
         <div style="padding:10px 14px 0;font:600 12px system-ui;color:var(--mute)">COMMUNITIES</div><div class=ec-seg style="padding:6px 14px">${comms.map(c => `<button data-comm="${esc(c)}" class="${sel === c ? 'on' : ''}">◆ ${esc(c)}</button>`).join('')}<button data-commnew>＋ Join or start</button>${sel ? '<button data-comm="">All public</button>' : ''}</div>
         ${packs.length ? `<div style="padding:10px 14px 0;font:600 12px system-ui;color:var(--mute)">STARTER PACKS</div>` + packs.slice(0, 6).map(k => `<button class=ec-person data-pack="${esc(k.id)}"><div class=hm-av style="background:var(--acc);color:var(--bg);width:40px;height:40px">★</div><div style="text-align:left"><b>${esc(k.name)}</b><div style="color:var(--mute);font-size:13px">${k.people.length} people · by ${esc(nameOf(k.pk))}</div></div></button>`).join('') : ''}
         <div style="display:flex;gap:8px;padding:10px 14px"><button class="hm-btn ghost" data-swipe>▶ Swipe photos</button><button class="hm-btn ghost" data-packnew>★ Make a starter pack</button></div>
@@ -508,6 +565,16 @@ window.HushEcho = function (A) {
     el.querySelectorAll('[data-vote]').forEach(b => b.onclick = e => { e.stopPropagation(); const p = posts()[b.closest('.ec-post')?.dataset.p]; if (p) vote(p, +b.dataset.vote); });
     el.querySelectorAll('[data-replyto]').forEach(b => b.onclick = () => go('compose', { replyTo: b.dataset.replyto }));
     el.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => go('edit'));
+    el.querySelectorAll('[data-ocat]').forEach(b => b.onclick = () => { view.ocat = b.dataset.ocat; paint(); });
+    el.querySelectorAll('[data-ofollow]').forEach(b => b.onclick = e => { e.stopPropagation(); const a = b.dataset.ofollow, l = openAcc();
+      openSet(l.includes(a) ? l.filter(x => x !== a) : [...l, a]); A.toast(l.includes(a) ? 'Unfollowed' : 'Following — their posts show in your Home feed'); paint(); });
+    el.querySelectorAll('[data-oadd]').forEach(b => b.onclick = async () => {
+      const v = (prompt('Add a Bluesky or Mastodon account:\n• Bluesky: nytimes.com or name.bsky.social\n• Mastodon: name@mastodon.social') || '').trim().replace(/^@/, ''); if (!v) return;
+      const acc = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v) ? 'masto:' + v : /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(v) ? 'bsky:' + v.toLowerCase() : null;
+      if (!acc) return A.toast('That doesn’t look like a Bluesky or Mastodon handle');
+      try { A.toast('Looking it up through Tor…'); const l = await openFetch(acc); if (!l.length) throw new Error('no posts');
+        const all = openPosts(); for (const x of l) all[x.id] = x; LS.set('openPosts', all); openSet([...openAcc(), acc]); view.ocat = 'Following'; A.toast('Following ' + v); paint(); }
+      catch (e) { A.toast(/allowed/.test(String(e)) ? 'That Mastodon server isn’t supported yet — try a big one like mastodon.social' : 'Couldn’t find that account'); } });
     el.querySelectorAll('[data-u]').forEach(a => a.onclick = e => { e.preventDefault(); e.stopPropagation(); A.open(a.dataset.u); });
     el.querySelectorAll('[data-tag]').forEach(a => a.onclick = e => { e.preventDefault(); e.stopPropagation(); view.q = a.dataset.tag; view.results = 'loading'; go(null, { tab: 'search' }); search(view.q, () => { view.results = 'done'; paint(); }); });
     el.querySelectorAll('[data-pk]').forEach(a => a.onclick = e => { e.stopPropagation(); go('person', { pk: a.dataset.pk }); });
