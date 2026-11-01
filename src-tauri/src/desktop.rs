@@ -364,6 +364,27 @@ fn unique_path(dir: &Path, name: &str) -> PathBuf {
     let (stem, ext) = match name.rsplit_once('.') { Some((s, e)) if !s.is_empty() => (s, format!(".{e}")), _ => (name, String::new()) };
     (1..10_000).map(|i| dir.join(format!("{stem} ({i}){ext}"))).find(|p| !p.exists()).unwrap_or(p)
 }
+/// Give an extension-less download the right extension by looking at what the file actually is.
+fn add_ext(p: &Path) -> PathBuf {
+    if p.extension().is_some() { return p.to_path_buf(); }
+    let mut head = [0u8; 8];
+    let n = std::fs::File::open(p).and_then(|mut f| { use std::io::Read; f.read(&mut head) }).unwrap_or(0);
+    let h = &head[..n];
+    let ext = if h.starts_with(b"MZ") { "exe" } else if h.starts_with(b"%PDF") { "pdf" } else if h.starts_with(b"PK\x03\x04") { "zip" }
+        else if h.starts_with(b"\x89PNG") { "png" } else if h.starts_with(&[0xFF, 0xD8, 0xFF]) { "jpg" } else if h.starts_with(b"GIF8") { "gif" }
+        else if h.starts_with(&[0xD0, 0xCF, 0x11, 0xE0]) { "msi" } else if h.len() >= 8 && &h[4..8] == b"ftyp" { "mp4" } else { return p.to_path_buf(); };
+    let name = p.file_name().map(|n| format!("{}.{ext}", n.to_string_lossy())).unwrap_or_else(|| format!("download.{ext}"));
+    let to = unique_path(p.parent().unwrap_or(Path::new(".")), &name);
+    if std::fs::rename(p, &to).is_ok() { to } else { p.to_path_buf() }
+}
+#[cfg(test)] mod dl_tests {
+    #[test] fn exe_without_extension_gets_one() {
+        let d = std::env::temp_dir().join(format!("hush-dl-{}", std::process::id())); let _ = std::fs::create_dir_all(&d);
+        let f = d.join("5f3a9c1e"); std::fs::write(&f, b"MZ\x90\x00rest").unwrap();
+        let out = super::add_ext(&f); assert_eq!(out.extension().unwrap(), "exe"); assert!(out.exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+}
 fn download_dir(app: &AppHandle) -> PathBuf {
     app.path().download_dir().unwrap_or_else(|_| crate::store::dir(app).join("downloads"))
 }
@@ -379,7 +400,15 @@ fn known_download(app: &AppHandle, path: &str) -> Option<PathBuf> {
 fn on_download(app: &AppHandle, tab: &str, ev: DownloadEvent<'_>) -> bool {
     match ev {
         DownloadEvent::Requested { url, destination } => {
-            let suggested = destination.file_name().and_then(|n| n.to_str()).map(str::to_string)
+            // The real name: what the browser suggests, else the name hidden in the link (GitHub and other file
+            // hosts send downloads from an address ending in a random id, with the name in
+            // response-content-disposition), else the last part of the address.
+            let from_link = url.query_pairs().find(|(k, _)| k == "response-content-disposition" || k == "filename")
+                .and_then(|(_, v)| { let v = v.to_string(); v.split("filename=").nth(1).map(|f| f.split(';').next().unwrap_or("").trim_matches(|c| c == '"' || c == '\'' || c == ' ').to_string()).or(Some(v)) })
+                .filter(|n| n.contains('.') && !n.contains('/'));
+            let sug = destination.file_name().and_then(|n| n.to_str()).map(str::to_string).filter(|n| n.contains('.'));
+            let suggested = sug.or(from_link)
+                .or_else(|| destination.file_name().and_then(|n| n.to_str()).map(str::to_string))
                 .or_else(|| url.path_segments().and_then(|s| s.last()).map(str::to_string)).unwrap_or_default();
             let dir = download_dir(app);
             let _ = std::fs::create_dir_all(&dir);
@@ -390,6 +419,9 @@ fn on_download(app: &AppHandle, tab: &str, ev: DownloadEvent<'_>) -> bool {
             true
         }
         DownloadEvent::Finished { url, path, success } => {
+            // A file that still has no extension gets one from its first bytes, so Windows knows how to open it
+            // (otherwise it asks "How do you want to open this file?").
+            let path = match (success, path) { (true, Some(p)) => Some(add_ext(&p)), (_, p) => p };
             if let (true, Some(p)) = (success, &path) { crate::strip_photo_meta(p); app.state::<AppState>().downloads.lock().push(p.clone()); }
             let _ = app.emit_to("chrome", "download", serde_json::json!({ "tab": tab, "url": url.as_str(),
                 "path": path.as_ref().map(|p| p.to_string_lossy().to_string()), "state": if success { "done" } else { "failed" } }));

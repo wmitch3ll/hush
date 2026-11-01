@@ -26,7 +26,11 @@ window.__hushSplit = window.__hushSplit || (() => {
   const pick = () => { const vids = [...document.querySelectorAll("video")].filter(v => area(v) > 0 || !v.paused);
     const v = vids.find(x => !x.paused && x.readyState > 2) || vids.sort((a, b) => area(b) - area(a))[0];
     return v && (!v.paused || area(v) >= innerWidth * innerHeight * 0.12) ? v : null; };
-  const sound = () => document.querySelectorAll("video,audio").forEach(x => { x.muted = on ? !focus : !!window.__hushMuted; });
+  const want = () => on ? !focus : !!window.__hushMuted;
+  const sound = () => document.querySelectorAll("video,audio").forEach(x => { if (x.muted !== want()) x.muted = want(); });
+  // Sites (YouTube…) re-apply their own mute/volume; while split is on, Hush's choice wins.
+  document.addEventListener("volumechange", e => { if (on && e.target.muted !== want()) e.target.muted = want(); }, true);
+  let tick = 0;
   const ring = () => { let r = document.getElementById("hush-split-ring");
     if (!on || !focus) { r?.remove(); return; }
     if (!r) { r = document.createElement("hush-split-ring"); r.id = "hush-split-ring"; document.documentElement.append(r); }
@@ -43,7 +47,9 @@ window.__hushSplit = window.__hushSplit || (() => {
     setTimeout(() => { if (on && !focus && v.paused && !v.ended && Date.now() - touched > 1500) { v.muted = true; v.play().catch(() => {}); } }, 120); }, true);
   // Tapping the other half moves the focus (and the sound) there; the tap itself still reaches the page.
   addEventListener("pointerdown", e => { if (on && !focus && e.isTrusted) { focus = true; sound(); ring(); try { location.href = "hush-split://focus"; } catch (_) {} } }, true);
-  return o => { on = !!(o && o.on); focus = !!(o && o.focus);
+  return o => { on = !!(o && o.on); focus = !!(o && o.focus); clearInterval(tick);
     if (!on) { unfill(); ring(); sound(); return; }
-    sound(); ring(); const v = pick(); if (v) fill(v); };
+    sound(); ring(); const v = pick(); if (v) fill(v);
+    // Players swap their <video> element (ads, next episode): keep sound, fill and controls right.
+    tick = setInterval(() => { if (!on) return; sound(); if (!cur || !cur.isConnected) { const nv = pick(); if (nv) fill(nv); } }, 800); };
 })();

@@ -214,6 +214,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             override fun handleOnBackPressed() {
                 val w = active?.let { tabs[it]?.wv }
                 if (fsView != null) { fsCb?.onCustomViewHidden(); return }
+                (splitFocus?.let { paneFs[it] } ?: paneFs.values.firstOrNull())?.let { try { it.second.onCustomViewHidden() } catch (e: Throwable) {}; return }
                 if (peekBox != null) { val pw = peekTab?.wv; if (pw != null && pw.canGoBack()) pw.goBack() else closePeek(true); return }
                 if (visible && w != null && w.canGoBack()) w.goBack() else emit("back", JSObject())
             }
@@ -449,12 +450,20 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                 } catch (e: Throwable) {} }
             // Fullscreen video (and picture-in-picture when you leave the app while it plays).
             override fun onShowCustomView(view: View, cb: CustomViewCallback) {
+                // Split screen: "fullscreen" fills just this tab's pane — the video stays locked in its part of the split.
+                if (t.id in panes()) { paneFs[t.id]?.let { (it.first.parent as? ViewGroup)?.removeView(it.first) }
+                    val holder = object : FrameLayout(act) { override fun dispatchTouchEvent(e: android.view.MotionEvent): Boolean { if (e.actionMasked == android.view.MotionEvent.ACTION_DOWN) paneTouched(t.id); return super.dispatchTouchEvent(e) } }
+                    holder.setBackgroundColor(0xFF000000.toInt()); holder.addView(view, FrameLayout.LayoutParams(-1, -1))
+                    paneFs[t.id] = holder to cb; act.findViewById<ViewGroup>(android.R.id.content).addView(holder); render(); return }
                 if (fsView != null) { cb.onCustomViewHidden(); return }
                 fsView = view; fsCb = cb
                 act.findViewById<ViewGroup>(android.R.id.content).addView(view, FrameLayout.LayoutParams(-1, -1)); bars(false); autoPip(true) }
             override fun onHideCustomView() {
+                paneFs.remove(t.id)?.let { (it.first.parent as? ViewGroup)?.removeView(it.first); render(); return }
                 fsView?.let { (it.parent as? ViewGroup)?.removeView(it) }; fsView = null; fsCb = null; bars(true); autoPip(false) }
         }
+        // Split screen: touching a pane gives it the sound (native, so it works on any site and on fullscreen video).
+        w.setOnTouchListener { _, e -> if (e.actionMasked == android.view.MotionEvent.ACTION_DOWN) paneTouched(t.id); false }
         w.setDownloadListener { url, ua, cd, mime, _ -> if (!t.priv) download(url, ua, cd, mime) else emit("download", JSObject().apply {
             put("name", URLUtil.guessFileName(url, cd, mime)); put("state", "failed"); put("error", "downloads are off in private tabs") }) }
         w.setFindListener { index, count, done -> if (done) emit("find", JSObject().apply { put("index", if (count == 0) 0 else index + 1); put("count", count) }) }
@@ -609,12 +618,19 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                 d.bringToFront()
             } else splitBar?.let { (it.parent as? ViewGroup)?.removeView(it) }
         } else splitBar?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        paneFs.keys.toList().forEach { id -> val fs = paneFs[id] ?: return@forEach
+            val pb = tabs[id]?.box
+            if (id !in ps || pb == null) { paneFs.remove(id); (fs.first.parent as? ViewGroup)?.removeView(fs.first); try { fs.second.onCustomViewHidden() } catch (e: Throwable) {} }
+            else { val lp0 = pb.layoutParams as? FrameLayout.LayoutParams; fs.first.layoutParams = FrameLayout.LayoutParams(lp0?.width ?: -1, lp0?.height ?: -1).apply { leftMargin = lp0?.leftMargin ?: 0; topMargin = lp0?.topMargin ?: 0 }; fs.first.bringToFront() } }
         if (splitPanes != ps) applySplit()
         floatId?.let { tabs[it]?.box }?.takeIf { it.parent != null && floatId != active }?.bringToFront()
     }
 
     private val splitIds = mutableListOf<String>(); private var splitFrac = 0.5f; private var splitBar: android.view.View? = null
     private var splitMode = "grid"; private var splitAwake = true
+    /** In-pane fullscreen videos (split screen): tab id → (holder view on top of that pane, the page's callback). */
+    private val paneFs = HashMap<String, Pair<FrameLayout, WebChromeClient.CustomViewCallback>>()
+    private fun paneTouched(id: String) { if (splitIds.isNotEmpty() && id in panes() && splitFocus != id) { splitFocus = id; if (splitMode == "spot") render(); applySplit() } }
     /** Tabs on screen in split view: the active tab first, then up to 3 more (empty = no split). */
     private fun panes(): List<String> = if (splitIds.isNotEmpty() && active != null && visible) listOf(active!!) + splitIds.filter { it != active && tabs.containsKey(it) }.take(3) else emptyList()
     private var splitFocus: String? = null; private var splitPanes: List<String> = emptyList()
@@ -626,6 +642,9 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         if (!panes.contains(splitFocus ?: "")) splitFocus = panes.firstOrNull()
         (splitPanes - panes.toSet()).forEach { id -> tabs[id]?.wv?.evaluateJavascript(Native.splitJs() + ";__hushSplit({on:false});", null) }
         panes.forEach { id -> tabs[id]?.wv?.evaluateJavascript(Native.splitJs() + ";__hushSplit({on:true,focus:" + (id == splitFocus) + "});", null) }
+        // Highlight ring drawn natively, so it shows over a fullscreen video too.
+        if (Build.VERSION.SDK_INT >= 23) tabs.values.forEach { t -> val ring = if (t.id == splitFocus && panes.isNotEmpty()) android.graphics.drawable.GradientDrawable().apply { setStroke(dp(3), 0xFF4DA3FF.toInt()); setColor(0) } else null
+            t.box?.foreground = ring; paneFs[t.id]?.first?.foreground = ring?.constantState?.newDrawable() }
         splitPanes = panes }
     /** The active tab's text, for the on-device assistant. */
     @Command fun pageText(i: Invoke) { act.runOnUiThread { val w = active?.let { tabs[it]?.wv } ?: return@runOnUiThread i.reject("no tab")

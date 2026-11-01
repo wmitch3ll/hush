@@ -151,6 +151,7 @@ body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
 <script src="qr.js"></script>
 <script src="extras.js"></script>
 <script src="guide.js"></script>
+<script src="coach.js"></script>
 <script src="vendor/nostr.js"></script>
 <script src="messenger.js"></script>
 <script src="echo.js"></script>
@@ -240,7 +241,27 @@ function select(id,anim){const t=tabs.find(x=>x.id===id);if(!t)return;if(t.ws!==
   if(anim){const p=$("#pill");p.classList.add(anim);setTimeout(()=>p.classList.remove(anim),180)}
   if(t.url&&!t.native)openNative(t);render()}
 async function openNative(t){try{const r=await inv("open_tab",{input:t.url,private:t.priv,space:spaceOf(t.ws)});t.native=typeof r==="string"?r:r;render()}catch(e){toast("Couldn’t open that page")}}
-function syncNative(){const t=T();inv("switch_tab",{label:!sheet&&!typing&&t&&t.native?t.native:"none"}).catch(()=>{})}
+let touring=false;
+function syncNative(){const t=T();inv("switch_tab",{label:!sheet&&!typing&&!touring&&t&&t.native?t.native:"none"}).catch(()=>{})}
+// Hands-on welcome walkthrough (coach.js): you do each thing for real; the page itself is hidden while it runs.
+function startTour(){touring=true;show(null);syncNative();const u0=(T()||{}).url||"",tor0=torOn;
+  HUSH_COACH.run([
+    {title:"Welcome to Hush 👋",text:"Hush blocks ads and trackers on every site, has Tor built in to hide where you are, and comes with private messaging (Murmur) and a private social network (Echo). This 2-minute walkthrough has you try each thing yourself.",place:"center"},
+    {sel:"#url",title:"Go to a site",text:"The address bar does both: type a site (espn.com) or anything you want to search. Shortcuts search one site directly — !yt for YouTube, !w Wikipedia, !a Amazon.",doText:"Tap the bar, type a site and press Go",until:()=>{const u=(T()||{}).url||"";return u!==u0&&/^https?:/.test(u)}},
+    {sel:"#shield",title:"See what Hush blocked",text:"The shield is your control for the site you’re on: how many ads and trackers were stopped, and switches just for this site.",doText:"Tap the shield",until:()=>sheet==="site"},
+    {sel:"#site",place:"top",title:"Per-site control",text:"If a site ever breaks, turn its protection off here — only for that site. You can also allow or block JavaScript, always open it in Tor, and check its connection.",doText:"Have a look, then tap Done",until:()=>sheet!=="site"},
+    {sel:"#tb-tabs",title:"Your tabs",text:"All your tabs as cards. Swipe a card away to close it; hold one for options like mute, keep playing, split screen and self-destruct.",doText:"Tap the tabs button",before:()=>show(null),until:()=>sheet==="switcher"},
+    {sel:"#switcher",place:"top",title:"Workspaces & split screen",text:"The chips at the top are workspaces — groups of tabs (sports, work…). Hold a tab and choose “Add to split screen” to watch up to 4 at once; tap a pane to give it the sound.",before:()=>{if(sheet!=="switcher"){drawSwitcher();show("switcher")}}},
+    {sel:"#tb-menu",title:"The menu",text:"Everything else lives here: Tor, Murmur, Echo, the assistant, split screen and settings.",doText:"Tap the menu button",before:()=>show(null),until:()=>sheet==="menu"},
+    {sel:"#m-tor",title:"Tor in one switch",text:"Tor bounces your connection through 3 relays so sites can’t see your IP address or location. Pages load a bit slower. Flip it on, and off again whenever you like.",doText:"Flip the Tor switch",before:()=>{if(sheet!=="menu"){drawMenu();show("menu")}},until:()=>torOn!==tor0},
+    {sel:"#m-split",title:"Split screen",text:"Watch two games, or a stream next to stats. Videos fill their pane with full controls, fullscreen stays inside the pane, and the pane you tap gets the sound. Save a setup as a Scene to reopen it in one tap.",before:()=>{if(sheet!=="menu"){drawMenu();show("menu")}}},
+    {sel:"#m-ai",title:"Offline assistant",text:"Summarize a page or ask questions with an AI that runs on your phone — nothing you read is sent anywhere. Download the Lite model once on Wi-Fi.",before:()=>{if(sheet!=="menu"){drawMenu();show("menu")}}},
+    {sel:"#m-msg",title:"Murmur — private messages",text:"Chat, send photos and call other Hush users. Everything is end-to-end encrypted and goes through Tor — no phone number needed. Add friends by QR code or a one-time invite.",before:()=>{if(sheet!=="menu"){drawMenu();show("menu")}}},
+    {sel:"#url",title:"Commands: the fast way",text:"Holding the address bar opens Commands: type what you want — “split”, “dark”, “panic”, a friend’s name — and it’s there.",doText:"Hold the address bar",before:()=>show(null),until:()=>sheet==="cmd"},
+    {title:"You’re set 🎉",text:"Want more? The Hush guide explains every feature with examples — it’s at the bottom of Settings › Help, along with this walkthrough.",place:"center",last:true,before:()=>show(null),
+     extra:b=>{const g=document.createElement("button");g.textContent="Open the guide";g.onclick=()=>{HUSH_COACH_END();openGuide()};b.querySelector(".hc-row").insertBefore(g,b.querySelector("[data-a=back]"))}}
+  ],{onEnd:()=>{touring=false;setPref("toured","1");show(null);syncNative()}});
+  window.HUSH_COACH_END=()=>{document.getElementById("hc")?.remove();touring=false;setPref("toured","1");show(null);syncNative()}}
 async function closeTab(id){const t=tabs.find(x=>x.id===id);if(t&&t.native&&floating===t.native){floating=null;native("floatClose",{stop:true}).catch(()=>{})}if(t&&t.native)inv("close_tab",{label:t.native}).catch(()=>{});
   splitSet.delete(id);tabs=tabs.filter(x=>x.id!==id);if(!inWs().length)newTab(false,true);else if(cur===id)cur=inWs().at(-1).id;render();saveSession();if(sheet==="switcher")drawSwitcher()}
 function step(d){const w=inWs();if(w.length<2){toast(d>0?"No tab to the right":"No tab to the left");return}const i=w.findIndex(t=>t.id===cur),j=i+d;
@@ -675,7 +696,7 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
     Tab cards: swipe sideways to close · hold to move or copy · Workspaces: swipe the chips<br>Shield: tap for site settings · hold to toggle · Links: hold for options<br>
     Tabs button: hold for new / private tab · Menu: hold to find in page · Pull down a page to refresh · Swipe a sheet’s title down to close it</div>
    <h3>Help</h3><button class="item" id="s-guide"><div>📘 Hush guide &amp; tutorial<small>Every feature, what it’s good for, and how to use it — step by step</small></div><span style="color:var(--mute)">›</span></button>
-   <button class="item" id="s-tour"><div>Replay the welcome tour<small>The quick intro you saw the first time</small></div><span style="color:var(--mute)">›</span></button>
+   <button class="item" id="s-tour"><div>Replay the welcome walkthrough<small>Hands-on: try each main feature yourself (2 minutes)</small></div><span style="color:var(--mute)">›</span></button>
    <p style="color:var(--mute);font-size:12px;text-align:center;margin-top:14px">Hush keeps everything on this device. No accounts, no tracking.</p>`;
   wire(el);
   el.querySelectorAll(".seg button").forEach(b=>b.onclick=async()=>{await setPref(b.dataset.k,b.dataset.v);drawSettings();render()});
@@ -684,7 +705,7 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
   el.querySelectorAll("[data-sw]").forEach(b=>b.onclick=async()=>{const k=b.dataset.sw,on=b.classList.contains("on"),bin=["force_dark","pull_refresh","desktop","bg_play","tools_autohide"].includes(k);
     await setPref(k,bin?String(!on):(on?"off":"on"));if(k==="force_dark")applyDarkNow();if(k==="restore")saveSession();drawSettings()});
   HX.settingsSearch(el,$("#s-q"),".item");
-  $("#s-guide").onclick=()=>openGuide();$("#s-tour").onclick=()=>{$("#xs").innerHTML='<div id="tourx" style="padding:20px 8px"></div>';show("xs");HX.tour($("#tourx"),true,()=>show(null))};
+  $("#s-guide").onclick=()=>openGuide();$("#s-tour").onclick=()=>startTour();
   HX.lookPicker($("#s-look"),()=>{applyPrefs();drawSettings()});
   $("#s-gest").onclick=()=>{$("#xs").innerHTML=head("Gestures & quick wheel")+'<div id="gx" style="padding:0 4px 20px"></div>';wire($("#xs"));HX.gesturePanel($("#gx"));show("xs")};
   $("#s-watch").onclick=openWatch;
@@ -768,7 +789,7 @@ async function loadState(first){try{state=await inv("get_state");state.settings.
   if(first&&pref("restore")==="on"&&state.session?.length){tabs=[];state.session.forEach(s=>tabs.push({id:nid++,native:null,url:s.url,title:"",priv:false,ws:wsList().includes(s.ws)?s.ws:curWs(),canBack:false,canFwd:false}));
     const last=inWs().at(-1);if(last){cur=last.id;openNative(last)}else newTab(false,true);toast("Restored "+state.session.length+" tabs")}
   render()}
-newTab(false,true);render();loadState(true).then(()=>{handleIncoming();if(!state.settings.ui?.toured){$("#xs").innerHTML='<div id="tourx" style="padding:20px 8px"></div>';show("xs");HX.tour($("#tourx"),true,()=>{setPref("toured","1");show(null)})}});
+newTab(false,true);render();loadState(true).then(()=>{handleIncoming();if(!state.settings.ui?.toured)setTimeout(startTour,600)});
 
 setTimeout(()=>{try{splitMode()}catch(e){}},1500);
 </script>

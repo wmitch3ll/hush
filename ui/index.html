@@ -152,6 +152,7 @@ kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:
 <script src="qr.js"></script>
 <script src="extras.js"></script>
 <script src="guide.js"></script>
+<script src="coach.js"></script>
 <script src="vendor/nostr.js"></script>
 <script src="messenger.js"></script>
 <script src="echo.js"></script>
@@ -283,7 +284,23 @@ async function removeWs(name){if(wsList().length<2)return toast('Keep at least o
 
 // ---------- tabs ----------
 let split=null, findOn=false, statsT=null;
-function sync(){const t=tab(cur);inv('show_content',{visible:!panel&&!!t&&t.ws==curWs()}).catch(()=>{})}
+let touring=false;
+function sync(){const t=tab(cur);inv('show_content',{visible:!panel&&!touring&&!!t&&t.ws==curWs()}).catch(()=>{})}
+// Hands-on welcome walkthrough (coach.js): you do each thing for real; the page is hidden while it runs.
+function startTour(){touring=true;closePanel(true);sync();const u0=(tab(cur)||{}).url||'',tor0=tabs.filter(t=>t.tor).length,split0=split;
+  const fin=()=>{touring=false;setPref('toured','1');closePanel(true);sync();draw()};
+  HUSH_COACH.run([
+    {title:'Welcome to Hush 👋',text:'Hush blocks ads and trackers on every site, has Tor built in to hide where you are, and comes with private messaging (Murmur) and a private social network (Echo). This 2-minute walkthrough has you try each thing yourself.',place:'center'},
+    {sel:'#bar',title:'Go to a site',text:'The address bar does both: type a site (espn.com) or a search. Shortcuts search one site directly — !yt YouTube, !w Wikipedia, !a Amazon. Ctrl+L jumps here.',doText:'Click the bar, type a site and press Enter',until:()=>{const u=(tab(cur)||{}).url||'';return u!==u0&&/^https?:/.test(u)}},
+    {sel:'#shield',title:'Your shield',text:'Ads, trackers, cookie banners and popups are blocked on every site — the number shows how many on this page. If a site ever breaks, click the shield to turn protection off just there (and on again later).'},
+    {sel:'#onion',title:'Tor in one click',text:'The onion opens the page in a Tor tab: your IP address and location are hidden, and Tor tabs never touch your normal sign-ins. Pages load a bit slower.',doText:'Click the onion to open this page in Tor',until:()=>tabs.filter(t=>t.tor).length>tor0},
+    {sel:'#tabsbar',title:'Tabs & split screen',text:'Your tabs live here — drag to reorder, middle-click to close. Shift-click another tab to watch them side by side; shift-click more to add up to 4. Click a pane to give it the sound.',doText:'Shift-click a second tab to split (or Skip)',until:()=>split&&split!==split0},
+    {title:'Commands: the fast way',text:'Ctrl+K finds anything — tabs, bookmarks, friends, settings and actions like “split layout”, “scene”, “reader” or “assistant”.',doText:'Press Ctrl+K',place:'center',until:()=>panel==='pal'},
+    {sel:'#msgb',title:'Murmur — private messages',text:'Chat, send photos and call other Hush users. End-to-end encrypted, always through Tor, no phone number. Add friends by QR code or a one-time invite.',before:()=>closePanel(true)},
+    {sel:'#echob',title:'Echo — your private social network',text:'Share with close friends or circles you choose, or make a public profile. Your feed is tuned on your device, not by an algorithm somewhere else.'},
+    {title:'You’re set 🎉',text:'The Hush guide explains every feature with examples — find it at the bottom of Settings › Help, along with this walkthrough. The offline assistant is in Ctrl+K › Ask the assistant.',place:'center',last:true,
+     extra:b=>{const g=document.createElement('button');g.textContent='Open the guide';g.onclick=()=>{document.getElementById('hc')?.remove();fin();openPanel('guide')};b.querySelector('.hc-row').insertBefore(g,b.querySelector('[data-a=back]'))}}
+  ],{onEnd:fin})}
 function draw(){
   const box=$('#tabs');box.textContent='';const horiz=pref('tabs_pos')=='top'||pref('tabs_pos')=='bottom';
   inWs().forEach((t,i)=>{const d=document.createElement('div');const h=hostOf(t.url).replace(/^www\./,'');
@@ -466,7 +483,7 @@ const RENDER={ai:()=>HX.assistant($('#panel'),{pageText:()=>inv('page_text')}),b
   guide:()=>{const p=$('#panel');p.innerHTML='<div id=guidex style="padding:8px 6px"></div>';HUSH_GUIDE.open($('#guidex'),{mobile:false,done:()=>closePanel(),act:a=>{closePanel();
     const m={cmd:'pal',tabs:null,site:'site',settings:'settings',split:null,msgs:'msg',echo:'echo',reading:'reading',gest:'gest',tor:'torinfo',assistant:'ai'}[a];
     if(m)openPanel(m);else toast(a=='split'?'Shift-click a tab in the side bar to split with it':'Your tabs are in the side bar')}})},
-  tour:()=>{const p=$('#panel');p.innerHTML='<div id=tourx></div>';HX.tour($('#tourx'),false,()=>{setPref('toured','1');closePanel()})},
+  tour:()=>{closePanel(true);setTimeout(startTour,50)},
   more:()=>{const p=$('#panel'),h=tbHidden(),t=tab(cur);p.innerHTML=`<h2>Tools ${closeBtn}</h2><div class=tools>${TB.filter(([id])=>id!='back'&&id!='fwd'&&id!='reload').map(([id,l])=>`<button class=tool data-t=${id} ${!t&&!['msgb','echob','dls','onion'].includes(id)?'disabled':''}>${$('#'+id).innerHTML.replace(/<b[^>]*class=[^>]*badge[^>]*>.*?<\/b>/g,'')}<span>${l}</span>${h.has(id)?'':'<em>in toolbar</em>'}</button>`).join('')}</div>
     <p style="color:var(--mute);margin-top:14px">Choose what shows next to the address bar in <a href=# id=tb-set>Settings › Toolbar</a>.</p>`;
     p.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{closePanel();$('#'+b.dataset.t).click()});$('#tb-set').onclick=e=>{e.preventDefault();openPanel('settings');setTimeout(()=>$('#s-tb')?.scrollIntoView({block:'center'}),50)};wire(p)},
@@ -833,7 +850,7 @@ function renderSettings(){
    <kbd>Ctrl</kbd>+<kbd>\\</kbd> split view · <kbd>Ctrl</kbd>+<kbd>B</kbd> show/hide tabs · <kbd>Ctrl</kbd>+<kbd>D</kbd> bookmark · <kbd>Ctrl</kbd>+<kbd>H</kbd> history · <kbd>Ctrl</kbd>+<kbd>J</kbd> downloads · <kbd>Ctrl</kbd>+<kbd>,</kbd> settings<br>
    Point at the screen edge to slide the tab bar in · drag tabs to reorder · shift-click a tab to split · middle-click to close · right-click a tab for mute, duplicate, move to workspace</div>
   <h3>Help</h3>${row('📘 Hush guide & tutorial','Every feature, what it’s good for, and how to use it — step by step','<button class=btn id=s-guide>Open</button>')}
-  ${row('Welcome tour','The quick intro you saw the first time','<button class=btn id=s-tour>Replay</button>')}`;
+  ${row('Welcome walkthrough','Hands-on: try each main feature yourself (2 minutes)','<button class=btn id=s-tour>Replay</button>')}`;
   p.querySelectorAll('.seg button[data-k]').forEach(b=>b.onclick=async()=>{await setPref(b.dataset.k,b.dataset.v);if(b.dataset.k=='zoom')tabs.forEach(t=>{t.zoom=+b.dataset.v/100;inv('set_zoom',{factor:t.zoom,tab:t.id}).catch(()=>{})});draw();layout(true);renderSettings()});
   p.querySelectorAll('[data-color]').forEach(b=>b.onclick=async()=>{await setPref('color',b.dataset.color);renderSettings()});
   $('#s-color').oninput=e=>{state.settings.ui.color=e.target.value;applyColor()};$('#s-color').onchange=async e=>{await setPref('color',e.target.value);renderSettings()};
@@ -873,7 +890,7 @@ async function loadState(first){try{state=await inv('get_state');state.settings.
   if(first&&pref('restore')=='on'&&state.session?.length&&!tabs.length){for(const t of state.session){const ess=(t.ws||'').startsWith('★'),w=ess?t.ws.slice(1):t.ws;await openTab(t.url,{ws:wsList().includes(w)?w:curWs(),quiet:true,background:true});if(ess&&tabs.length)tabs[tabs.length-1].ess=true}
     const last=inWs().at(-1);if(last)select(last.id);toast('Restored '+state.session.length+' tabs')}
 }catch(e){console.error(e)}}
-layout(true);draw();loadState(true).then(()=>{if(!state.settings.ui.toured)openPanel('tour')});$('#bar').focus();
+layout(true);draw();loadState(true).then(()=>{if(!state.settings.ui.toured)setTimeout(startTour,600)});$('#bar').focus();
 
 setTimeout(()=>{try{splitModeSync()}catch(e){}},1500);
 </script>
