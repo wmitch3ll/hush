@@ -9,7 +9,7 @@ window.HushEcho = function (A) {
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const LS = { get(k, d) { try { const v = localStorage.getItem('hush.echo.' + k); return v == null ? d : JSON.parse(v) } catch { return d } },
                set(k, v) { try { localStorage.setItem('hush.echo.' + k, JSON.stringify(v)) } catch { A.toast('Storage is full'); } } };
-  const K_POST = 1414, K_LIKE = 1416, K_REPOST = 1417, K_VOTE = 1418, K_PROFILE = 31414, now = () => Math.floor(Date.now() / 1000);
+  const K_PACK = 31415, K_POST = 1414, K_LIKE = 1416, K_REPOST = 1417, K_VOTE = 1418, K_PROFILE = 31414, now = () => Math.floor(Date.now() / 1000);
   const me = () => M.me();
   const prof = () => LS.get('me', null);
   const profiles = () => LS.get('profiles', {});
@@ -39,7 +39,7 @@ window.HushEcho = function (A) {
     let poll = null; try { const o = JSON.parse(t('hush-poll') || 'null'); if (Array.isArray(o) && o.length >= 2) poll = o.slice(0, 4).map(x => String(x).slice(0, 60)); } catch {}
     const page = /^https?:\/\//.test(t('hush-page') || '') ? normUrl(t('hush-page')) : '';
     return { id: e.id, pk: e.pubkey, text: String(e.content || '').slice(0, 2000), at: e.created_at * 1000, aud, img, exp, reply: re ? re[1] : null, replyTo: re ? (e.tags.find(x => x[0] === 'p' && x[1] !== e.pubkey) || [])[1] : null, ev: aud === 'public' ? e : undefined,
-      moment: !!t('hush-moment'), quote, poll, page: page || null };
+      moment: !!t('hush-moment'), quote, poll, page: page || null, replies: ['follow', 'none'].includes(t('hush-replies')) ? t('hush-replies') : null, comm: /^[a-z0-9-]{2,30}$/.test(t('hush-comm') || '') ? t('hush-comm') : null };
   }
   function notify(n) { if (n.from === me()) return; const l = LS.get('notif', []); if (l.some(x => x.k === n.k)) return; l.unshift({ ...n, at: Date.now(), unread: true }); LS.set('notif', l.slice(0, 200)); badge(); if (view.open) paint(); }
   const unread = () => LS.get('notif', []).filter(n => n.unread).length;
@@ -66,6 +66,8 @@ window.HushEcho = function (A) {
     if (e.kind === K_PROFILE) { try { const j = JSON.parse(e.content); if (j.hidden) { setProfile(e.pubkey, { public: false }); return; }
       const okm = m => m && /^[0-9a-f]{64}$/.test(m.x || '') && /^https:\/\//.test(m.url || '') ? m : null;
       setProfile(e.pubkey, { name: String(j.name || '').slice(0, 40), bio: String(j.bio || '').slice(0, 300), public: true, echo: true, at: e.created_at, avatar: okm(j.avatar), banner: okm(j.banner), pin: /^[0-9a-f]{64}$/.test(j.pin || '') ? j.pin : null }); } catch {} return; }
+    if (e.kind === K_PACK) { try { const ppl = e.tags.filter(t => t[0] === 'p' && /^[0-9a-f]{64}$/.test(t[1])).map(t => t[1]).slice(0, 150); const d = (e.tags.find(t => t[0] === 'd') || [])[1] || '';
+      const name = String((e.tags.find(t => t[0] === 'title') || [])[1] || 'Starter pack').slice(0, 60); if (!ppl.length) return; const all = LS.get('packs', {}); all[e.pubkey + ':' + d] = { id: e.pubkey + ':' + d, pk: e.pubkey, name, people: ppl, at: e.created_at }; LS.set('packs', all); } catch {} return; }
     if (e.kind === 5) { const all = posts(); for (const t of e.tags) if (t[0] === 'e' && all[t[1]]?.pk === e.pubkey) delete all[t[1]]; LS.set('posts', all); if (view.open) paint(); return; }
     if (e.kind === K_POST) { const p = savePost(fromEvent(e, 'public')); if (p.replyTo === me()) notify({ k: 'r' + p.id, type: 'reply', from: p.pk, post: p.reply, reply: p.id }); if (view.open) paint(); return; }
     if (e.kind === K_VOTE) return gotVote(e);
@@ -94,7 +96,7 @@ window.HushEcho = function (A) {
     if (subbed) M.unreq('echo-home'); subbed = true;
     M.req('echo-home', f, onPublic);
   }
-  function explore() { M.unreq('echo-x'); M.req('echo-x', [{ kinds: [K_POST], '#t': ['hush-echo'], limit: 150 }, { kinds: [K_PROFILE], '#d': ['echo'], limit: 200 }], e => { onPublic(e); }, () => { if (view.open) paint(); }); }
+  function explore() { M.unreq('echo-x'); M.req('echo-x', [{ kinds: [K_POST], '#t': ['hush-echo'], limit: 150 }, { kinds: [K_PROFILE], '#d': ['echo'], limit: 200 }, { kinds: [K_PACK], limit: 50 }], e => { onPublic(e); }, () => { if (view.open) paint(); }); }
   let searchToken = 0;
   function search(q, done) {
     const tok = ++searchToken, ws = words(q).slice(0, 5), out = { people: new Set(), posts: new Set() };
@@ -112,6 +114,8 @@ window.HushEcho = function (A) {
     if (opt.page) tags.push(['hush-page', normUrl(opt.page)]);
     if (opt.quote) tags.push(['hush-q', JSON.stringify({ id: opt.quote.id, pk: opt.quote.pk, text: (opt.quote.text || '').slice(0, 280), img: !!opt.quote.img })]);
     if (opt.poll) tags.push(['hush-poll', JSON.stringify(opt.poll)]);
+    if (opt.replies) tags.push(['hush-replies', opt.replies]);
+    if (opt.comm) { tags.push(['hush-comm', opt.comm]); if (opt.aud === 'public') tags.push(['t', 'c-' + opt.comm]); }
     if (opt.reply) { tags.push(['e', opt.reply.id, '', 'reply'], ['p', opt.reply.pk]); }
     if (opt.exp) tags.push(['expiration', String(now() + opt.exp)]);
     if (opt.file) { A.toast('Encrypting & uploading photo through Tor…');
@@ -209,16 +213,29 @@ window.HushEcho = function (A) {
     return `<div class=ec-poll>${p.poll.map((o, i) => { const n = Object.values(v).filter(x => x === i).length, pc = tot ? Math.round(100 * n / tot) : 0;
       return `<button data-vote="${i}" class="${mineV === i ? 'on' : ''}">${show ? `<i style="width:${pc}%"></i>` : ''}<span>${esc(o)}</span><em>${show ? pc + '%' : ''}</em></button>`; }).join('')}
       <div style="font-size:12px;color:var(--mute);margin:-2px 0 6px">${tot} vote${tot === 1 ? '' : 's'}${p.aud !== 'public' && p.pk !== me() ? ' you can see · the poster sees them all' : ''}</div></div>`; }
+  const canReply = p => !p.replies || p.pk === me() || (p.replies === 'follow' && isFriend(p.pk));
+  // Your Algo: private, timed "more / less of" topics (kept only on this device).
+  const algo = () => (LS.get('algo', []) || []).filter(a => a.until > Date.now());
+  const hits = (p, w) => (' ' + p.text.toLowerCase() + ' ').includes(w);
+  function tune(list) { const a = algo(); if (!a.length) return list;
+    const less = a.filter(x => x.dir < 0).map(x => x.w), more = a.filter(x => x.dir > 0).map(x => x.w);
+    return list.filter(p => !less.some(w => hits(p, w))).map((p, i) => ({ p, s: i - (more.some(w => hits(p, w)) && Date.now() - p.at < 3 * 86400e3 ? 40 : 0) })).sort((x, y) => x.s - y.s).map(x => x.p); }
+  // Trending among the people you know: hashtags and repeated words in the last 2 days, counted on this device.
+  function trending() { const fr = new Set([...M.friends(), ...follows()]), c = {}, t0 = Date.now() - 2 * 86400e3;
+    for (const p of Object.values(posts())) { if (p.at < t0 || !(fr.has(p.pk) || p.aud === 'public') || expired(p)) continue;
+      for (const m of (p.text.match(/#\w{2,30}/g) || [])) { const k = m.slice(1).toLowerCase(); (c[k] = c[k] || new Set()).add(p.pk); } }
+    return Object.entries(c).map(([k, v]) => [k, v.size]).sort((a, b) => b[1] - a[1]).slice(0, 8); }
   function card(p, opt = {}) {
     const liked = (p.likes || []).includes(me()), likes = (p.likes || []).length, replies = Object.values(posts()).filter(x => x.reply === p.id && !expired(x)).length;
     return `${opt.pinned ? '<div class=ec-pinl>📌 Pinned</div>' : ''}${p.boostedBy ? `<div class=ec-boost>↻ ${esc(nameOf(p.boostedBy))} reposted</div>` : ''}<div class=ec-post data-p="${p.id}">${av(p.pk)}<div class=b>
       <div class=h><b data-pk="${p.pk}">${esc(nameOf(p.pk))}</b><span>· ${tagOf(p.pk)}</span><span>· ${ago(p.at)}</span><span class=ec-aud title="${p.aud === 'public' ? 'Public' : p.circle ? 'Circle: ' + esc(p.circle) + ' — encrypted' : 'Friends only — encrypted'}">${p.aud === 'public' ? IC.globe : IC.lock}${p.circle ? ' ' + esc(p.circle) : ''}</span>${p.exp ? `<span title="Disappears">⏲ ${left(p.exp)}</span>` : ''}</div>
       ${p.replyTo ? `<div class=ec-reply>Replying to ${esc(nameOf(p.replyTo))}</div>` : ''}
+      ${p.comm ? `<div class=ec-page data-comm="${esc(p.comm)}">◆ ${esc(p.comm)}</div>` : ''}
       ${p.page ? `<div class=ec-page data-u="${esc(p.page)}">📌 Note on ${esc(hostOf(p.page))}</div>` : ''}
       ${p.text ? `<div class=t>${linkify(p.text)}</div>` : ''}${p.img ? `<img class=ec-img data-img='${esc(JSON.stringify(p.img))}' alt="Photo">` : ''}
       ${p.quote ? `<div class=ec-q data-open="${esc(p.quote.id)}"><b>${esc(nameOf(p.quote.pk))}</b> <span style="color:var(--mute)">· ${tagOf(p.quote.pk)}</span><div>${esc(p.quote.text)}${p.quote.img ? ' 📷' : ''}</div></div>` : ''}
       ${p.poll ? pollHTML(p) : ''}
-      <div class=ec-act><button data-a=reply aria-label=Reply>${IC.reply}<span>${replies || ''}</span></button>${p.aud === 'public' ? `<button data-a=repost aria-label=Repost>${IC.repost}</button>` : ''}<button data-a=like class="${liked ? 'on' : ''}" aria-label=Like>${IC.like}<span>${likes || ''}</span></button><button data-a=more aria-label=More>${IC.more}</button></div></div></div>`;
+      <div class=ec-act>${canReply(p) ? `<button data-a=reply aria-label=Reply>${IC.reply}<span>${replies || ''}</span></button>` : `<span title="Replies are limited" style="opacity:.5">${IC.reply}<span>${replies || ''}</span></span>`}${p.aud === 'public' ? `<button data-a=repost aria-label=Repost>${IC.repost}</button>` : ''}<button data-a=like class="${liked ? 'on' : ''}" aria-label=Like>${IC.like}<span>${likes || ''}</span></button><button data-a=more aria-label=More>${IC.more}</button></div></div></div>`;
   }
   function feed() {
     const fr = new Set(M.friends()), fo = new Set(follows()), all = Object.values(posts());
@@ -260,9 +277,15 @@ window.HushEcho = function (A) {
     return `<div class=ec-tabs>${[['home', 'Home'], ['explore', 'Explore'], ['search', 'Search'], ['alerts', 'Alerts'], ['me', 'Me']].map(([k, l]) => `<button data-tab=${k} class="${view.tab === k ? 'on' : ''}">${l}${k === 'alerts' && n ? `<span class=n>${n}</span>` : ''}</button>`).join('')}</div>`; }
   function drawMain() {
     let body = '';
-    if (view.tab === 'home') { const f = feed(); body = homeTop() + (f.map(p => card(p)).join('') || `<div class=hm-empty><b>Your feed is quiet</b>Posts from your Murmur friends and people you follow show up here. Tap ✎ to post something — it goes to friends only unless you choose Public.</div>`); }
+    if (view.tab === 'home') { const f = tune(feed()); body = homeTop() + (f.map(p => card(p)).join('') || `<div class=hm-empty><b>Your feed is quiet</b>Posts from your Murmur friends and people you follow show up here. Tap ✎ to post something — it goes to friends only unless you choose Public.</div>`); }
     else if (view.tab === 'explore') { const pub = Object.values(posts()).filter(p => p.aud === 'public' && !expired(p) && !p.reply && !p.moment && !M.contacts()[p.pk]?.blocked).sort((a, b) => b.at - a.at).slice(0, 200);
-      body = `<div style="padding:10px 14px;color:var(--mute);font-size:12.5px">Public posts from people on Echo. Friends-only posts never appear here.</div>` + (pub.map(x => card(x)).join('') || '<div class=hm-empty>Nothing public yet — loading through Tor…</div>'); }
+      const tr = trending(), comms = LS.get('comms', []), packs = Object.values(LS.get('packs', {}));
+      const sel = view.comm, list = sel ? Object.values(posts()).filter(p => p.comm === sel && !expired(p) && !p.reply).sort((a, b) => b.at - a.at) : pub;
+      body = `${tr.length ? `<div style="padding:10px 14px 0;font:600 12px system-ui;color:var(--mute)">TRENDING WITH PEOPLE YOU KNOW</div><div class=ec-seg style="padding:6px 14px">${tr.map(([k, n]) => `<button data-tag="${esc(k)}">#${esc(k)} · ${n}</button>`).join('')}</div>` : ''}
+        <div style="padding:10px 14px 0;font:600 12px system-ui;color:var(--mute)">COMMUNITIES</div><div class=ec-seg style="padding:6px 14px">${comms.map(c => `<button data-comm="${esc(c)}" class="${sel === c ? 'on' : ''}">◆ ${esc(c)}</button>`).join('')}<button data-commnew>＋ Join or start</button>${sel ? '<button data-comm="">All public</button>' : ''}</div>
+        ${packs.length ? `<div style="padding:10px 14px 0;font:600 12px system-ui;color:var(--mute)">STARTER PACKS</div>` + packs.slice(0, 6).map(k => `<button class=ec-person data-pack="${esc(k.id)}"><div class=hm-av style="background:var(--acc);color:var(--bg);width:40px;height:40px">★</div><div style="text-align:left"><b>${esc(k.name)}</b><div style="color:var(--mute);font-size:13px">${k.people.length} people · by ${esc(nameOf(k.pk))}</div></div></button>`).join('') : ''}
+        <div style="display:flex;gap:8px;padding:10px 14px"><button class="hm-btn ghost" data-swipe>▶ Swipe photos</button><button class="hm-btn ghost" data-packnew>★ Make a starter pack</button></div>
+        <div style="padding:4px 14px 10px;color:var(--mute);font-size:12.5px">${sel ? 'Public posts in ◆ ' + esc(sel) + '.' : 'Public posts from people on Echo. Friends-only posts never appear here.'}</div>` + (list.map(x => card(x)).join('') || '<div class=hm-empty>Nothing public yet — loading through Tor…</div>'); }
     else if (view.tab === 'search') { body = `<div style="padding:12px 14px"><input class=hm-search style="margin:0;width:100%" id=ec-q placeholder="Search names or topics" value="${esc(view.q)}" enterkeyhint=search></div>` + drawResults(); }
     else if (view.tab === 'alerts') { const l = LS.get('notif', []); body = l.map(n => `<div class="ec-note ${n.unread ? 'unread' : ''}" data-open="${esc(n.reply || n.post)}">${av(n.from, 36)}<div><b>${esc(nameOf(n.from))}</b> ${n.type === 'like' ? 'liked your post' : n.type === 'repost' ? 'reposted you' : 'replied to you'}<div style="color:var(--mute);font-size:12px">${ago(n.at)}</div></div></div>`).join('') || '<div class=hm-empty>Likes and replies on your posts show up here.</div>';
       setTimeout(() => { const l2 = LS.get('notif', []); if (l2.some(x => x.unread)) { l2.forEach(x => x.unread = false); LS.set('notif', l2); badge(); } }, 1500); }
@@ -274,14 +297,16 @@ window.HushEcho = function (A) {
         const pos = q.selectionStart; paint(); const q2 = view.el.querySelector('#ec-q'); if (q2) { q2.focus(); try { q2.setSelectionRange(pos, pos); } catch {} } search(view.q, () => { view.results = 'done'; if (view.tab === 'search') { const f = document.activeElement === view.el.querySelector('#ec-q'); paint(); if (f) view.el.querySelector('#ec-q')?.focus(); } }); }, 450); };
       q.onkeydown = e => { if (e.key === 'Enter') { view.q = q.value.trim(); if (!view.q) return; view.results = 'loading'; paint(); search(view.q, () => { view.results = 'done'; paint(); }); } }; if (!view.q) setTimeout(() => q.focus(), 50); }
     if (view.tab === 'explore' && !view.explored) { view.explored = true; explore(); }
+    if (view.tab === 'explore' && view.comm && view.commSub !== view.comm) { view.commSub = view.comm; M.unreq('echo-c'); M.req('echo-c', [{ kinds: [K_POST], '#t': ['c-' + view.comm], limit: 200 }], onPublic, () => view.open && paint()); }
   }
   function momentsBy() { const fr = new Set(M.friends()), fo = new Set(follows()), by = {};
     for (const p of Object.values(posts())) if (isMoment(p) && (p.pk === me() || fr.has(p.pk) || fo.has(p.pk)) && !M.contacts()[p.pk]?.blocked) (by[p.pk] = by[p.pk] || []).push(p);
     for (const k in by) by[k].sort((a, b) => a.at - b.at); return by; }
   function homeTop() {
     const by = momentsBy(), seen = new Set(LS.get('mseen', [])), order = Object.keys(by).sort((a, b) => (a === me() ? -1 : b === me() ? 1 : 0) || (by[a].every(x => seen.has(x.id)) - by[b].every(x => seen.has(x.id))) || by[b].at(-1).at - by[a].at(-1).at);
-    let h = `<div class=ec-moments><button data-mnew>${'<div class=ring style="background:var(--line)">' + av(me(), 52) + '</div>'}<span>${by[me()] ? 'Add more' : 'Your moment'}</span></button>${order.map(pk => `<button data-moment="${pk}"><div class="ring ${by[pk].every(x => seen.has(x.id)) ? 'seen' : ''}">${av(pk, 52)}</div><span>${esc(pk === me() ? 'You' : nameOf(pk).split(/\s+/)[0])}</span></button>`).join('')}</div>`;
+    let h = `<div class=ec-moments><button data-mnew>${'<div class=ring style="background:var(--line)">' + av(me(), 52) + '</div>'}<span>${by[me()] ? 'Add more' : 'Your moment'}</span></button>${order.map(pk => `<button data-moment="${pk}"><div class="ring ${by[pk].every(x => seen.has(x.id)) ? 'seen' : ''}">${av(pk, 52)}</div><span>${esc(pk === me() ? 'You' : nameOf(pk).split(/\s+/)[0])}</span></button>`).join('')}${M.friends().filter(pk => M.contacts()[pk]?.status && !order.includes(pk)).slice(0, 12).map(pk => `<button data-pk="${pk}" title="${esc(M.contacts()[pk].status)}"><div style="position:relative">${av(pk, 52)}<span style="position:absolute;left:50%;top:-10px;transform:translateX(-50%);max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1px 6px;font-size:10.5px;color:var(--ink)">${esc(M.contacts()[pk].status)}</span></div><span>${esc(nameOf(pk).split(/\s+/)[0])}</span></button>`).join('')}</div>`;
     const c = view.catch; if (c && (c.posts || c.likes || c.replies)) h += `<div class=ec-catch><b>While you were away</b>${[c.posts ? `${c.posts} new post${c.posts === 1 ? '' : 's'} from ${c.names.slice(0, 3).map(esc).join(', ')}${c.names.length > 3 ? ' +' + (c.names.length - 3) : ''}` : '', c.moments ? `${c.moments} new moment${c.moments === 1 ? '' : 's'}` : '', c.likes ? `${c.likes} like${c.likes === 1 ? '' : 's'}` : '', c.replies ? `${c.replies} repl${c.replies === 1 ? 'y' : 'ies'}` : ''].filter(Boolean).join(' · ')}<div style="margin-top:8px"><button class="hm-btn ghost" data-caught>Got it</button></div></div>`;
+    const al = algo(); h += `<div style="display:flex;gap:6px;align-items:center;padding:8px 14px 0;flex-wrap:wrap"><button class="hm-btn ghost" data-algo style="padding:6px 12px">🎚 Tune my feed</button>${al.map(a => `<span class=ec-pill>${a.dir > 0 ? 'More' : 'Less'}: ${esc(a.w.trim())}</span>`).join('')}</div>`;
     const pg = A.page && A.page(), pn = pg ? notesFor(pg.url) : [];
     if (pg) h += `<div class=ec-catch style="background:var(--card)"><b>📌 ${esc(hostOf(pg.url))}</b>${pn.length ? `${pn.length} note${pn.length === 1 ? '' : 's'} from friends on this page` : 'Leave a note on this page for your friends'}<div style="margin-top:8px;display:flex;gap:8px">${pn.length ? '<button class=hm-btn data-pagenotes>See notes</button>' : ''}<button class="hm-btn ghost" data-pagenote>Add a note</button></div></div>`;
     return h; }
@@ -294,6 +319,35 @@ window.HushEcho = function (A) {
   function drawPage() { const pg = A.page && A.page(), u = view.pageUrl || pg?.url || '', l = notesFor(u);
     view.el.innerHTML = `<div class=hm>${head('📌 ' + esc(hostOf(u)), '', backB)}<div class=hm-body><div style="padding:10px 14px;color:var(--mute);font-size:12.5px">Notes your friends left on this page. Only they can read them.</div>${l.map(p => card(p)).join('') || '<div class=hm-empty>No notes on this page yet</div>'}</div>
       <button class=ec-fab data-pagenote aria-label="Add a note">${IC.pen}</button></div>`; }
+  function tuneUI() { const v = document.createElement('div'); v.className = 'hm-view';
+    v.innerHTML = `<div class=hm-card style="width:min(420px,92vw);color:var(--ink)"><h3>🎚 Tune my feed</h3><p>Ask for more or less of a topic for a while. Only this device knows — nothing is sent anywhere.</p>
+      <input class=hm-in id=al-w placeholder="A word or #tag — e.g. politics, #hiking" maxlength=30><div class=ec-seg style="margin:6px 0"><button data-d=1 class=on>More</button><button data-d=-1>Less</button></div>
+      <div class=ec-seg style="margin:6px 0">${[[1, '1 day'], [3, '3 days'], [7, '7 days']].map(([d, l], i) => `<button data-days=${d} class="${i === 1 ? 'on' : ''}">${l}</button>`).join('')}</div>
+      ${algo().map((a, i) => `<div class=hm-opt><div>${a.dir > 0 ? 'More' : 'Less'} “${esc(a.w.trim())}”<small>until ${new Date(a.until).toLocaleDateString()}</small></div><button class="hm-btn ghost" data-rm=${i}>Remove</button></div>`).join('')}
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px"><button class="hm-btn ghost" data-x>Close</button><button class=hm-btn id=al-go>Add</button></div></div>`;
+    document.body.append(v); let dir = 1, days = 3;
+    v.querySelectorAll('[data-d]').forEach(b => b.onclick = () => { dir = +b.dataset.d; v.querySelectorAll('[data-d]').forEach(x => x.classList.toggle('on', x === b)); });
+    v.querySelectorAll('[data-days]').forEach(b => b.onclick = () => { days = +b.dataset.days; v.querySelectorAll('[data-days]').forEach(x => x.classList.toggle('on', x === b)); });
+    v.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { const l = algo(); l.splice(+b.dataset.rm, 1); LS.set('algo', l); v.remove(); paint(); });
+    v.onclick = e => { if (e.target === v || e.target.dataset.x !== undefined) v.remove(); };
+    v.querySelector('#al-go').onclick = () => { const w = v.querySelector('#al-w').value.toLowerCase().trim().replace(/^#/, ''); if (w.length < 2) return A.toast('Type a word or #tag');
+      LS.set('algo', [...algo().filter(a => a.w.trim() !== w), { w: ' ' + w, dir, until: Date.now() + days * 86400e3 }].slice(-20)); v.remove(); paint(); A.toast(`${dir > 0 ? 'More' : 'Less'} “${w}” for ${days} day${days > 1 ? 's' : ''}`); }; }
+  // Swipe mode: photos and moments full-screen, one at a time — swipe up/down or use the arrow keys.
+  function swipe() { const fr = new Set([...M.friends(), ...follows()]);
+    const list = Object.values(posts()).filter(p => p.img && !expired(p) && (fr.has(p.pk) || p.aud === 'public' || p.pk === me()) && !M.contacts()[p.pk]?.blocked).sort((a, b) => b.at - a.at).slice(0, 200);
+    if (!list.length) return A.toast('No photos to swipe through yet');
+    let i = 0; const v = document.createElement('div'); v.className = 'ec-mv'; v.style.position = 'fixed'; v.style.zIndex = 99; document.body.append(v);
+    const drawS = () => { const p = list[i]; const liked = (p.likes || []).includes(me());
+      v.innerHTML = `<div class=top>${av(p.pk, 34)}<b>${esc(nameOf(p.pk))}</b><span style="opacity:.7;font-size:13px">${ago(p.at)} · ${i + 1}/${list.length}</span><span style="flex:1"></span><button class=hm-ib data-l style="color:${liked ? '#e11d48' : '#fff'}">${IC.like}</button><button class=hm-ib data-x style="color:#fff"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+        <div class=mid><img class=ec-img data-img='${esc(JSON.stringify(p.img))}' alt="" style="border:0;margin:0"></div>${p.text ? `<div class=cap>${esc(p.text.slice(0, 280))}</div>` : ''}`;
+      v.querySelectorAll('img.ec-img').forEach(loadImg); M.hydrate(v);
+      v.querySelector('[data-x]').onclick = () => { v.remove(); removeEventListener('keydown', k); };
+      v.querySelector('[data-l]').onclick = () => { like(p); drawS(); }; };
+    const step = d => { const j = i + d; if (j >= 0 && j < list.length) { i = j; drawS(); } };
+    let y0 = null; v.addEventListener('pointerdown', e => { y0 = e.clientY; }); v.addEventListener('pointerup', e => { if (y0 == null) return; const dy = e.clientY - y0; y0 = null; if (Math.abs(dy) > 50) step(dy < 0 ? 1 : -1); });
+    v.addEventListener('wheel', e => { if (Math.abs(e.deltaY) > 30) step(e.deltaY > 0 ? 1 : -1); }, { passive: true });
+    const k = e => { if (e.key === 'ArrowDown') step(1); else if (e.key === 'ArrowUp') step(-1); else if (e.key === 'Escape') { v.remove(); removeEventListener('keydown', k); } }; addEventListener('keydown', k);
+    drawS(); }
   let mvTimer = null;
   function drawMoment() { clearTimeout(mvTimer); const by = momentsBy(), order = Object.keys(by), list = by[view.mpk] || [];
     if (!list.length) { view.screen = null; return drawMain(); }
@@ -325,8 +379,9 @@ window.HushEcho = function (A) {
       return; }
     view.el.innerHTML = `<div class=hm>${head('Circles', '', backB)}<div class=hm-body><div style="padding:12px 14px;color:var(--mute);font-size:13px">Share some posts with just a few friends — pick a circle when you post.</div>
       ${Object.entries(cs).map(([id, c]) => `<button class=ec-person data-circ="${id}"><div class=hm-av style="background:var(--acc);color:var(--bg);width:40px;height:40px">◎</div><div style="text-align:left"><b>${esc(c.name)}</b><div style="color:var(--mute);font-size:13px">${c.members.length} ${c.members.length === 1 ? 'person' : 'people'}</div></div></button>`).join('') || '<div class=hm-empty>No circles yet</div>'}
-      <div style="padding:14px"><button class=hm-btn data-circ="">+ New circle</button></div></div></div>`;
-    view.el.querySelectorAll('[data-circ]').forEach(b => b.onclick = () => { view.circle = b.dataset.circ; paint(); }); }
+      <div style="padding:14px;display:flex;gap:8px;flex-wrap:wrap">${Object.values(cs).some(c => c.name === 'Close friends') ? '' : '<button class=hm-btn data-close-fr>＋ Close friends</button>'}<button class="hm-btn ghost" data-circ="">+ New circle</button></div></div></div>`;
+    view.el.querySelectorAll('[data-circ]').forEach(b => b.onclick = () => { view.circle = b.dataset.circ; paint(); });
+    const cf = view.el.querySelector('[data-close-fr]'); if (cf) cf.onclick = () => { view.circle = ''; paint(); const n = view.el.querySelector('#ec-cn'); if (n) n.value = 'Close friends'; }; }
   function profileList(pk, own) { const all = posts(), pinId = own ? prof()?.pin : profiles()[pk]?.pin, pin = pinId && all[pinId] && !expired(all[pinId]) ? all[pinId] : null, tab = view.ptab || 'posts';
     const mine = Object.values(all).filter(x => x.pk === pk && !expired(x) && !x.reply && !x.moment).sort((a, b) => b.at - a.at);
     const tabsH = `<div class=ec-ptabs>${[['posts', 'Posts'], ['photos', 'Photos'], ...(own ? [['saved', 'Saved']] : [])].map(([k, l]) => `<button data-ptab=${k} class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
@@ -356,6 +411,9 @@ window.HushEcho = function (A) {
         <div style="font-size:12px;color:var(--mute);margin-top:6px">${aud === 'public' ? (canPub ? 'Anyone on Echo can see and find this post.' : 'Turn on your public profile first (Me → Edit profile).') : aud.startsWith('c:') && cs[aud.slice(2)] ? 'Encrypted for the ' + cs[aud.slice(2)].members.length + ' people in ' + esc(cs[aud.slice(2)].name) + '. They don’t see the circle’s name.' : 'Encrypted for your ' + M.friends().length + ' Murmur friends. Nobody else can read it.'}</div></div>`}
       ${r || qt ? '' : `<label class=ec-chk><input type=checkbox id=ec-mom ${mom ? 'checked' : ''}> ✨ Post as a <b>moment</b> — shows at the top of friends’ feeds for 24 hours</label>`}
       ${pg && !r && !mom ? `<label class=ec-chk><input type=checkbox id=ec-pg ${pageOn ? 'checked' : ''}> 📌 Leave this as a note on <b>${esc(hostOf(pg.url))}</b> — friends see it when they visit</label>` : ''}
+      ${r || mom ? '' : `<div><div style="font:600 12px system-ui;color:var(--mute);margin-bottom:6px">WHO CAN REPLY</div><div class=ec-seg>${[['', 'Everyone who can see it'], ['follow', 'Friends'], ['none', 'Nobody']].map(([v, l]) => `<button data-rep="${v}" class="${(view.rep || '') === v ? 'on' : ''}">${l}</button>`).join('')}</div></div>`}
+      ${r || mom || !LS.get('comms', []).length ? '' : `<div><div style="font:600 12px system-ui;color:var(--mute);margin-bottom:6px">COMMUNITY</div><div class=ec-seg><button data-cm2="" class="${!view.comm2 ? 'on' : ''}">None</button>${LS.get('comms', []).map(c => `<button data-cm2="${esc(c)}" class="${view.comm2 === c ? 'on' : ''}">◆ ${esc(c)}</button>`).join('')}</div></div>`}
+      ${r || mom ? '' : `<div id=ec-thr>${(view.thread || []).map((t, i) => `<textarea class=ec-thr data-thr=${i} maxlength=2000 placeholder="Next post in the thread" style="width:100%;min-height:70px;border-radius:14px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:10px;font:15px/1.45 system-ui;margin-top:6px">${esc(t)}</textarea>`).join('')}<button class="hm-btn ghost" data-thradd style="margin-top:6px">＋ Add to thread</button></div>`}
       ${mom ? '' : `<div><div style="font:600 12px system-ui;color:var(--mute);margin-bottom:6px">DISAPPEARS</div><div class=ec-seg>${[[0, 'Never'], [86400, '24 hours'], [7 * 86400, '7 days'], [30 * 86400, '30 days']].map(([v, l]) => `<button data-exp=${v} class="${(view.exp || 0) === v ? 'on' : ''}">${l}</button>`).join('')}</div></div>`}
       <div style="display:flex;gap:8px;align-items:center"><label class="hm-btn ghost" style="cursor:pointer">📷 Photo<input type=file id=ec-f accept="image/*" hidden></label>${r || mom ? '' : `<button class="hm-btn ghost" id=ec-poll>${poll ? '✕ Poll' : '📊 Poll'}</button>`}<span style="flex:1"></span><button class=hm-btn id=ec-go>${r ? 'Reply' : mom ? 'Share moment' : 'Post'}</button></div></div></div></div>`;
     let file = view.file || null; const ph = view.el.querySelector('#ec-ph'); if (file) ph.textContent = '📷 ' + file.name;
@@ -364,6 +422,12 @@ window.HushEcho = function (A) {
     view.el.querySelectorAll('[data-aud]').forEach(b => b.onclick = () => { keepPoll(); view.aud = b.dataset.aud; paint(); });
     const mo = view.el.querySelector('#ec-mom'); if (mo) mo.onchange = () => { keepPoll(); view.moment = mo.checked; if (mo.checked) view.poll = null; paint(); };
     const pc = view.el.querySelector('#ec-pg'); if (pc) pc.onchange = () => { keepPoll(); view.pageUrl = pc.checked ? pg.url : ''; paint(); };
+    const keepThr = () => { if (view.thread) view.thread = [...view.el.querySelectorAll('[data-thr]')].map(x => x.value); };
+    view.el.querySelectorAll('[data-rep]').forEach(b => b.onclick = () => { keepPoll(); keepThr(); view.rep = b.dataset.rep; paint(); });
+    view.el.querySelectorAll('[data-cm2]').forEach(b => b.onclick = () => { keepPoll(); keepThr(); view.comm2 = b.dataset.cm2; paint(); });
+    view.el.querySelectorAll('[data-thr]').forEach(x => x.oninput = () => { view.thread[+x.dataset.thr] = x.value; });
+    const ta0 = view.el.querySelector('#ec-t'); if (ta0) { if (!r && !qt && !ta0.value && view.draft == null) { const d = LS.get('draft', ''); if (d) { ta0.value = d; A.toast('Draft restored'); } } view.draft = 1; ta0.addEventListener('input', () => { if (!r) LS.set('draft', ta0.value); }); }
+    const ta = view.el.querySelector('[data-thradd]'); if (ta) ta.onclick = () => { keepPoll(); keepThr(); view.thread = [...(view.thread || []), '']; paint(); setTimeout(() => [...view.el.querySelectorAll('[data-thr]')].pop()?.focus(), 30); };
     view.el.querySelectorAll('[data-po]').forEach(i => i.oninput = () => { if (view.poll) view.poll[+i.dataset.po] = i.value; });
     const pb = view.el.querySelector('#ec-poll'); if (pb) pb.onclick = () => { view.poll = view.poll ? null : ['', '']; paint(); };
     view.el.querySelectorAll('[data-exp]').forEach(b => b.onclick = () => { keepPoll(); view.exp = +b.dataset.exp; paint(); });
@@ -374,7 +438,11 @@ window.HushEcho = function (A) {
       if (aud === 'public' && !canPub) return A.toast('Turn on your public profile first');
       if (aud === 'friends' && !M.friends().length && !r) return A.toast('Add friends in Murmur first — friends-only posts go to them');
       const b = view.el.querySelector('#ec-go'); b.disabled = true; b.textContent = 'Posting…';
-      try { await post(t, { aud, exp: mom ? 86400 : view.exp || 0, file, reply: r, moment: mom, page: !r && !mom && view.pageUrl ? view.pageUrl : null, quote: qt || null, poll: opts });
+      try { keepThr(); await post(t, { aud, exp: mom ? 86400 : view.exp || 0, file, reply: r, moment: mom, page: !r && !mom && view.pageUrl ? view.pageUrl : null, quote: qt || null, poll: opts, replies: view.rep || null, comm: view.comm2 || null });
+        // Thread: each extra part is posted as a reply to the one before it, same audience.
+        let prev = Object.values(posts()).filter(x => x.pk === me()).sort((a, b) => b.at - a.at)[0];
+        for (const part of (view.thread || []).map(x => x.trim()).filter(Boolean)) { if (!prev) break; await post(part, { aud, reply: prev, replies: view.rep || null }); prev = Object.values(posts()).filter(x => x.pk === me()).sort((a, b) => b.at - a.at)[0]; }
+        if (!r) LS.set('draft', ''); view.thread = null; view.rep = null; view.comm2 = null; view.draft = null;
         const pageNote = !!view.pageUrl && !mom; Object.assign(view, { file: null, exp: 0, aud: null, moment: false, pageUrl: null, poll: null, quote: null });
         go(r ? 'post' : pageNote ? 'page' : null, r ? { id: r.id } : {}); A.toast(r ? 'Replied' : mom ? '✨ Moment shared for 24 hours' : pageNote ? '📌 Note left on this page' : aud === 'public' ? '🌐 Posted publicly' : aud.startsWith('c:') ? '◎ Shared with ' + cs[aud.slice(2)].name : '🔒 Posted to friends'); }
       catch (e) { b.disabled = false; b.textContent = 'Post'; A.toast('Couldn’t post: ' + String(e.message || e).slice(0, 100)); } };
@@ -418,7 +486,7 @@ window.HushEcho = function (A) {
       if (view.screen === 'compose') Object.assign(view, { moment: false, pageUrl: null, poll: null, quote: null });
       const back = view.screen === 'circles' && view.fromCompose ? 'compose' : null; if (back) { view.fromCompose = false; return go('compose'); } go(view.screen === 'compose' && view.replyTo ? 'post' : null, view.screen === 'compose' && view.replyTo ? { id: view.replyTo, replyTo: null } : { replyTo: null }); });
     el.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => go(null, { tab: b.dataset.tab }));
-    el.querySelectorAll('[data-compose]').forEach(b => b.onclick = () => go('compose', { replyTo: null }));
+    el.querySelectorAll('[data-compose]').forEach(b => b.onclick = () => go('compose', { replyTo: null, draft: null, quote: null }));
     el.querySelectorAll('[data-mnew]').forEach(b => b.onclick = () => go('compose', { replyTo: null, moment: true, quote: null, poll: null }));
     el.querySelectorAll('[data-moment]').forEach(b => b.onclick = () => go('moment', { mpk: b.dataset.moment, mi: (() => { const l = momentsBy()[b.dataset.moment] || [], sn = new Set(LS.get('mseen', [])), i = l.findIndex(x => !sn.has(x.id)); return i < 0 ? 0 : i; })() }));
     el.querySelectorAll('[data-caught]').forEach(b => b.onclick = () => { view.catch = null; paint(); });
@@ -427,6 +495,16 @@ window.HushEcho = function (A) {
     el.querySelectorAll('[data-circles]').forEach(b => b.onclick = () => { view.fromCompose = view.screen === 'compose'; go('circles', { circle: view.fromCompose ? '' : null }); });
     el.querySelectorAll('[data-ptab]').forEach(b => b.onclick = () => { view.ptab = b.dataset.ptab; paint(); });
     el.querySelectorAll('.ec-grid img').forEach(loadImg);
+    el.querySelectorAll('[data-comm]').forEach(b => b.onclick = e => { e.stopPropagation(); const c = b.dataset.comm, l = LS.get('comms', []); if (c && !l.includes(c)) LS.set('comms', [...l, c]); go(null, { tab: 'explore', comm: c || null }); });
+    el.querySelectorAll('[data-commnew]').forEach(b => b.onclick = () => { const n = (prompt('Community name — e.g. gardening, jaguars, retro-games') || '').toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 30); if (n.length < 2) return; const l = LS.get('comms', []); if (!l.includes(n)) LS.set('comms', [...l, n]); go(null, { tab: 'explore', comm: n }); A.toast('◆ Joined ' + n + ' — public posts tagged to it show here'); });
+    el.querySelectorAll('[data-pack]').forEach(b => b.onclick = () => { const k = LS.get('packs', {})[b.dataset.pack]; if (!k) return; const fo = follows(), add = k.people.filter(x => x !== me() && !fo.includes(x));
+      if (!add.length) return A.toast('You already follow everyone in this pack'); if (!confirm(`Follow ${add.length} people from “${k.name}”?`)) return; LS.set('follow', [...fo, ...add]); subscribe(); A.toast('★ Following ' + add.length + ' people'); });
+    el.querySelectorAll('[data-packnew]').forEach(b => b.onclick = () => { if (!prof()?.public) return A.toast('Turn on your public profile to share a starter pack');
+      const ppl = follows().filter(x => profiles()[x]?.public); if (ppl.length < 2) return A.toast('Follow at least 2 public people first — a pack is made from who you follow');
+      const name = (prompt('Name your starter pack — e.g. “Best gardening accounts”') || '').trim().slice(0, 60); if (!name) return;
+      M.broadcast(M.sign({ kind: K_PACK, content: '', tags: [['d', Math.random().toString(36).slice(2, 10)], ['title', name], ...ppl.slice(0, 150).map(x => ['p', x])] })); A.toast('★ Starter pack shared with ' + ppl.length + ' people'); view.explored = false; paint(); });
+    el.querySelectorAll('[data-swipe]').forEach(b => b.onclick = () => swipe());
+    el.querySelectorAll('[data-algo]').forEach(b => b.onclick = () => tuneUI());
     el.querySelectorAll('[data-vote]').forEach(b => b.onclick = e => { e.stopPropagation(); const p = posts()[b.closest('.ec-post')?.dataset.p]; if (p) vote(p, +b.dataset.vote); });
     el.querySelectorAll('[data-replyto]').forEach(b => b.onclick = () => go('compose', { replyTo: b.dataset.replyto }));
     el.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => go('edit'));
