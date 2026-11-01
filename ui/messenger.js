@@ -64,12 +64,12 @@ window.HushMsg = function (A) {
     let h = null; try { h = await A.secret.get('murmur-pq'); } catch {}
     if (!h || !/^[0-9a-f]+$/.test(h)) { const kp = N.ml_kem768.keygen(); h = hex(kp.publicKey) + ':' + hex(kp.secretKey); }
     if (!h.includes(':')) return; const [p1, s1] = h.split(':'); pq = { pk: unhex(p1), sk: unhex(s1), hex: h }; try { await A.secret.set('murmur-pq', h); } catch {} }
-  const pqOn = key => !!(pq && N.ml_kem768 && prefs().pq !== false && !isGroup(key) && key !== 'self' && /^[0-9a-f]{2368}$/.test(contacts()[key]?.pq || ''));
+  const pqOn = key => !!(pq && N.ml_kem768 && prefs().pq !== false && key !== 'self' && members(key).length && members(key).length <= 40 && members(key).every(m => /^[0-9a-f]{2368}$/.test(contacts()[m]?.pq || '')));
   function pqSeal(key, content) { const K = crypto.getRandomValues(new Uint8Array(32)), r = [];
-    for (const pkHex of [contacts()[key].pq, hex(pq.pk)]) { const { cipherText, sharedSecret } = N.ml_kem768.encapsulate(unhex(pkHex)); r.push({ c: btoa(String.fromCharCode(...cipherText)), k: n44().encrypt(hex(K), sharedSecret) }); }
+    for (const pkHex of [...members(key).map(m => contacts()[m].pq), hex(pq.pk)]) { const { cipherText, sharedSecret } = N.ml_kem768.encapsulate(unhex(pkHex)); r.push({ c: btoa(String.fromCharCode(...cipherText)), k: n44().encrypt(hex(K), sharedSecret) }); }
     return JSON.stringify({ v: 1, r, d: n44().encrypt(String(content || '') || ' ', K) }); }
   function pqOpen(content) { if (!pq) return null; let j; try { j = JSON.parse(content); } catch { return null; } if (!j || j.v !== 1 || !Array.isArray(j.r)) return null;
-    for (const e of j.r.slice(0, 4)) { try { const ct = Uint8Array.from(atob(e.c), ch => ch.charCodeAt(0)), ss = N.ml_kem768.decapsulate(ct, pq.sk); const K = unhex(n44().decrypt(e.k, ss)); const t = n44().decrypt(j.d, K); return t === ' ' ? '' : t; } catch {} }
+    for (const e of j.r.slice(0, 41)) { try { const ct = Uint8Array.from(atob(e.c), ch => ch.charCodeAt(0)), ss = N.ml_kem768.decapsulate(ct, pq.sk); const K = unhex(n44().decrypt(e.k, ss)); const t = n44().decrypt(j.d, K); return t === ' ' ? '' : t; } catch {} }
     return null; }
   async function createKey() { await useKey(hex(N.generateSecretKey())); LS.set('since', now() - 3 * 86400); }
   const npub = pk => { try { return N.nip19.npubEncode(pk); } catch { return pk; } };
