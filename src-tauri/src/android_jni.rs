@@ -73,6 +73,10 @@ pub extern "system" fn Java_app_hush_browser_Native_uniformJs(env: JNIEnv, _c: J
     env.new_string(crate::UNIFORM_JS).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
 }
 #[no_mangle]
+pub extern "system" fn Java_app_hush_browser_Native_splitJs(env: JNIEnv, _c: JClass) -> jni::sys::jstring {
+    env.new_string(include_str!("split.js")).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
+}
+#[no_mangle]
 pub extern "system" fn Java_app_hush_browser_Native_floatJs(env: JNIEnv, _c: JClass) -> jni::sys::jstring {
     env.new_string(include_str!("float.js")).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
 }

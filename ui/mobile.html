@@ -210,14 +210,16 @@ function applyPrefs(){
 // Native tab views sit between the bars. Android wants device pixels.
 // Toolbar visibility follows scrolling (events from the native page: {dir:1 down / -1 up, y}).
 let toolsHidden=false,toolsT=0;
-function toolsShow(on){if(pref("toolbar")==="off"||on===!toolsHidden)return;toolsHidden=!on;clearTimeout(toolsT);
+function toolsShow(on){if(pref("toolbar")==="off"||(!on&&pref("tools_autohide")!=="true")||on===!toolsHidden)return;toolsHidden=!on;clearTimeout(toolsT);
   if(on){document.body.classList.remove("tools-hide");insets()}            // make room first, then slide in
   else{document.body.classList.add("tools-hide");toolsT=setTimeout(insets,190)}}   // slide out, then give the page the space
 function insets(){
   // The page fills exactly the space between the bars: measure that area itself, so the address bar AND the
   // bottom button row (back / tabs / menu) are always left uncovered, whichever way round they sit.
-  const v=$("#view").getBoundingClientRect(), k=ANDROID?devicePixelRatio:1;
-  const top=v.top, bot=innerHeight-v.bottom;
+  // The row may still be sliding (its margin animates), so count where it will END UP, not where it is mid-slide.
+  const v=$("#view").getBoundingClientRect(), k=ANDROID?devicePixelRatio:1, tl=$("#tools");
+  const slide=pref("toolbar")!=="off"&&!toolsHidden?-(parseFloat(getComputedStyle(tl).marginBottom)||0):0;
+  const top=v.top, bot=innerHeight-v.bottom+slide;
   inv("set_chrome_inset",{px:Math.round(top*k),bottom:Math.round(Math.max(0,bot)*k)}).catch(()=>{});
 }
 addEventListener("resize",()=>insets());
@@ -630,7 +632,7 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
    ${item("Two-finger gestures & quick wheel","Swipe a page with two fingers · two-finger hold or hold the tabs button for your wheel",'<button class="btn sm" id="s-gest">Customize</button>')}
    ${item("Clean links","Removes tracking tags from links you open and copy",sw("clean_links",pref("clean_links")!=="off"))}
    ${item("Video controls","Speed, ±10 s, loop and pop-out on any video",sw("video_bar",pref("video_bar")!=="off"))}
-   ${item("Bottom toolbar","Back, forward, new tab, tabs and menu — hides while you scroll down",sw("toolbar",pref("toolbar")!=="off"))}
+   ${item("Bottom toolbar","Back, forward, new tab, tabs and menu",sw("toolbar",pref("toolbar")!=="off"))}${pref("toolbar")!=="off"?item("Hide toolbar while scrolling","Slides away as you scroll down, back when you scroll up",sw("tools_autohide",pref("tools_autohide")==="true")):""}
    ${item("YouTube quality","Videos start at this quality",seg("video_quality",[["1080","1080p"],["720","720p"],["auto","Auto"]]))}
    <div class="item" style="display:block"><div style="margin-bottom:8px">Security level<small>Standard: everything works · Safer: no JavaScript on unencrypted pages · Safest: JavaScript only on sites you allow</small></div>${seg("sec_level",HX.SEC)}</div>
    <div class="item" style="display:block"><div style="margin-bottom:8px">When you leave a playing video<small>Ask each time · a mini player you can drag and resize · keep playing in the background · or stop</small></div>${seg("video_leave",HX.LEAVE)}</div>
@@ -644,7 +646,7 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
   el.querySelectorAll(".seg button").forEach(b=>b.onclick=async()=>{await setPref(b.dataset.k,b.dataset.v);drawSettings();render()});
   el.querySelectorAll("[data-color]").forEach(b=>b.onclick=async()=>{await setPref("color",b.dataset.color);drawSettings()});
   $("#s-color").oninput=e=>{state.settings.ui.color=e.target.value;applyColor()};$("#s-color").onchange=async e=>{await setPref("color",e.target.value);drawSettings()};
-  el.querySelectorAll("[data-sw]").forEach(b=>b.onclick=async()=>{const k=b.dataset.sw,on=b.classList.contains("on"),bin=["force_dark","pull_refresh","desktop","bg_play"].includes(k);
+  el.querySelectorAll("[data-sw]").forEach(b=>b.onclick=async()=>{const k=b.dataset.sw,on=b.classList.contains("on"),bin=["force_dark","pull_refresh","desktop","bg_play","tools_autohide"].includes(k);
     await setPref(k,bin?String(!on):(on?"off":"on"));if(k==="force_dark")applyDarkNow();if(k==="restore")saveSession();drawSettings()});
   HX.settingsSearch(el,$("#s-q"),".item");
   HX.lookPicker($("#s-look"),()=>{applyPrefs();drawSettings()});

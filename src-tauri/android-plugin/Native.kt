@@ -23,4 +23,6 @@ object Native {
     external fun uniformJs(): String
     /** The floating-video player script. */
     external fun floatJs(): String
+    /** Split screen: video fills its half with full controls; the tapped half gets the sound. */
+    external fun splitJs(): String
 }

@@ -239,6 +239,29 @@ fn show_only(app: &AppHandle, label: &str) {
     if let Some(win) = app.get_window("main") { relayout(&win); }
     raise_float(app);
     raise_rail(app);
+    apply_split(app);
+}
+
+/// Split view panes: (focused tab, the other visible halves). Focus = highlight ring + sound.
+static SPLIT_FOCUS: parking_lot::Mutex<Option<String>> = parking_lot::Mutex::new(None);
+static SPLIT_PANES: parking_lot::Mutex<Vec<String>> = parking_lot::Mutex::new(Vec::new());
+fn split_panes(app: &AppHandle) -> Vec<String> {
+    let st = app.state::<AppState>();
+    let (a, sp) = (st.active.lock().clone(), st.split.lock().clone());
+    match (a, sp) { (Some(a), Some(s)) if a != s => { let mut v = vec![a, s]; v.extend(SPLIT_MORE.lock().iter().filter(|l| !v.contains(l)).cloned().collect::<Vec<_>>()); v } _ => vec![] }
+}
+/// Tell every split half whether split is on and which half has the focus; tabs that left the split go back to normal.
+fn apply_split(app: &AppHandle) {
+    let panes = split_panes(app);
+    let focus = { let mut f = SPLIT_FOCUS.lock(); if !f.as_ref().map_or(false, |x| panes.contains(x)) { *f = panes.first().cloned(); } f.clone() };
+    let old = std::mem::replace(&mut *SPLIT_PANES.lock(), panes.clone());
+    for l in old.iter().filter(|l| !panes.contains(l)) { if let Some(w) = app.get_webview(l) { let _ = w.eval(&format!("{};__hushSplit({{on:false}});", include_str!("split.js"))); } }
+    for l in &panes { if let Some(w) = app.get_webview(l) { let _ = w.eval(&format!("{};__hushSplit({{on:true,focus:{}}});", include_str!("split.js"), focus.as_deref() == Some(l.as_str()))); } }
+}
+/// split.js: you clicked this half → it gets the highlight and the sound.
+fn split_focus(app: &AppHandle, label: &str) {
+    if !split_panes(app).iter().any(|l| l == label) { return; }
+    *SPLIT_FOCUS.lock() = Some(label.to_string()); apply_split(app);
 }
 
 /// The current tab's text, for the on-device assistant (summaries stay on this computer).
@@ -489,6 +512,7 @@ fn make_tab_with(app: &AppHandle, input: String, private: bool, peek: bool, tor:
         .on_navigation(move |u| match u.scheme() {
             "hush-pick" => { handle_pick(&app_nav, &lbl_nav, u); false }
             "hush-float" => { handle_float(&app_nav, &lbl_nav, u); false }
+            "hush-split" => { split_focus(&app_nav, &lbl_nav); false }
             // Mouse gesture drawn in the page (tools.js): only the direction letters are passed on.
             "hush-gesture" => {
                 let h = u.host_str().unwrap_or("").to_ascii_lowercase();
@@ -551,8 +575,10 @@ fn make_tab_with(app: &AppHandle, input: String, private: bool, peek: bool, tor:
                 b_load.counts.lock().insert(l.clone(), 0);
                 let _ = wv.app_handle().emit("blocked", serde_json::json!({ "tab": l, "count": 0 }));
                 let _ = wv.eval(&crate::page_start_js(p.url().as_str()));
-            } else if crate::dark_for(p.url().as_str()) {
-                let _ = wv.eval(&format!("{};__hushPage.dark(true);", crate::PAGE_JS));
+            } else {
+                if crate::dark_for(p.url().as_str()) { let _ = wv.eval(&format!("{};__hushPage.dark(true);", crate::PAGE_JS)); }
+                // A page that finished loading inside a split half: fill its video / set its sound again.
+                if SPLIT_PANES.lock().iter().any(|l| l == wv.label()) { apply_split(wv.app_handle()); }
             }
             // R-31: tell the chrome UI where this tab actually is (redirects, link clicks, back/forward).
             let ev = if matches!(p.event(), PageLoadEvent::Started) { "started" } else { upgrade_reset.lock().clear(); "finished" };

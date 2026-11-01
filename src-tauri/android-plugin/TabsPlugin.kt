@@ -377,6 +377,8 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                             else emit("pick", JSObject().apply { put("host", host); put("sel", sel) }) }; true }
                     // Two-finger gestures and the quick wheel (tools.js): only a short shape / action id is passed on.
                     "hush-float" -> { act.runOnUiThread { onFloatUrl(t, r.url) }; true }
+                    // split.js: you tapped this half → it gets the highlight and the sound.
+                    "hush-split" -> { act.runOnUiThread { if (splitId != null && (t.id == active || t.id == splitId) && splitFocus != t.id) { splitFocus = t.id; applySplit() } }; true }
                     // harden.js: a link to another site that wanted a new window → Hush opens it in a background tab.
                     "hush-peek" -> { val u = r.url.getQueryParameter("u") ?: ""; if (u.startsWith("https://") || u.startsWith("http://")) emit("linkTab", JSObject().apply { put("url", u) }); true }
                     "hush-gesture" -> { val h = (r.url.host ?: "").lowercase()
@@ -405,6 +407,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                 v.postDelayed({ if (active == t.id && visible) snap(t) }, 900)
                 try { val d = Native.darkJs(u); if (d.isNotEmpty()) v.evaluateJavascript(d, null) } catch (e: Throwable) {}
                 emitUrl(t, v, "finished")
+                if (splitId != null && (t.id == active || t.id == splitId)) applySplit()
             }
             override fun doUpdateVisitedHistory(v: WebView, u: String, reload: Boolean) { t.url = u; emitUrl(t, v, "finished") }
         }
@@ -568,15 +571,24 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             if (d.parent == null) root.addView(d, dl) else d.layoutParams = dl
             d.bringToFront() } }
         if (splitId == null) splitBar?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        if (splitPanes != (if (splitId != null && active != null) listOf(active!!, splitId!!) else emptyList<String>())) applySplit()
         floatId?.let { tabs[it]?.box }?.takeIf { it.parent != null && floatId != active }?.bringToFront()
     }
 
     private var splitId: String? = null; private var splitFrac = 0.5f; private var splitBar: android.view.View? = null
+    private var splitFocus: String? = null; private var splitPanes: List<String> = emptyList()
+    /** Tell both halves whether split is on and which one has the focus (highlight + sound); halves that left the split go back to normal. */
+    private fun applySplit(): Unit = act.runOnUiThread {
+        val panes = if (splitId != null && active != null) listOf(active!!, splitId!!) else emptyList()
+        if (!panes.contains(splitFocus ?: "")) splitFocus = panes.firstOrNull()
+        (splitPanes - panes.toSet()).forEach { id -> tabs[id]?.wv?.evaluateJavascript(Native.splitJs() + ";__hushSplit({on:false});", null) }
+        panes.forEach { id -> tabs[id]?.wv?.evaluateJavascript(Native.splitJs() + ";__hushSplit({on:true,focus:" + (id == splitFocus) + "});", null) }
+        splitPanes = panes }
     /** The active tab's text, for the on-device assistant. */
     @Command fun pageText(i: Invoke) { act.runOnUiThread { val w = active?.let { tabs[it]?.wv } ?: return@runOnUiThread i.reject("no tab")
         w.evaluateJavascript(Native.pageTextJs()) { v -> try { i.resolve(JSObject().put("text", org.json.JSONTokener(v).nextValue() as? String ?: "")) } catch (e: Throwable) { i.resolve(JSObject().put("text", "")) } } } }
     /** Split screen: show this tab under the active one ("" turns split off). */
-    @Command fun splitTab(i: Invoke) { val id = i.parseArgs(IdArgs::class.java).id; splitId = id.takeIf { it.isNotEmpty() && it != active && tabs.containsKey(it) }; render(); i.resolve() }
+    @Command fun splitTab(i: Invoke) { val id = i.parseArgs(IdArgs::class.java).id; splitId = id.takeIf { it.isNotEmpty() && it != active && tabs.containsKey(it) }; splitFocus = active; render(); applySplit(); i.resolve() }
     @Command fun openTab(i: Invoke) {
         val id = "t" + java.util.UUID.randomUUID().toString().take(8)
         val a = i.parseArgs(Args::class.java)

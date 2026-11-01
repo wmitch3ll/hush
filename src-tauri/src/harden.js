@@ -28,9 +28,8 @@
     let cross = false; try { cross = new URL(a.href, location.href).hostname.replace(/^www\./, "") !== location.hostname.replace(/^www\./, ""); } catch (_) {}
     // A link-shaped ad covering the page (or one we just switched off): swallow the click.
     if (a.dataset.hushJack || (cross && sneaky(a))) { e.preventDefault(); e.stopImmediatePropagation(); a.style.setProperty("pointer-events", "none", "important"); return; }
-    // <a target=_blank>: on phones the link opens right here in this tab (like before); on desktop Hush's own
-    // new-tab handler takes it (and still blocks known popup-ad networks).
-    if (a.target && a.target !== "_self" && /Android/i.test(navigator.userAgent)) a.target = "_self";
+    // <a target=_blank>: opens right here in this tab (new windows are always refused, on Windows and Android).
+    if (a.target && a.target !== "_self") a.target = "_self";
   }, true);
   // Shift-click a link = Peek (floating preview); Ctrl/Cmd-click or middle-click = open in a background tab.
   // Reported to Hush through a navigation that Hush intercepts and cancels (tabs have no other channel).
