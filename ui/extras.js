@@ -350,18 +350,31 @@ window.HushX = function (A) {
   const aiRename = v => { try { localStorage.setItem('hush.ai.name', String(v || '').replace(/[<>"&]/g, '').trim().slice(0, 24)); } catch (e) {} try { window.dispatchEvent(new Event('hush-ai-name')); } catch (e) {} };
   // Cloud option: Groq, with the user's own free key (console.groq.com). Fast and much smarter than a phone model;
   // requests go through Tor so Groq never sees your IP, but Groq does see what you ask.
-  const GROQ_MODELS = ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
+  // Groq changes its model line-up often, so Hush asks Groq which models this key can use and picks the best chat
+  // models from that list (preferring big, smart ones) instead of hard-coding names that get retired.
+  const GROQ_PREF = [/gpt-oss-120b/, /llama-4-maverick/, /qwen.*(32b|27b|235b)/, /70b/, /llama-4/, /gpt-oss/, /qwen/, /llama/, /gemma/, /mistral|mixtral/, /./];
+  const groqModelsCache = () => { try { const c = JSON.parse(localStorage.getItem('hush.ai.groqModels') || 'null'); return c && Date.now() - c.at < 86400e3 ? c.list : null; } catch (e) { return null; } };
+  async function groqModels() {
+    const c = groqModelsCache(); if (c && c.length) return c;
+    const w = await window.__TAURI__.core.invoke('groq_chat', { key: groqKey(), path: 'models', direct: groqVia === 'direct' || undefined }); groqVia = w.via || groqVia;
+    const ids = ((JSON.parse(w.body || '{}').data) || []).filter(m => m && m.id && m.active !== false).map(m => m.id)
+      .filter(id => !/whisper|tts|guard|embed|playai|distil|orpheus|compound|safeguard|prompt/i.test(id));
+    const list = ids.map(id => [GROQ_PREF.findIndex(r => r.test(id)), id]).sort((a, b) => a[0] - b[0]).map(x => x[1]).slice(0, 3);
+    try { localStorage.setItem('hush.ai.groqModels', JSON.stringify({ at: Date.now(), list })); } catch (e) {}
+    return list; }
   let groqVia = '';
   const groqKey = () => { try { return localStorage.getItem('hush.ai.groq') || ''; } catch (e) { return ''; } };
   async function groqAsk(prompt, on, max) {
-    let last = '';
-    for (const model of GROQ_MODELS) {
+    let last = '', models = [];
+    try { models = await groqModels(); } catch (e) { const m = String(e && e.message || e); if (/key|limit|reach/i.test(m)) throw new Error(m); }
+    if (!models.length) models = ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile'];
+    for (const model of models) {
       try { const w = await window.__TAURI__.core.invoke('groq_chat', { key: groqKey(), direct: groqVia === 'direct' || undefined, body: JSON.stringify({ model, max_tokens: Math.min(2048, max || 700), temperature: 0.4,
           messages: [{ role: 'system', content: 'You are ' + aiName() + ', a helpful, concise assistant inside the Hush privacy browser. Answer clearly; use short paragraphs or bullet points.' }, { role: 'user', content: String(prompt).slice(0, 60000) }] }) });
         // Groq's firewall often blocks Tor; then Hush goes direct. Remember that for this session (saves a slow failed try each time).
-        groqVia = w.via || 'tor'; const r = JSON.parse(w.body || '{}');
+        groqVia = w.via || 'tor'; const r = JSON.parse(w.body || '{}'); try { localStorage.setItem('hush.ai.groqModel', model); } catch (e) {}
         const t = (((r.choices || [])[0] || {}).message || {}).content || ''; on && on(t); return t.trim(); }
-      catch (e) { last = String(e && e.message || e); if (/key|limit/i.test(last)) break; } }
+      catch (e) { last = String(e && e.message || e); if (/key|limit|reach/i.test(last)) break; try { localStorage.removeItem('hush.ai.groqModels'); } catch (_) {} } }
     throw new Error(last || 'Groq didn’t answer');
   }
   const AI_MODELS = { lite: { id: 'onnx-community/gemma-3-1b-it-ONNX', kind: 'lm', name: 'Gemma 3 1B (Lite)', size: 'about 1 GB', mem: 3, note: 'Light on memory — the one for phones' },
@@ -397,7 +410,7 @@ window.HushX = function (A) {
       progress: () => pct, stage: () => stage,
       crashed: () => !!lsg(BOOT),
       // Try a key (one tiny request through Tor); on success switch the assistant to Groq.
-      async connectGroq(key) { const prevK = groqKey(), prev = localStorage.getItem('hush.ai');
+      async connectGroq(key) { const prevK = groqKey(), prev = localStorage.getItem('hush.ai'); try { localStorage.removeItem('hush.ai.groqModels'); } catch (e) {} groqVia = '';
         try { localStorage.setItem('hush.ai.groq', key); localStorage.setItem('hush.ai', JSON.stringify({ on: true, mode: 'groq' })); await groqAsk('Reply with: ready', null, 10); this.useGroq(key); return true; }
         catch (e) { localStorage.setItem('hush.ai.groq', prevK); localStorage.setItem('hush.ai', prev || '{}'); throw e; } },
       useGroq(key) { localStorage.setItem('hush.ai.groq', key); localStorage.setItem('hush.ai', JSON.stringify({ on: true, mode: 'groq' })); if (w) { w.terminate(); w = null; } lss(BOOT, null); st = 'ready'; tell(); },

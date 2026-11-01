@@ -204,12 +204,13 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                 // Arm the keep-playing guard in every open tab; any tab that's playing starts the playback service.
                 if (bgPlay) tabs.values.forEach { t -> t.wv?.evaluateJavascript(BG_GUARD_JS + ";__hushBgGuard(true)") { r -> if (r == "true") { t.audio = true; bgCheck() } } }
                 // Something may have paused the tab views on the way out: wake the ones that are playing.
-                act.window.decorView.postDelayed({ if (inBg && bgPlay) tabs.values.filter { it.audio }.forEach { t -> t.wv?.let { w -> w.onResume(); w.resumeTimers() } } }, 400) }
+                act.window.decorView.postDelayed({ if (inBg && bgPlay) tabs.values.filter { it.audio || it.id == active || it.id in panes() }.forEach { t -> t.wv?.let { w -> w.onResume(); w.resumeTimers() } } }, 300) }
             override fun onActivityStarted(a: Activity) { if (a !== act) return; inBg = false; HushPlayback.stop(act)
                 tabs.values.forEach { t -> t.wv?.evaluateJavascript("window.__hushBgGuard&&__hushBgGuard(false)", null) } }
             override fun onActivityCreated(a: Activity, b: Bundle?) {}
-            override fun onActivityResumed(a: Activity) {}
-            override fun onActivityPaused(a: Activity) {}
+            override fun onActivityResumed(a: Activity) { if (a === act) inBg = false }
+            // Mark "going to the background" early (pause comes before the window is hidden), so tabs stay "visible".
+            override fun onActivityPaused(a: Activity) { if (a === act && !act.isFinishing && !act.isChangingConfigurations) inBg = true }
             override fun onActivitySaveInstanceState(a: Activity, b: Bundle) {}
             override fun onActivityDestroyed(a: Activity) { if (a === act) HushPlayback.stop(act) }
         })
@@ -343,7 +344,14 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     /** True private browsing needs WebView's multi-profile support (WebView 123+). */
     private fun privateSupported() = try { WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE) } catch (e: Throwable) { false }
 
-    private fun make(t: Tab): WebView = WebView(act).also { w ->
+    /** A tab's WebView that keeps playing when Hush is minimized: Android tells pages their window went invisible
+     *  when you switch apps, and the page's video engine pauses itself. While Background play is on, a tab that is
+     *  playing keeps being told it's visible, so nothing pauses. Closing Hush still stops everything. */
+    private inner class TabView(val tab: Tab) : WebView(act) {
+        override fun onWindowVisibilityChanged(visibility: Int) {
+            super.onWindowVisibilityChanged(if (visibility != View.VISIBLE && bgPlay && inBg && (tab.audio || tab.id in panes() || tab.id == active)) View.VISIBLE else visibility) }
+    }
+    private fun make(t: Tab): WebView = TabView(t).also { w ->
         // Private tabs live in a separate, throw-away profile: own cookies, storage and cache, deleted with the last private tab.
         // This must be the first call on the WebView.
         if (t.priv && privateSupported()) try { WebViewCompat.setProfile(w, PRIVATE) } catch (e: Throwable) {}

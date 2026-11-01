@@ -43,8 +43,12 @@ window.__hushSplit = window.__hushSplit || (() => {
   addEventListener("keydown", () => { touched = Date.now(); }, true);
   document.addEventListener("pause", e => { const v = e.target;
     // Only muted halves are restarted: if another app takes the sound, the half with Hush's sound stays paused.
-    if (!on || focus || v.tagName !== "VIDEO" || v.ended || Date.now() - touched < 1500) return;
-    setTimeout(() => { if (on && !focus && v.paused && !v.ended && Date.now() - touched > 1500) { v.muted = true; v.play().catch(() => {}); } }, 120); }, true);
+    // Decide a moment later: when the sound moves to the other pane, this pane learns it lost the focus a beat
+    // AFTER the system paused it — checking right away (still "focused") skipped the restart.
+    if (!on || v.tagName !== "VIDEO" || v.ended || Date.now() - touched < 1500) return;
+    const retry = n => setTimeout(() => { if (!on || focus || !v.paused || v.ended || Date.now() - touched < 1500) return;
+      v.muted = true; v.play().then(() => {}, () => n < 3 && retry(n + 1)); }, n ? 500 : 400);
+    retry(0); }, true);
   // Tapping the other half moves the focus (and the sound) there; the tap itself still reaches the page.
   addEventListener("pointerdown", e => { if (on && !focus && e.isTrusted) { focus = true; sound(); ring(); try { location.href = "hush-split://focus"; } catch (_) {} } }, true);
   return o => { on = !!(o && o.on); focus = !!(o && o.focus); clearInterval(tick);

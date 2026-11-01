@@ -157,28 +157,38 @@ pub async fn public_feed(app: AppHandle, url: String) -> Result<String, String> 
     if !(200..300).contains(&st) { return Err(format!("feed error ({st})")); }
     String::from_utf8(body).map_err(|_| "bad reply".into())
 }
-/// Cloud assistant (Groq, with the user's own free key). Tries Tor first (Groq never sees your IP); Groq's
-/// firewall often blocks Tor (403), so then it goes direct. Returns {"via":"tor"|"direct","body":"…"}.
-/// Only ever talks to api.groq.com's chat endpoint; the key stays on this device and is sent only to Groq.
+/// Cloud assistant (Groq, with the user's own free key). path = "chat/completions" (POST body) or "models" (GET).
+/// Tries Tor first (Groq never sees your IP); Groq's firewall often blocks Tor, so on any refusal it goes direct.
+/// Returns {"via":"tor"|"direct","body":"…"}. Only ever talks to api.groq.com/openai/v1; the key goes only to Groq.
 #[tauri::command]
-pub async fn groq_chat(app: AppHandle, key: String, body: String, direct: Option<bool>) -> Result<serde_json::Value, String> {
+pub async fn groq_chat(app: AppHandle, key: String, body: Option<String>, direct: Option<bool>, path: Option<String>) -> Result<serde_json::Value, String> {
     if key.len() < 20 || key.len() > 200 || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') { return Err("That doesn’t look like a Groq key".into()); }
-    if body.len() > 400_000 { return Err("too much text".into()); }
-    const URL: &str = "https://api.groq.com/openai/v1/chat/completions";
+    let path = path.unwrap_or_else(|| "chat/completions".into());
+    if path != "chat/completions" && path != "models" { return Err("not allowed".into()); }
+    let body = body.unwrap_or_default(); if body.len() > 400_000 { return Err("too much text".into()); }
+    let url = format!("https://api.groq.com/openai/v1/{path}");
+    let method = if path == "models" { "GET" } else { "POST" };
     let check = |st: u16, txt: &str| -> Result<(), String> {
-        if st == 401 { return Err("Groq didn’t accept the key — check it in Settings".into()); }
+        if st == 401 { return Err("Groq didn’t accept the key — check it and paste it again".into()); }
         if st == 429 { return Err("You’ve hit Groq’s free limit for now — try again in a minute (or tomorrow)".into()); }
-        if !(200..300).contains(&st) { return Err(format!("Groq error {st}: {}", txt.chars().take(160).collect::<String>())); }
+        if !(200..300).contains(&st) {
+            let msg = serde_json::from_str::<serde_json::Value>(txt).ok().and_then(|j| j["error"]["message"].as_str().map(str::to_string)).unwrap_or_else(|| txt.chars().take(160).collect());
+            return Err(format!("Groq error {st}: {msg}")); }
         Ok(()) };
     if direct != Some(true) {
-        match https(&app, "POST", URL, &[("Authorization".into(), format!("Bearer {key}")), ("Content-Type".into(), "application/json".into()), ("Accept".into(), "application/json".into())], body.as_bytes(), 2 << 20).await {
-            Ok((st, out)) if st != 403 && st != 503 => { let txt = String::from_utf8_lossy(&out).to_string(); check(st, &txt)?; return Ok(serde_json::json!({ "via": "tor", "body": txt })); }
-            _ => {}   // blocked on Tor (or Tor not ready): fall through to a direct request
+        let hs = [("Authorization".to_string(), format!("Bearer {key}")), ("Content-Type".into(), "application/json".into()), ("Accept".into(), "application/json".into())];
+        if let Ok((st, out)) = https(&app, method, &url, &hs, body.as_bytes(), 2 << 20).await {
+            let txt = String::from_utf8_lossy(&out).to_string();
+            // A real answer from Groq's API (JSON) is final; anything else (firewall page, 403/404 from the edge) → go direct.
+            let api = txt.trim_start().starts_with('{') && (st == 401 || st == 429 || (200..300).contains(&st));
+            if api { check(st, &txt)?; return Ok(serde_json::json!({ "via": "tor", "body": txt })); }
         }
     }
-    let (k, b) = (key.clone(), body.clone());
+    let (k, b, u, m) = (key.clone(), body.clone(), url.clone(), method);
     let (st, txt) = tauri::async_runtime::spawn_blocking(move || {
-        match ureq::post(URL).set("Authorization", &format!("Bearer {k}")).set("Content-Type", "application/json").set("Accept", "application/json").timeout(std::time::Duration::from_secs(60)).send_string(&b) {
+        let req = if m == "GET" { ureq::get(&u) } else { ureq::post(&u) }
+            .set("Authorization", &format!("Bearer {k}")).set("Content-Type", "application/json").set("Accept", "application/json").timeout(std::time::Duration::from_secs(60));
+        match if m == "GET" { req.call() } else { req.send_string(&b) } {
             Ok(r) => { let st = r.status(); (st, r.into_string().unwrap_or_default()) }
             Err(ureq::Error::Status(st, r)) => (st, r.into_string().unwrap_or_default()),
             Err(e) => (0, e.to_string()) } }).await.map_err(|e| e.to_string())?;

@@ -19,6 +19,8 @@ import android.os.IBinder
  */
 class HushPlayback : Service() {
     override fun onBind(i: Intent?): IBinder? = null
+    /** You swiped Hush away (closed it): stop the sound and the service. Minimized = keeps playing; closed = stops. */
+    override fun onTaskRemoved(i: Intent?) { try { onPause?.invoke() } catch (e: Throwable) {}; stopSelf(); super.onTaskRemoved(i) }
     override fun onStartCommand(i: Intent?, flags: Int, id: Int): Int {
         // "Pause" on the notification: you stopped it — Hush pauses everything and won't restart it.
         if (i?.action == ACT_PAUSE) { try { onPause?.invoke() } catch (e: Throwable) {}; stopSelf(); return START_NOT_STICKY }
