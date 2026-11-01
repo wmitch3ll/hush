@@ -148,6 +148,8 @@ window.HushMsg = function (A) {
   }
   const api = { avatarHTML: (k, z) => avatarHTML(k, z), hydrate: el => hydrate(el), myProfile: () => profile(), ready: () => loadKey(), gate: (el, then) => gate(el, then), me: () => me, start, req, unreq, sign, broadcast, wrapTo, uploadEncrypted, mediaUrl, shrink,
     onEcho: f => hooks.echo.push(f), onReset: f => hooks.reset.push(f), onBackup: (get, put) => { hooks.backup.push(get); hooks.restore.push(put); }, npub, nameOf, colorOf, initials, contacts, profile, setProfile: p => LS.set('profile', p), status: () => status, okRelays,
+    chatList: () => { if (!sk) return []; const c = contacts(); return [...new Set([...Object.keys(chats()), ...Object.keys(c).filter(k => !c[k].blocked && !c[k].request), ...Object.keys(groups())])].filter(k => k && k !== 'self').map(k => ({ key: k, name: chatName(k) })); },
+    sendTo: (key, text) => { if (!sk || !key) return false; sendText(key, String(text).slice(0, 4000), null); return true; },
     lockNow: () => { unlockedAt = 0; if (view.open) { A.close && A.close(); } },
     friends: () => { const c = contacts(); return Object.keys(c).filter(k => !c[k].blocked && !c[k].request && !c[k].auto); }, openChat: pk => { if (view.el) openChat(pk); } };
 

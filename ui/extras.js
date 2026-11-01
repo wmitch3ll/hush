@@ -329,6 +329,19 @@ window.HushX = function (A) {
     function finish(c, remember, quiet) { clearTimeout(t); el.remove(); done(c === 'dismiss' ? 'background' : c, remember, quiet); }
     el.querySelectorAll('[data-c]').forEach(b => b.onclick = () => finish(b.dataset.c, el.querySelector('input').checked));
   }
+  // Privacy report card: what Hush did for you this week (counted only on this device).
+  const weekKey = () => Math.floor(Date.now() / 604800e3);
+  function bump(k, n = 1) { try { const r = JSON.parse(localStorage.getItem('hush.report') || '{}'); if (r.w !== weekKey()) { r.w = weekKey(); r.c = {}; } r.c[k] = (r.c[k] || 0) + n; localStorage.setItem('hush.report', JSON.stringify(r)); } catch (e) {} }
+  function report(blockedWeek, M) { let c = {}; try { const r = JSON.parse(localStorage.getItem('hush.report') || '{}'); if (r.w === weekKey()) c = r.c || {}; } catch (e) {}
+    let sent = 0; try { const ch = JSON.parse(localStorage.getItem('hush.msg.chats') || '{}'); const t0 = Date.now() - 7 * 86400e3; for (const l of Object.values(ch)) for (const m of l) if (m.from === 'me' && m.at > t0) sent++; } catch (e) {}
+    const f = n => n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(n);
+    const items = [[blockedWeek, 'ads & trackers blocked'], [c.tor || 0, 'pages opened through Tor'], [sent, 'messages sent encrypted'], [c.meta || 0, 'photos cleaned of location data']].filter(x => x[0] > 0);
+    if (!items.length) return 'Ads, trackers and cookie banners are blocked automatically.';
+    return `<span style="display:block;font-weight:600;margin-bottom:2px">Your week with Hush</span>` + items.map(([n, l]) => `<b>${f(n)}</b> ${l}`).join(' · '); }
+  // Tab notes: a private note pinned to a page, kept only on this device.
+  const noteKey = u => { try { const x = new URL(u); x.hash = ''; return x.origin + x.pathname.replace(/\/$/, '') + x.search; } catch (e) { return ''; } };
+  const tabNote = { get: u => { try { return JSON.parse(localStorage.getItem('hush.tabnotes') || '{}')[noteKey(u)] || ''; } catch (e) { return ''; } },
+    set: (u, t) => { try { const all = JSON.parse(localStorage.getItem('hush.tabnotes') || '{}'), k = noteKey(u); if (!k) return; if (t.trim()) all[k] = t.slice(0, 2000); else delete all[k]; localStorage.setItem('hush.tabnotes', JSON.stringify(all)); } catch (e) {} } };
   const SEC = [['', 'Standard'], ['safer', 'Safer'], ['safest', 'Safest']];
   const LEAVE = [['ask', 'Ask me'], ['mini', 'Mini player'], ['background', 'Keep playing'], ['pause', 'Stop']];
 
@@ -366,6 +379,6 @@ window.HushX = function (A) {
       c.ontouchend = e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null; if (dx < -50 && i < S.length - 1) { i++; draw(); } else if (dx > 50 && i) { i--; draw(); } }; };
     draw();
   }
-  return { settingsSearch, tour, TOR_INFO, mediaPrompt, LEAVE, SEC, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
+  return { settingsSearch, tour, TOR_INFO, mediaPrompt, LEAVE, SEC, bump, report, tabNote, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
     destructSweep, destructLabel, DESTRUCT, watchAdd, watchSweep, watchPanel, watchCount, syncLink, LS };
 };

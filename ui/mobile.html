@@ -266,7 +266,7 @@ function progress(on){const b=$("#bar");b.classList.remove("done");if(on){b.clas
 let saveT;function saveSession(){if(pref("restore")!=="on")return;clearTimeout(saveT);saveT=setTimeout(()=>
   inv("session_save",{tabs:tabs.filter(t=>!t.priv&&t.url.startsWith("https://")).map(t=>({url:t.url,ws:t.ws}))}).catch(()=>{}),800)}
 const fmt=n=>n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e4?Math.round(n/1e3)+"k":n.toLocaleString();
-async function loadStats(){try{const s=await inv("get_stats"),el=$("#stats");if(el)el.innerHTML=s.total?`<b>${fmt(s.week)}</b> ads & trackers blocked this week · <b>${fmt(s.total)}</b> all time`:"Ads, trackers and cookie banners are blocked automatically."}catch(e){}}
+async function loadStats(){try{const s=await inv("get_stats"),el=$("#stats");if(el)el.innerHTML=s.total||1?HX.report(s.week||0):"Ads, trackers and cookie banners are blocked automatically."}catch(e){}}
 
 // ---------- gestures: one helper for tap / long-press / swipes ----------
 function gesture(el,h){let x0,y0,t0,lp,moved,fired;
@@ -332,6 +332,8 @@ $("#reload").onclick=()=>{const t=T();if(t&&t.native){progress(true);inv("nav",{
 window.__hushEvent=(name,d)=>{
   if(name==="linkTab"){const u=d.url;if(!/^https?:/.test(u))return;const keep=cur,t=newTab(false,true);t.url=u;cur=keep;inv("open_tab",{input:u,space:spaceOf(t.ws)}).then(id=>{t.native=id;inv("switch_tab",{label:T().native||"none"});render()});toast("Opened in a background tab");return}
   if(name==="tabUrl"){const t=tabs.find(x=>x.native===d.id);if(!t)return;t.url=d.url;t.title=d.title||t.title;t.canBack=d.canBack;t.canFwd=d.canFwd;
+    if(d.state==="finished"&&torOn)HX.bump("tor");
+    if(d.state==="finished"&&t.id===cur){const n=HX.tabNote.get(d.url);if(n)toast("📝 "+n.slice(0,90))}
     if(d.state==="finished"){if(!t.priv&&d.url.startsWith("http"))inv("history_add",{url:d.url,title:t.title||bare(d.url)}).catch(()=>{});saveSession()}
     if(d.state==="started"&&!torOn&&/^https?:/.test(d.url)&&listHas("tor_sites",bare(d.url))){setTor(true);toast("🧅 Tor mode on — you set this site to always use Tor")}
     if(t.id===cur){progress(d.state==="started");if(d.state==="started")toolsShow(true);render()}}
@@ -534,6 +536,7 @@ function drawSite(){const el=$("#site"),t=T(),h=hostOf(t.url),off=allow.has(h),s
    ${t.priv?item("Private tab","Separate cookies & storage · nothing saved"):""}
    ${item("Always use Tor here",listHas("tor_sites",h)?"On — Tor mode turns on when you open this site":"Hide your IP from this site every time",`<button class="sw ${listHas("tor_sites",h)?"on":""}" id="st-tor"></button>`)}
    ${pref("sec_level")?item("JavaScript here",listHas("js_allow",h)?"Allowed — you trust this site":"Blocked by your security level",`<button class="sw ${listHas("js_allow",h)?"on":""}" id="st-js"></button>`):""}
+   <div class="item" style="display:block"><div style="margin-bottom:6px">Your note on this page<small>Only you see it — it’s here whenever you come back</small></div><textarea class="txt" id="st-note" rows="2" style="width:100%">${esc(HX.tabNote.get(t.url))}</textarea></div>
    ${item("Connection",torOn?"🧅 Through Tor — the site can’t see your IP":/^https:/.test(t.url)?"🔒 Encrypted (HTTPS)":"⚠ Not encrypted")}
    ${pref("fp")!=="off"?item("Fingerprint protection",fpOff(h)?"Off on this site":"On — randomized device details",`<button class="sw ${fpOff(h)?"":"on"}" id="st-fp"></button>`):""}
    <div id="st-perms"></div>
@@ -542,6 +545,7 @@ function drawSite(){const el=$("#site"),t=T(),h=hostOf(t.url),off=allow.has(h),s
    <p class="hint" style="text-align:center;margin-top:4px">Tip: hold the shield to switch it on/off instantly</p>`;
   wire(el);
   $("#st-shield").onclick=async()=>{await quickShield();drawSite()};
+  $("#st-note").oninput=e=>HX.tabNote.set(t.url,e.target.value);
   $("#st-tor").onclick=async()=>{await toggleList("tor_sites",siteKey(h));drawSite();if(listHas("tor_sites",h)&&!torOn){setTor(true);toast("🧅 Tor mode on for this site")}};
   if($("#st-js"))$("#st-js").onclick=async()=>{await toggleList("js_allow",siteKey(h));inv("nav",{action:"reload"}).catch(()=>{});drawSite()};
   if($("#st-fp"))$("#st-fp").onclick=async()=>{const site=siteKey(h),list=pref("fp_off").split(",").filter(Boolean);
@@ -559,12 +563,13 @@ function openCmd(){vibe();const el=$("#cmd");
     ["Site settings & QR",()=>{if(T()?.native){drawSite();show("site")}}],["All tabs",openSwitcher],["History",()=>{drawHistory();show("history")}],
     ["Downloads",()=>{drawDownloads();show("downloads")}],["Settings",()=>{drawSettings();show("settings")}],
     ["Reading list",()=>{drawReading();show("reading")}],["Focus mode",()=>{drawFocus();show("focus")}],["Voice search",()=>{show(null);voice()}],
-    ["Save page as PDF",()=>{show(null);native("printPage")}],["Pop-out video (picture-in-picture)",()=>{show(null);native("pip")}],["About & updates",()=>{drawAbout();show("about")}],["Close tab",()=>{show(null);closeTab(cur)}],
+    ["Save page as PDF",()=>{show(null);native("printPage")}],["Pop-out video (picture-in-picture)",()=>{show(null);native("pip")}],["About & updates",()=>{drawAbout();show("about")}],["Close tab",()=>{show(null);closeTab(cur)}],["Send this page to a friend",()=>{const t=T();if(!t||!/^https?:/.test(t.url))return toast("Open a page first");const l=(()=>{try{return HM.api.chatList()}catch(e){return[]}})();if(!l.length){openMsgs();return toast("Add a friend in Murmur first")}actions("Send to…",l.slice(0,20).map(c=>[c.name,()=>{HM.api.sendTo(c.key,t.url);toast("🔒 Sent privately through Tor")}]))}],["Panic: close private tabs, lock Murmur",()=>panic()],
     ...wsList().filter(w=>w!==curWs()).map(w=>["Workspace: "+w,()=>{show(null);switchWs(w)}])];
   el.innerHTML=head("Commands")+`<input class="txt" id="cmdq" placeholder="Type a command, tab or site" autocapitalize="off" spellcheck="false"><div class="sug" id="cmdr" style="padding:0"></div>`;
   wire(el);show("cmd");const q=$("#cmdq");setTimeout(()=>q.focus(),60);
   let items=[];const paint=async()=>{const s=q.value.trim().toLowerCase(),m=x=>!s||x.toLowerCase().includes(s);
     items=ACT.filter(a=>m(a[0])).map(a=>({title:a[0],icon:"›",run:a[1]}));
+    if(s)try{HM.api.chatList().filter(c=>m(c.name)).slice(0,5).forEach(c=>items.push({title:c.name,note:"Murmur chat",icon:"💬",run:()=>openMsgs(c.key)}))}catch(e){}
     tabs.filter(t=>t.url&&m(t.url+" "+t.title)).forEach(t=>items.push({title:t.title||bare(t.url),note:t.ws!==curWs()?t.ws:"Tab",icon:"⇥",run:()=>select(t.id)}));
     if(s){try{(await inv("suggest",{q:s})).forEach(x=>items.push({title:x.title||bare(x.url),note:x.kind==="bookmark"?"Bookmark":"History",icon:x.kind==="bookmark"?"★":"↺",run:()=>{show(null);go(x.url)}}))}catch(e){}
       items.push({title:"Search for “"+q.value.trim()+"”",icon:"⌕",run:()=>{show(null);go(q.value)}})}

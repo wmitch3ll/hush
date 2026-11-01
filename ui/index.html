@@ -421,6 +421,8 @@ async function toggleList(k,site){const l=(pref(k)||'').split(',').filter(Boolea
 T.event.listen('tab-url',({payload:p})=>{const t=tab(p.tab);if(!t)return;t.url=p.url;
   // Always-through-Tor sites: a normal tab that lands on one is reopened as a Tor tab.
   if(p.state=='started'&&!t.tor&&!t.priv&&/^https?:/.test(p.url)&&torSite(hostOf(p.url))){const id=t.id;openTab(p.url,{tor:true}).then(()=>closeTab(id,true));toast('🧅 Opened through Tor — you set this site to always use Tor');return}
+  if(p.state=='finished'&&t.tor)HX.bump('tor');
+  if(p.state=='finished'&&p.tab==cur){const n=HX.tabNote.get(p.url);if(n)toast('📝 '+n.slice(0,90))}
   if(p.state=='finished'){if(!t.priv)inv('history_add',{url:p.url,title:hostOf(p.url).replace(/^www\./,'')}).catch(()=>{});saveSession()}
   if(p.tab==cur)$('#load').classList.toggle('on',p.state=='started');draw()});
 T.event.listen('focus-blocked',({payload:p})=>{if(p.tab==cur){$('#load').classList.remove('on');toast('Focus mode: '+hostOf(p.url).replace(/^www\./,'')+' is paused — Ctrl+K → Focus mode to end')}});
@@ -487,6 +489,11 @@ T.event.listen('tor-status',({payload:p})=>{if(p.state=='error')toast(p.msg)});
 function destructMenu(id){const t=tab(id);if(!t)return;openPanel('pal');const p=$('#panel');
   p.innerHTML=`<h2>Self-destruct this tab ${closeBtn}</h2><p style="color:var(--mute);margin:-8px 0 12px">It closes itself — and its history entry is not kept — when the time is up.</p>`+HX.DESTRUCT.map(([l,m])=>`<div class=row style="cursor:pointer" data-m=${m}><div>${l}</div></div>`).join('');
   p.querySelectorAll('[data-m]').forEach(r=>r.onclick=()=>{const m=+r.dataset.m;t.destruct=m?Date.now()+m*60000:0;closePanel();toast(m?'This tab closes in '+r.textContent.trim():'Self-destruct off');railState()});wire(p)}
+// Send the page you're on to a Murmur chat.
+function sharePick(){const t=tab(cur);if(!t||!/^https?:/.test(t.url))return toast('Open a page first');let list=[];try{list=HM.api.chatList()}catch(e){}
+  if(!list.length){closePanel();openDock('murmur');return toast('Set up Murmur and add a friend first')}
+  const p=$('#panel');openPanel('pal');p.innerHTML=`<h2>Send to… ${closeBtn}</h2>${list.slice(0,30).map(c=>`<button class=row data-k="${esc(c.key)}" style="width:100%;text-align:left"><div><b>${esc(c.name)}</b></div></button>`).join('')}`;wire(p);
+  p.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{HM.api.sendTo(b.dataset.k,(t.title&&t.title!=t.url?t.title+'\n':'')+t.url);closePanel();toast('🔒 Sent privately through Tor')})}
 // Panic: every private and Tor tab closes, Murmur & Echo lock, Tor gets a new identity, and you land on a blank start page.
 async function panic(){closePanel(true);try{closeDock()}catch(e){}try{HM.api.lockNow()}catch(e){}
   const gone=tabs.filter(t=>t.priv||t.tor).map(t=>t.id);for(const id of gone)await closeTab(id,true).catch(()=>{});
@@ -584,6 +591,7 @@ function renderDownloads(){
 
 // Command palette (Ctrl+K): actions, tabs, workspaces, bookmarks, history — type to filter, Enter to run.
 const ACTIONS=()=>[
+  ['Send this page to a friend','Murmur',()=>sharePick()],['Panic: close private & Tor tabs, lock Murmur','Ctrl+Shift+X',()=>panic()],['Note on this page','',()=>tab(cur)&&openPanel('site')],
   ['New tab','Ctrl+T',()=>newTab(false)],['New private tab','Ctrl+Shift+N',()=>newTab(true)],
   ['Find in page','Ctrl+F',()=>{closePanel();tab(cur)&&findMode(true)}],['Reader view','Ctrl+E',()=>{closePanel();tab(cur)&&inv('page_action',{action:'reader'})}],
   ['Split view with last tab','Ctrl+\\',()=>{closePanel();shortcut('\\')}],['Site settings & QR code','',()=>tab(cur)&&openPanel('site')],
@@ -608,6 +616,7 @@ function renderPalette(){
 }
 async function fillPalette(q){const lq=q.toLowerCase().trim(),m=s=>!lq||s.toLowerCase().includes(lq);
   let items=ACTIONS().filter(a=>m(a[0])).map(a=>({kind:'run',title:a[0],note:a[1],icon:'›',run:a[2]}));
+  if(lq)try{HM.api.chatList().filter(c=>m(c.name)).slice(0,5).forEach(c=>items.push({kind:'run',title:c.name,note:'Murmur chat',icon:'💬',run:()=>{closePanel();openDock('murmur');setTimeout(()=>HM.api.openChat(c.key),300)}}))}catch(e){}
   tabs.filter(t=>m(t.url)).forEach(t=>items.push({kind:'tab',id:t.id,title:hostOf(t.url)||'New tab',note:(t.ws!=curWs()?t.ws+' · ':'')+'Tab',icon:'⇥'}));
   if(lq){try{(await inv('suggest',{q:lq})).forEach(x=>items.push({kind:'url',url:x.url,title:x.title||hostOf(x.url),note:x.kind=='bookmark'?'Bookmark':'History',icon:x.kind=='bookmark'?'★':'↺'}))}catch(e){}
     items.push({kind:'go',url:q,title:(/^\S+\.\S+$/.test(q)?'Go to ':'Search for ')+q,icon:'→'})}
@@ -705,12 +714,14 @@ function renderSite(){const t=tab(cur),p=$('#panel');if(!t)return closePanel();c
   ${row('Always open through Tor',torSite(h)?'On — this site always opens in a Tor tab':'Hide your IP from this site every time',`<button class="sw ${torSite(h)?'on':''}" id=st-tor></button>`)}
   ${pref('sec_level')?row('JavaScript on this site',jsSite(h)?'Allowed (you trust this site)':`Blocked by your security level (${pref('sec_level')=='safest'?'Safest':'Safer'})`,`<button class="sw ${jsSite(h)?'on':''}" id=st-js></button>`):''}
   ${t.priv?row('Private tab','Nothing from this tab is saved',''):''}
+  <h3>Your note on this page</h3><textarea class=txt id=st-note rows=2 placeholder="Only you see this — it shows again whenever you come back" style="width:100%;resize:vertical">${esc(HX.tabNote.get(t.url))}</textarea>
   ${row('Connection',t.tor?'🧅 Through Tor — the site can’t see your IP or location':/^https:/.test(t.url)?'🔒 Encrypted (HTTPS)':'⚠ Not encrypted','')}
   <h3>Page</h3>
   <div class=chips><button id=st-read>Reader view</button><button id=st-find>Find in page</button><button id=st-pick>Block an element</button>
    <button id=st-copy>Copy link</button><button id=st-split>${split?'Close split view':'Split with another tab'}</button></div>
   <h3>Open on your phone</h3><div class=qr>${(()=>{try{return hushQR.svg(t.url)}catch(e){return ''}})()}</div>
   <p style="color:var(--mute);text-align:center;font-size:12px;margin-top:8px">Scan with your phone’s camera</p>`;
+  $('#st-note').oninput=e=>HX.tabNote.set(t.url,e.target.value);
   $('#st-tor').onclick=async()=>{await toggleList('tor_sites',siteKey(h));renderSite();if(torSite(h)&&!t.tor){const id=t.id;await openTab(t.url,{tor:true});closeTab(id,true)}};
   if($('#st-js'))$('#st-js').onclick=async()=>{await toggleList('js_allow',siteKey(h));inv('nav',{action:'reload'}).catch(()=>{});renderSite()};
   $('#st-shield').onclick=async()=>{await inv('toggle_shield',{host:h});off?allow.delete(h):allow.add(h);inv('nav',{action:'reload'});renderSite();draw()};
@@ -814,7 +825,7 @@ function renderSettings(){
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),2400)}
 const fmt=n=>n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e4?Math.round(n/1e3)+'k':n.toLocaleString();
 async function loadStats(){clearTimeout(statsT);try{if(!$('#stats'))return;const s=await inv('get_stats');
-  $('#stats').innerHTML=s.total?`<b>${fmt(s.week)}</b> ads & trackers blocked this week · <b>${fmt(s.total)}</b> all time`:'Ads, trackers and cookie banners are blocked automatically.'}catch(e){}
+  $('#stats').innerHTML=HX.report(s.week||0)}catch(e){}
   statsT=setTimeout(()=>{if($('#home').style.display!='none')loadStats()},15000)}
 
 async function loadState(first){try{state=await inv('get_state');state.settings.ui=state.settings.ui||{};allow=new Set(state.allow_sites);
