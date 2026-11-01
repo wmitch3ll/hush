@@ -4,7 +4,9 @@ use crate::{resolve_app, AppState};
 use std::sync::atomic::Ordering;
 /// One set of WebView2 browser flags for every view that shares the main profile (WebView2 requires them to match).
 /// Tauri's defaults + videos may start playing without a click (autoplay).
-const WV2_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required";
+// UserAgentClientHint off: WebView2 otherwise tells every site it's an embedded "Microsoft Edge WebView2", which makes
+// Google sign-in refuse ("This browser or app may not be secure"); it also cuts a fingerprinting source.
+const WV2_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,UserAgentClientHint --autoplay-policy=no-user-gesture-required";
 use std::path::{Path, PathBuf};
 use tauri::{webview::{DownloadEvent, PageLoadEvent, WebviewBuilder}, window::WindowBuilder, AppHandle, Emitter, LogicalPosition,
             LogicalSize, Manager, WebviewUrl, Window};
@@ -668,7 +670,7 @@ fn make_tab_with(app: &AppHandle, input: String, private: bool, peek: bool, tor:
         Some(port) => builder
             .proxy_url(format!("socks5://127.0.0.1:{port}").parse().map_err(|e: url::ParseError| e.to_string())?)
             .data_directory(app.path().app_data_dir().map_err(|e| e.to_string())?.join("tor-profile"))
-            .additional_browser_args("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required --force-webrtc-ip-handling-policy=disable_non_proxied_udp --webrtc-ip-handling-policy=disable_non_proxied_udp")
+            .additional_browser_args("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,UserAgentClientHint --autoplay-policy=no-user-gesture-required --force-webrtc-ip-handling-policy=disable_non_proxied_udp --webrtc-ip-handling-policy=disable_non_proxied_udp")
             .browser_extensions_enabled(false)
             .initialization_script("(()=>{for(const k of ['RTCPeerConnection','webkitRTCPeerConnection','RTCDataChannel'])try{delete window[k];Object.defineProperty(window,k,{value:undefined})}catch(e){}})();"),
         None => { let sp = SPACE.lock().clone();

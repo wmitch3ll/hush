@@ -197,11 +197,16 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         chrome = webView
         // Background play: when you switch to another app while a tab is playing, a media playback service keeps
         // Hush's sound going (Android would otherwise stop it). Another app playing its own audio still pauses it.
+        HushPlayback.onPause = { act.runOnUiThread { tabs.values.forEach { t -> t.audio = false
+            t.wv?.evaluateJavascript("window.__hushBgGuard&&__hushBgGuard(false);document.querySelectorAll('video,audio').forEach(m=>m.pause())", null) } } }
         act.application.registerActivityLifecycleCallbacks(object : android.app.Application.ActivityLifecycleCallbacks {
             override fun onActivityStopped(a: Activity) { if (a !== act) return; inBg = true; bgCheck()
+                // Arm the keep-playing guard in every open tab; any tab that's playing starts the playback service.
+                if (bgPlay) tabs.values.forEach { t -> t.wv?.evaluateJavascript(BG_GUARD_JS + ";__hushBgGuard(true)") { r -> if (r == "true") { t.audio = true; bgCheck() } } }
                 // Something may have paused the tab views on the way out: wake the ones that are playing.
                 act.window.decorView.postDelayed({ if (inBg && bgPlay) tabs.values.filter { it.audio }.forEach { t -> t.wv?.let { w -> w.onResume(); w.resumeTimers() } } }, 400) }
-            override fun onActivityStarted(a: Activity) { if (a !== act) return; inBg = false; HushPlayback.stop(act) }
+            override fun onActivityStarted(a: Activity) { if (a !== act) return; inBg = false; HushPlayback.stop(act)
+                tabs.values.forEach { t -> t.wv?.evaluateJavascript("window.__hushBgGuard&&__hushBgGuard(false)", null) } }
             override fun onActivityCreated(a: Activity, b: Bundle?) {}
             override fun onActivityResumed(a: Activity) {}
             override fun onActivityPaused(a: Activity) {}
@@ -324,7 +329,12 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     })
 
     private fun applyPrefs(w: WebView) {
-        if (defaultUa == null) defaultUa = w.settings.userAgentString
+        // Look like the normal Chrome app, not an "embedded web view": Google (and some banks) refuse to sign in
+        // inside anything marked "; wv" or "Version/4.0" ("This browser or app may not be secure").
+        if (defaultUa == null) defaultUa = w.settings.userAgentString.replace("; wv)", ")").replace(Regex(" Version/\\d+(\\.\\d+)*"), "")
+        // …and don't send the X-Requested-With header that names the app on every request (also a privacy leak).
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST))
+            try { androidx.webkit.WebSettingsCompat.setRequestedWithHeaderOriginAllowList(w.settings, emptySet()) } catch (e: Throwable) {}
         w.settings.textZoom = textZoom
         w.settings.userAgentString = if (desktop) defaultUa!!.replace(Regex("; Android [^;)]*"), "; X11; Linux x86_64").replace(" Mobile", "") else defaultUa
         w.settings.useWideViewPort = true; w.settings.loadWithOverviewMode = desktop
@@ -394,6 +404,10 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                             if (r.url.host == "watch") emit("watchPick", JSObject().apply { put("url", t.page); put("sel", sel); put("text", r.url.getQueryParameter("text") ?: "") })
                             else emit("pick", JSObject().apply { put("host", host); put("sel", sel) }) }; true }
                     // Two-finger gestures and the quick wheel (tools.js): only a short shape / action id is passed on.
+                    // Keep-playing guard: a video that was playing got paused while Hush is in the background.
+                    // Resume it — unless another app is now playing sound (then that app wins and Hush stays paused).
+                    "hush-bg" -> { if (inBg && bgPlay) v.postDelayed({ val am = act.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+                        if (inBg && !am.isMusicActive) v.evaluateJavascript("window.__hushBgResume&&__hushBgResume()", null) }, 350); true }
                     "hush-float" -> { act.runOnUiThread { onFloatUrl(t, r.url) }; true }
                     // split.js: you tapped this half → it gets the highlight and the sound.
                     "hush-split" -> { act.runOnUiThread { if (splitIds.isNotEmpty() && t.id in panes() && splitFocus != t.id) { splitFocus = t.id; render(); applySplit() } }; true }
@@ -840,6 +854,13 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     companion object {
         private const val PRIVATE = "hush-private"
         /** Tells Hush whether this page is playing sound (for the speaker icon). */
+        /** Keep-playing guard (Hush in the background): remembers what was playing; if the site or the system pauses it,
+         *  asks Hush (hush-bg://) whether to resume. Returns true if something was playing. A pause you make with the
+         *  notification / headphone controls also asks, and resumes only when no other app is playing. */
+        private const val BG_GUARD_JS = "(()=>{if(window.__hushBgGuard)return;let on=false,was=[];" +
+            "window.__hushBgResume=()=>{if(on)was.forEach(m=>{if(m.paused&&!m.ended)m.play().catch(()=>{})})};" +
+            "document.addEventListener('pause',e=>{if(on&&was.includes(e.target)&&!e.target.ended)setTimeout(()=>{try{location.href='hush-bg://paused'}catch(_){}},60)},true);" +
+            "window.__hushBgGuard=x=>{on=!!x;was=on?[...document.querySelectorAll('video,audio')].filter(m=>!m.paused&&!m.ended):[];return was.length>0};})()"
         private const val AUDIO_JS = "(()=>{if(window.__hushAu||typeof hushAudio==='undefined')return;window.__hushAu=1;let last=null;" +
             "const tell=()=>{const on=[...document.querySelectorAll('video,audio')].some(m=>!m.paused&&!m.ended&&!m.muted&&m.volume>0);" +
             "if(on!==last){last=on;try{hushAudio.postMessage(on?'1':'0')}catch(e){}}};" +
