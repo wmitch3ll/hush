@@ -105,7 +105,7 @@ input.txt{width:100%;margin-top:6px}
 kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:4px;padding:1px 5px;color:var(--mute)}
 #toast{position:absolute;background:var(--ink);color:var(--bg);padding:7px 12px;border-radius:99px;font-size:12px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:5}
 #toast.on{opacity:1}
-</style>
+</style><link rel=stylesheet href="hush.css">
 
 <div id=tabsbar>
   <button id=ws title="Workspace">P</button>
@@ -176,7 +176,7 @@ function hexHS(hex){const n=parseInt(hex.slice(1),16),r=(n>>16&255)/255,g=(n>>8&
   let h=0;if(d){h=mx===r?((g-b)/d)%6:mx===g?(b-r)/d+2:(r-g)/d+4;h=Math.round(h*60+360)%360}return[h,d?Math.round(d/(1-Math.abs(2*l-1))*100):0]}
 var applyColor=function(){const c=pref('color'),v=/^#[0-9a-f]{6}$/i.test(c)?hexHS(c):COLORS[c],r=document.documentElement.style;
   const P=['--bg','--card','--line','--ink','--mute','--acc','--glow'];if(!v){P.forEach(p=>r.removeProperty(p));return}
-  const [h,s]=v,dark=pref('theme')=='dark'||(pref('theme')=='system'&&matchMedia('(prefers-color-scheme: dark)').matches),H=(l,k)=>`hsl(${h} ${Math.round(s*k)}% ${l}%)`;
+  const [h,s]=v,dark=/dark|black/.test(pref('theme'))||(pref('theme')=='system'&&matchMedia('(prefers-color-scheme: dark)').matches),H=(l,k)=>`hsl(${h} ${Math.round(s*k)}% ${l}%)`;
   const t=dark?{'--bg':H(8,.35),'--card':H(12,.35),'--line':H(21,.3),'--ink':H(93,.25),'--mute':H(60,.15),'--acc':H(68,1),'--glow':`hsl(${h} ${s}% 68% / .22)`}
              :{'--bg':H(95,.5),'--card':H(99,.6),'--line':H(87,.35),'--ink':H(12,.45),'--mute':H(48,.15),'--acc':H(40,1),'--glow':`hsl(${h} ${s}% 40% / .18)`};
   for(const k in t)r.setProperty(k,t[k])}
@@ -239,7 +239,7 @@ const peek=()=>{reveal(true);if(!overBar)scheduleHide()};   // briefly show the 
 // Everything the tab bar needs to draw itself (it has no state of its own).
 function railState(){if(!T.event.emitTo)return;
   const cs=getComputedStyle(document.documentElement),vars={};for(const k of ['--bg','--card','--line','--ink','--mute','--acc','--glow'])vars[k]=cs.getPropertyValue(k).trim();
-  const dark=matchMedia('(prefers-color-scheme: dark)').matches?pref('theme')!='light':pref('theme')=='dark';
+  const dark=matchMedia('(prefers-color-scheme: dark)').matches?pref('theme')!='light':/dark|black/.test(pref('theme'));
   T.event.emitTo('rail','rail-state',{tabs:(typeof inWs=='function'?inWs():tabs).map(t=>({id:t.id,url:t.url,title:t.title||'',priv:t.priv,ess:!!t.ess,tor:!!t.tor,destruct:HX.destructLabel(t),sleeping:!!t.sleeping,muted:!!t.muted})),
     cur,split,pos:pref('tabs_pos'),ws:typeof curWs=='function'?curWs():'Personal',wsList:typeof wsList=='function'?wsList():[],collapsed:pref('tabs_mode')=='auto'&&!revealed&&railOff>.5,
     pinned:pref('tabs_mode')!='auto',previews:pref('previews'),vars,dark}).catch(()=>{})}
@@ -300,7 +300,8 @@ function draw(){
     box.append(d)});
   $('#ws').textContent=curWs()[0].toUpperCase();$('#ws').title='Workspace: '+curWs()+' — click to switch';
   const t=tab(cur), live=t&&t.ws==curWs(), h=live?hostOf(t.url):'';document.body.classList.toggle('tor',!!(live&&t.tor&&!panel));
-  if(document.activeElement!==$('#bar')) $('#bar').value=panel||!live?'':t.url;
+  // Domain-only address bar (Settings › Show full address to turn off): the site's name is what matters — look-alike tricks stand out.
+  if(document.activeElement!==$('#bar')) $('#bar').value=panel||!live?'':(pref('full_url')=='on'||!/^https:/.test(t.url)?t.url:(t.tor?'🧅 ':'')+hostOf(t.url).replace(/^www\./,''));
   applyToolbar();
   const showHome=!live&&!panel;if(showHome&&$('#home').hidden!==false||showHome&&!$('#home').firstChild)renderHome();$('#home').hidden=!showHome;$('#home').style.display=showHome?'block':'none';
   $('#panel').hidden=!panel;
@@ -334,6 +335,7 @@ let saveT;function saveSession(){if(pref('restore')!='on')return;clearTimeout(sa
 
 // ---------- address bar + suggestions ----------
 let sugSel=0, sugItems=[];
+$('#bar').addEventListener('focus',()=>{const t=tab(cur);if(t&&/^https?:/.test(t.url)&&!panel&&!peeking){$('#bar').value=t.url;setTimeout(()=>$('#bar').select(),0)}});
 $('#bar').addEventListener('keydown',e=>{
   if(panel=='suggest'&&(e.key=='ArrowDown'||e.key=='ArrowUp')){e.preventDefault();sugSel=(sugSel+(e.key=='ArrowDown'?1:-1)+sugItems.length)%sugItems.length;renderSuggest(true);return}
   if(e.key=='Enter'){const it=panel=='suggest'&&sugItems[sugSel];it?runItem(it):go(e.target.value)}
@@ -755,7 +757,8 @@ function renderSettings(){
   ${row('Tab previews','Live page snapshots in the tab bar',seg('previews',[['large','Large'],['small','Small'],['off','Titles only']]))}
   ${row('Page zoom','Default size for new tabs · Ctrl+= / Ctrl+− / Ctrl+0 per tab',seg('zoom',[['90','90%'],['100','100%'],['110','110%'],['125','125%'],['150','150%']]))}
   <h3>Appearance</h3>
-  ${row('Theme','',seg('theme',[['system','System'],['light','Light'],['dark','Dark']]))}
+  ${row('Show full address','Off: the address bar shows just the site name until you click it',`<button class="sw ${pref('full_url')=='on'?'on':''}" data-sw=full_url></button>`)}
+  ${row('Theme','True black saves battery on OLED screens',seg('theme',[['system','System'],['light','Light'],['dark','Dark'],['black','True black']]))}
   ${row('Browser color','Tints the whole browser',`<div class=swatches>${Object.entries(COLORS).map(([k,v])=>`<button data-color=${k} title=${k} class="${pref('color')==k?'on':''}" style="background:${v?`hsl(${v[0]} ${v[1]}% 55%)`:'#555'}"></button>`).join('')}
     <label class=btn style="position:relative;overflow:hidden;height:26px;padding:0 10px">Custom<input type=color id=s-color value="${/^#/.test(pref('color'))?pref('color'):'#3b82f6'}" style="position:absolute;inset:0;opacity:0;cursor:pointer"></label></div>`)}
   ${row('Dark mode for websites','Darkens light sites. Change it per site from the shield.',sw('force_dark',pref('force_dark')=='true'))}

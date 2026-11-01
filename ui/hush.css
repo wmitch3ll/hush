@@ -1,0 +1,30 @@
+/* Hush design system — shared by the desktop and Android UIs, Murmur and Echo.
+   Color tokens (--bg --card --line --ink --mute --acc --glow) come from each page; this file adds the shared
+   scale (radius, spacing, type, motion), the true-black theme, focus rings, skeletons and accessibility rules. */
+:root{--r-s:8px;--r-m:12px;--r-l:18px;--r-xl:24px;--sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:24px;
+  --fs-s:12.5px;--fs-m:14.5px;--fs-l:17px;--fs-xl:22px;--ease:cubic-bezier(.2,.9,.25,1.12);--ease-out:cubic-bezier(.16,1,.3,1);--t-fast:.14s;--t:.24s;--t-slow:.38s;--tap:44px}
+/* True black (OLED): saves battery on phones, deepest contrast. */
+:root[data-theme=black]{--bg:#000;--card:#0c0c0c;--line:#1f1f1f;--ink:#f2f2f2;--mute:#8a8a8a;--acc:#f2f2f2;--glow:#ffffff14;color-scheme:dark}
+/* Motion: sheets, panels, menus and cards ease in with a soft spring. */
+.sheet,.panel,#panel,.hm-menu,.hm-view,.ec-mv,#dock,.toast,#toast{transition:transform var(--t) var(--ease-out),opacity var(--t) var(--ease-out)}
+.hm-menu,.hm-view>.hm-card{animation:hush-pop var(--t) var(--ease) both}
+@keyframes hush-pop{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:none}}
+.ec-post,.hm-row{animation:hush-in var(--t-slow) var(--ease-out) both}
+@keyframes hush-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+button,a,[role=button]{transition:background-color var(--t-fast),color var(--t-fast),transform var(--t-fast),opacity var(--t-fast)}
+button:active:not(:disabled){transform:scale(.97)}
+/* Accessibility: visible keyboard focus, comfortable tap targets, readable text when zoomed. */
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:var(--r-s)}
+.hm-ib,.ib,.tb{min-width:var(--tap);min-height:var(--tap)}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}}
+@media (prefers-contrast:more){:root{--line:var(--mute)}}
+/* Skeleton placeholders while Tor connects (instead of a spinner). */
+.sk{position:relative;overflow:hidden;background:var(--card);border-radius:var(--r-m)}
+.sk::after{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--ink) 7%,transparent),transparent);animation:sk 1.3s infinite}
+@keyframes sk{to{transform:translateX(100%)}}
+.sk-row{display:flex;gap:12px;align-items:center;padding:12px 14px}.sk-row .sk.c{width:44px;height:44px;border-radius:50%;flex:none}.sk-row .sk.l{height:12px;flex:1}.sk-row .sk.l2{height:10px;width:55%;margin-top:8px}
+/* Empty states: one illustration + one next step. */
+.empty-art{display:block;margin:6px auto 10px;width:84px;height:84px;color:var(--mute);opacity:.8}
+/* Address bar: domain-only view with a security badge. */
+.urlbadge{display:inline-flex;align-items:center;gap:4px;font:600 11px system-ui;color:var(--mute);padding:0 6px;border-radius:99px;background:var(--card);border:1px solid var(--line);white-space:nowrap}

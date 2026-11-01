@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 13+ themed icon: the Hush shield as a single-color silhouette (the system tints it). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="1024" android:viewportHeight="1024">
+  <group android:scaleX="0.62" android:scaleY="0.62" android:pivotX="512" android:pivotY="512">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M512 150l290 116v206c0 186-122 312-290 372-168-60-290-186-290-372V266z"/>
+    <path android:strokeColor="#FF000000" android:strokeWidth="58" android:strokeLineCap="round" android:fillColor="#00000000" android:pathData="M352 470q160 140 320 0"/>
+  </group>
+</vector>

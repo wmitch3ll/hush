@@ -128,7 +128,7 @@ window.HushEcho = function (A) {
       const r = M.wrapTo(to, K_POST, text, tags); savePost({ ...fromEvent({ ...r, pubkey: me() }, 'friends'), mine: true, sentTo: to, circle: ci ? ci.name : null }); }
     paint();
   }
-  function like(p) {
+  function like(p) { A.haptic && A.haptic();
     const mine = (p.likes || []).includes(me());
     if (p.aud === 'public') M.broadcast(M.sign({ kind: K_LIKE, content: mine ? '-' : '+', tags: [['e', p.id], ['p', p.pk]] }));
     else M.wrapTo([p.pk], K_LIKE, mine ? '-' : '+', [['e', p.id]]);
@@ -277,7 +277,7 @@ window.HushEcho = function (A) {
     return `<div class=ec-tabs>${[['home', 'Home'], ['explore', 'Explore'], ['search', 'Search'], ['alerts', 'Alerts'], ['me', 'Me']].map(([k, l]) => `<button data-tab=${k} class="${view.tab === k ? 'on' : ''}">${l}${k === 'alerts' && n ? `<span class=n>${n}</span>` : ''}</button>`).join('')}</div>`; }
   function drawMain() {
     let body = '';
-    if (view.tab === 'home') { const f = tune(feed()); body = homeTop() + (f.map(p => card(p)).join('') || `<div class=hm-empty><b>Your feed is quiet</b>Posts from your Murmur friends and people you follow show up here. Tap ✎ to post something — it goes to friends only unless you choose Public.</div>`); }
+    if (view.tab === 'home') { const f = tune(feed()); body = homeTop() + (f.map(p => card(p)).join('') || (M.status() !== 'on' ? '<div class=sk-row><div class="sk c"></div><div style="flex:1"><div class="sk l"></div><div class="sk l2"></div></div></div>'.repeat(3) : '') + `<div class=hm-empty><svg class=empty-art viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=1.2><circle cx=12 cy=12 r=3/><path d="M5.6 18.4a9 9 0 0 1 0-12.8M18.4 5.6a9 9 0 0 1 0 12.8M8.5 15.5a5 5 0 0 1 0-7M15.5 8.5a5 5 0 0 1 0 7"/></svg><b>Your feed is quiet</b>Posts from your Murmur friends and people you follow show up here. Tap ✎ to post something — it goes to friends only unless you choose Public.</div>`); }
     else if (view.tab === 'explore') { const pub = Object.values(posts()).filter(p => p.aud === 'public' && !expired(p) && !p.reply && !p.moment && !M.contacts()[p.pk]?.blocked).sort((a, b) => b.at - a.at).slice(0, 200);
       const tr = trending(), comms = LS.get('comms', []), packs = Object.values(LS.get('packs', {}));
       const sel = view.comm, list = sel ? Object.values(posts()).filter(p => p.comm === sel && !expired(p) && !p.reply).sort((a, b) => b.at - a.at) : pub;
@@ -465,7 +465,7 @@ window.HushEcho = function (A) {
     const m = view.el.querySelector('#ec-msg'); if (m) m.onclick = () => A.openMurmur && A.openMurmur(pk);
   }
   async function loadImg(img) { try { const meta = JSON.parse(img.dataset.img); const u = await M.mediaUrl(meta); if (u) img.src = u; else img.alt = 'Photo unavailable'; } catch {} }
-  function more(x, y, p) {
+  function more(x, y, p) { A.haptic && A.haptic();
     document.querySelector('.hm-menu')?.remove(); const m = document.createElement('div'); m.className = 'hm-menu';
     const sv = saved().includes(p.id), pinned = prof()?.pin === p.id;
     m.innerHTML = `<button class=i data-a=save>${sv ? 'Unsave' : '🔖 Save'}</button>${p.aud === 'public' || isFriend(p.pk) || p.pk === me() ? '<button class=i data-a=quote>❝ Quote</button>' : ''}${p.pk === me() && !p.moment && !p.reply ? `<button class=i data-a=pin>${pinned ? 'Unpin from profile' : '📌 Pin to profile'}</button>` : ''}${p.pk === me() ? '<button class=i data-a=del>Delete post</button>' : `<button class=i data-a=msg>Message ${esc(nameOf(p.pk))}</button><button class=i data-a=block>Block ${esc(nameOf(p.pk))}</button>`}<button class=i data-a=copy>Copy text</button>`;

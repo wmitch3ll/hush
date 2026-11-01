@@ -65,6 +65,10 @@ if "HushWidget" not in s:
     </application>""",1)
 open(p,'w').write(s); print("manifest: browser filters, PiP, widget, tile ok")
 PY
+# Android 13+ themed (monochrome) app icon: add a <monochrome> layer to the adaptive icon if it's missing.
+for f in "$A"/src/main/res/mipmap-anydpi-v26/ic_launcher.xml "$A"/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml; do
+  [ -f "$f" ] && ! grep -q monochrome "$f" && sed -i 's#</adaptive-icon>#    <monochrome android:drawable="@drawable/ic_launcher_monochrome"/>\n</adaptive-icon>#' "$f" && echo "themed icon: $f"
+done
 # Signing: when HUSH_KEYSTORE is set (CI), debug builds are signed with Hush's permanent key so updates install in place.
 grep -q 'create("hush")' "$A/build.gradle.kts" || cat >> "$A/build.gradle.kts" <<'SIGN'
 

@@ -104,7 +104,7 @@ textarea,input.txt{width:100%}
 #toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 84px);transform:translate(-50%,20px);opacity:0;background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:999px;font-size:13px;transition:.25s;z-index:30;pointer-events:none;max-width:90%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
 #toast.on{opacity:1;transform:translate(-50%,0)}
-</style></head><body>
+</style><link rel=stylesheet href="hush.css"></head><body>
 <div id="app">
   <div id="top">
     <div id="pill">
@@ -195,7 +195,7 @@ function hexHS(hex){const n=parseInt(hex.slice(1),16),r=(n>>16&255)/255,g=(n>>8&
   let h=0;if(d){h=mx===r?((g-b)/d)%6:mx===g?(b-r)/d+2:(r-g)/d+4;h=Math.round(h*60+360)%360}return[h,d?Math.round(d/(1-Math.abs(2*l-1))*100):0]}
 function applyColor(){const c=pref("color"),v=/^#[0-9a-f]{6}$/i.test(c)?hexHS(c):COLORS[c],r=document.documentElement.style;
   const P=["--bg","--card","--line","--ink","--mute","--acc","--glow"];if(!v){P.forEach(p=>r.removeProperty(p));return}
-  const [h,s]=v,dark=pref("theme")==="dark"||(pref("theme")==="system"&&matchMedia("(prefers-color-scheme: dark)").matches),H=(l,k)=>`hsl(${h} ${Math.round(s*k)}% ${l}%)`;
+  const [h,s]=v,dark=/dark|black/.test(pref("theme"))||(pref("theme")==="system"&&matchMedia("(prefers-color-scheme: dark)").matches),H=(l,k)=>`hsl(${h} ${Math.round(s*k)}% ${l}%)`;
   const t=dark?{"--bg":H(8,.35),"--card":H(12,.35),"--line":H(21,.3),"--ink":H(93,.25),"--mute":H(60,.15),"--acc":H(68,1),"--glow":`hsl(${h} ${s}% 68% / .22)`}
              :{"--bg":H(95,.5),"--card":H(99,.6),"--line":H(87,.35),"--ink":H(12,.45),"--mute":H(48,.15),"--acc":H(40,1),"--glow":`hsl(${h} ${s}% 40% / .18)`};
   for(const k in t)r.setProperty(k,t[k])}
@@ -389,7 +389,7 @@ function qrSheet(u){const el=$("#site");el.innerHTML=head("Scan to open")+`<div 
 let listenSt="",lRate=1,torOn=false,floating=null;
 function torInfo(){$("#xs").innerHTML=head("What is Tor?")+'<div style="padding:0 6px 24px">'+HX.TOR_INFO+'</div>';wire($("#xs"));show("xs")}
 // Hush Messenger (full-screen sheet). Stays connected through Tor in the background once set up.
-const HM=HushMsg({inv,secret:{get:n=>native('secretGet',{name:n}).then(r=>r&&typeof r.value==='string'?r.value:null),set:(n,v)=>native('secretSet',{name:n,value:v}),del:n=>native('secretDel',{name:n})},biometric:()=>native('biometric'),invRaw:(c,d,h)=>window.__TAURI__.core.invoke(c,d,{headers:h}),listen:(e,f)=>window.__TAURI__.event.listen(e,f),toast,mobile:true,open:u=>{show(null);newTab(false,true);go(u)},
+const HM=HushMsg({haptic:vibe,inv,secret:{get:n=>native('secretGet',{name:n}).then(r=>r&&typeof r.value==='string'?r.value:null),set:(n,v)=>native('secretSet',{name:n,value:v}),del:n=>native('secretDel',{name:n})},biometric:()=>native('biometric'),invRaw:(c,d,h)=>window.__TAURI__.core.invoke(c,d,{headers:h}),listen:(e,f)=>window.__TAURI__.event.listen(e,f),toast,mobile:true,open:u=>{show(null);newTab(false,true);go(u)},
   page:()=>{const t=T();return t&&t.native&&!t.priv&&/^https?:/.test(t.url)?{url:t.url}:null},
   badge:n=>{for(const b of [$("#menu-btn"),$("#tb-menu")]){b.classList.toggle("msgdot",n>0);b.dataset.n=n>99?"99+":n}},qr:s=>{try{return hushQR.svg(s)}catch(e){return ""}},close:()=>{HM.close();show(null)},
   onIncoming:(key,txt,color)=>{if(sheet==="msgs")return;bubbleKey=key;native("bubble",{show:true,text:txt,color}).catch(()=>{})},
@@ -401,7 +401,7 @@ function noteDraw(){let n=0;try{const t=T();if(t&&t.native&&!t.priv&&/^https?:/.
 $("#mnote").onclick=()=>{show("echos");EC.openPage($("#echos"))};
 var bubbleKey=null;
 function openMsgs(chat){native("bubble",{show:false}).catch(()=>{});show("msgs");HM.open($("#msgs"),typeof chat==="string"?chat:null)}
-const EC=HushEcho({M:HM.api,toast,mobile:true,page:()=>{const t=T();return t&&t.native&&!t.priv&&/^https?:/.test(t.url)?{url:t.url}:null},open:u=>{show(null);newTab(false,true);go(u)},close:()=>{EC.close();show(null)},openMurmur:pk=>{EC.close();openMsgs(pk||null)},badge:n=>{}});
+const EC=HushEcho({haptic:vibe,M:HM.api,toast,mobile:true,page:()=>{const t=T();return t&&t.native&&!t.priv&&/^https?:/.test(t.url)?{url:t.url}:null},open:u=>{show(null);newTab(false,true);go(u)},close:()=>{EC.close();show(null)},openMurmur:pk=>{EC.close();openMsgs(pk||null)},badge:n=>{}});
 function openEcho(){show("echos");EC.open($("#echos"))}
 setTimeout(()=>{EC.boot();setInterval(noteDraw,4000)},3000);
 setTimeout(()=>HM.boot(),2000);
@@ -594,7 +594,7 @@ function drawDownloads(){const el=$("#downloads");
 function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<button class="sw ${on?"on":""}" data-sw="${k}"></button>`;
   el.innerHTML=head("Settings")+`<input class="txt" id="s-q" placeholder="Search settings" style="margin:0 0 6px"><h3>Layout</h3>
    ${item("Address bar","Swipe it ← → to switch tabs",seg("bar_pos",[["top","Top"],["bottom","Bottom"]]))}
-   ${item("Theme","",seg("theme",[["system","Auto"],["light","Light"],["dark","Dark"]]))}
+   ${item("Theme","True black saves battery",seg("theme",[["system","Auto"],["light","Light"],["dark","Dark"],["black","Black"]]))}
    <div class="item" style="display:block"><div style="margin-bottom:10px">Browser color</div><div class="swatches">${Object.entries(COLORS).map(([k,v])=>
      `<button data-color="${k}" class="${pref("color")===k?"on":""}" aria-label="${k}" style="background:${v?`hsl(${v[0]} ${v[1]}% 55%)`:"#555"}"></button>`).join("")}
      <label class="btn sm" style="position:relative;overflow:hidden">Custom<input type="color" id="s-color" value="${/^#/.test(pref("color"))?pref("color"):"#3b82f6"}" style="position:absolute;inset:0;opacity:0"></label></div></div>
