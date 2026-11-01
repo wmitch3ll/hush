@@ -591,7 +591,11 @@ function renderDownloads(){
 
 // Command palette (Ctrl+K): actions, tabs, workspaces, bookmarks, history — type to filter, Enter to run.
 document.addEventListener('click',e=>{if(e.target.id=='s-arc')ACTIONS()[0][2]()});
+// Sleep timer: pause whatever is playing in this tab after a while.
+let sleepT=null;function sleepTimer(){const t=tab(cur);if(!t)return toast('Open a video first');const m=prompt('Pause the video in how many minutes? (0 = cancel)',sleepT?'0':'30');if(m==null)return;clearTimeout(sleepT);sleepT=null;
+  const n=+m;if(!(n>0))return toast('Sleep timer off');const id=t.id;sleepT=setTimeout(()=>{inv('page_action',{action:'media-pause',tab:id}).catch(()=>{});sleepT=null;toast('😴 Sleep timer: paused')},n*60000);toast('😴 Pausing in '+n+' min')}
 const ACTIONS=()=>[
+  ['Sleep timer for this video','',()=>{closePanel();sleepTimer()}],
   ['Import from Arc','Pinned tabs & folders → bookmarks',async()=>{closePanel();try{const l=await inv('arc_import');let n=0;for(const b of l){try{await inv('bookmark_add',{title:b.title||b.url,url:b.url});n++}catch(e){}}await loadState();toast('Imported '+n+' tabs from Arc as bookmarks')}catch(e){toast(String(e))}}],
   ['Send this page to a friend','Murmur',()=>sharePick()],['Panic: close private & Tor tabs, lock Murmur','Ctrl+Shift+X',()=>panic()],['Note on this page','',()=>tab(cur)&&openPanel('site')],
   ['New tab','Ctrl+T',()=>newTab(false)],['New private tab','Ctrl+Shift+N',()=>newTab(true)],

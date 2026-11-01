@@ -149,6 +149,7 @@ window.HushMsg = function (A) {
   const api = { avatarHTML: (k, z) => avatarHTML(k, z), hydrate: el => hydrate(el), myProfile: () => profile(), ready: () => loadKey(), gate: (el, then) => gate(el, then), me: () => me, start, req, unreq, sign, broadcast, wrapTo, uploadEncrypted, mediaUrl, shrink,
     onEcho: f => hooks.echo.push(f), onReset: f => hooks.reset.push(f), onBackup: (get, put) => { hooks.backup.push(get); hooks.restore.push(put); }, npub, nameOf, colorOf, initials, contacts, profile, setProfile: p => LS.set('profile', p), status: () => status, okRelays,
     chatList: () => { if (!sk) return []; const c = contacts(); return [...new Set([...Object.keys(chats()), ...Object.keys(c).filter(k => !c[k].blocked && !c[k].request), ...Object.keys(groups())])].filter(k => k && k !== 'self').map(k => ({ key: k, name: chatName(k) })); },
+    editPhoto: f => editPhoto(f),
     sendTo: (key, text) => { if (!sk || !key) return false; sendText(key, String(text).slice(0, 4000), null); return true; },
     lockNow: () => { unlockedAt = 0; if (view.open) { A.close && A.close(); } },
     friends: () => { const c = contacts(); return Object.keys(c).filter(k => !c[k].blocked && !c[k].request && !c[k].auto); }, openChat: pk => { if (view.el) openChat(pk); } };
@@ -194,6 +195,9 @@ window.HushMsg = function (A) {
       const who = mine ? 'me' : r.pubkey, ed = tag('hush-edit')[1], un = tag('hush-unsend')[1], pin = tag('hush-pin'), ttlSet = tag('hush-ttlset');
       if (ed) { const m = list.find(x => x.id === ed && x.from === who); if (m) { m.text = String(r.content).slice(0, 20000); m.edited = true; all[key] = list; LS.set('chats', all); if (view.open) repaint(); } return; }
       if (un) { const i = list.findIndex(x => x.id === un && x.from === who); if (i >= 0) { list[i] = { ...list[i], text: '', file: null, poll: null, unsent: true }; all[key] = list; LS.set('chats', all); if (view.open) repaint(); } return; }
+      const loc = tag('hush-loc'); if (loc.length) { const [, la, lo, acc, until] = loc; const lat = +la, lon = +lo; if (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return;
+        const id = 'loc-' + (mine ? 'me' : r.pubkey); let m = list.find(x => x.id === id); if (!m) { m = { id, from: who, at: r.created_at * 1000, status: 'sent', text: '' }; list.push(m); }
+        m.loc = { lat, lon, acc: Math.min(5000, +acc || 0), until: +until || 0, at: r.created_at * 1000 }; m.at = r.created_at * 1000; all[key] = list; LS.set('chats', all); if (view.open) repaint(); return; }
       const lab = tag('hush-label'); if (lab.length && isGroup(key)) { const g = groups(); if (/^[0-9a-f]{64}$/.test(lab[1] || '')) { g[key] = { ...(g[key] || {}), labels: { ...(g[key]?.labels || {}), [lab[1]]: String(lab[2] || '').slice(0, 24) } }; LS.set('groups', g); if (view.open) repaint(); } return; }
       const prot = tag('hush-protect'); if (prot.length) { const cs = chatSet(key); cs.protect = prot[1] === '1'; saveChatSet(key, cs); list.push({ id: r.id, from: who, sys: true, text: (mine ? 'You' : first(r.pubkey)) + (cs.protect ? ' turned on protected chat — no saving, copying or forwarding' : ' turned off protected chat'), at: r.created_at * 1000 }); all[key] = list; LS.set('chats', all); if (view.open) repaint(); return; }
       if (pin.length) { const cs = chatSet(key); cs.pin = pin[1] || null; saveChatSet(key, cs); if (view.open) repaint(); return; }
@@ -340,6 +344,21 @@ window.HushMsg = function (A) {
         apply(o); A.toast('🎬 ' + first(pk) + ' ' + (o.a === 'skip' ? 'skipped ' + (o.v > 0 ? '+' : '') + o.v + ' s' : label[o.a])); },
       active: () => !!s };
   })();
+  // ---------------------------------------------------------------- Live location (opt-in, per chat, for a set time)
+  // Updates go only to that chat, encrypted like messages. It stops by itself; "Ghost mode" in your Hush ID turns all of it off.
+  const liveLoc = (() => { const watch = {};
+    function send(key, p, until) { publish(key, 14, '', [['hush-loc', p.coords.latitude.toFixed(5), p.coords.longitude.toFixed(5), String(Math.round(p.coords.accuracy || 0)), String(until)]], { noSelf: false }); }
+    function stop(key, quiet) { const w = watch[key]; if (!w) return; navigator.geolocation.clearWatch(w.id); clearTimeout(w.t); delete watch[key];
+      publish(key, 14, '', [['hush-loc', '0', '0', '0', '0']]); if (!quiet) A.toast('📍 Stopped sharing your location'); if (view.open) repaint(); }
+    function start(key, mins) { if (prefs().ghost) return A.toast('👻 Ghost mode is on — turn it off in Your Hush ID to share location');
+      if (!navigator.geolocation) return A.toast('Location isn’t available on this device');
+      const until = now() + mins * 60; let last = null;
+      const id = navigator.geolocation.watchPosition(p => { const t = Date.now(); if (last && t - last.t < 60000 && Math.hypot(p.coords.latitude - last.la, p.coords.longitude - last.lo) < 0.0003) return; last = { t, la: p.coords.latitude, lo: p.coords.longitude }; send(key, p, until); },
+        e => { A.toast('Couldn’t get your location: ' + (e.message || 'permission denied')); stop(key, true); }, { enableHighAccuracy: true, maximumAge: 30000, timeout: 30000 });
+      watch[key] = { id, t: setTimeout(() => stop(key), mins * 60000) }; A.toast('📍 Sharing your live location with ' + chatName(key) + ' for ' + (mins < 60 ? mins + ' min' : mins / 60 + ' h')); if (view.open) repaint(); }
+    return { active: k => !!watch[k], stop, pick(key) { const v = overlay(`<h3>📍 Share live location</h3><p>Only ${esc(chatName(key))} sees it, encrypted and through Tor. It stops by itself — or tap stop any time.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${[[15, '15 minutes'], [60, '1 hour'], [480, '8 hours']].map(([m, l]) => `<button class=hm-btn data-m=${m}>${l}</button>`).join('')}<button class="hm-btn ghost" data-x>Cancel</button></div>`);
+      v.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { v.remove(); start(key, +b.dataset.m); }); } }; })();
   function sendText(key, text, reply, opt2 = {}) {
     text = text.trim(); if (!text) return;
     const { rumor, wrapId } = publish(key, 14, text, [...(reply ? [['e', reply, '', 'reply']] : []), ...(opt2.poll ? [['hush-poll', JSON.stringify(opt2.poll)]] : []), ...(opt2.tog ? [['hush-together', opt2.tog]] : [])]);
@@ -603,7 +622,7 @@ window.HushMsg = function (A) {
   const avatar = avatarHTML;
   function hydrate(el) { (el || document).querySelectorAll('img[data-av]:not([data-ok])').forEach(async im => { im.dataset.ok = 1;
     try { const u = await mediaUrl(JSON.parse(im.dataset.av)); if (u) { im.src = u; im.onload = () => im.style.opacity = 1; } } catch {} }); }
-  const preview = m => m.file ? (m.file.kind === 'voice' ? '🎤 Voice message' : m.file.kind === 'vmsg' ? '📹 Video message' : m.file.mime.startsWith('image/') ? '📷 Photo' : m.file.mime.startsWith('video/') ? '🎬 Video' : '📎 ' + m.file.name) : m.text;
+  const preview = m => m.loc ? '📍 Live location' : m.file ? (m.file.kind === 'voice' ? '🎤 Voice message' : m.file.kind === 'vmsg' ? '📹 Video message' : m.file.mime.startsWith('image/') ? '📷 Photo' : m.file.mime.startsWith('video/') ? '🎬 Video' : '📎 ' + m.file.name) : m.text;
   function paintStatus() { const e = view.el && view.el.querySelector('.hm-st'); if (!e) return;
     if (view.screen === 'chat' && typingNames().length) return paintTyping();
     const s = status.startsWith('error') ? 'error' : status; e.className = 'hm-st ' + s;
@@ -686,6 +705,8 @@ window.HushMsg = function (A) {
     else if (m.poll) { const v = m.votes || {}, tot = Object.keys(v).length, mineV = v.me;
       body = `<b class=hm-pq>📊 ${esc(m.text)}</b>${m.poll.map((o, i) => { const n = Object.values(v).filter(x => x === i).length, pc = tot ? Math.round(100 * n / tot) : 0;
         return `<button class="hm-po ${mineV === i ? 'on' : ''}" data-vote="${i}"><i style="width:${pc}%"></i><span>${esc(o)}</span><em>${n || ''}</em></button>`; }).join('')}<small style="opacity:.75">${tot} vote${tot === 1 ? '' : 's'} · tap to vote</small>`; cls = 'pollb'; }
+    else if (m.loc) { const live = m.loc.until * 1000 > Date.now() && m.loc.lat; const ago2 = Math.round((Date.now() - m.loc.at) / 60000);
+      body = `<div class=hm-file><i>📍</i><div><b>${live ? 'Live location' : 'Location sharing ended'}</b><small>${live ? (ago2 < 1 ? 'updated just now' : 'updated ' + ago2 + ' min ago') + ' · ±' + Math.round(m.loc.acc) + ' m' : 'Last seen ' + short(m.loc.at)}</small></div></div>${live || m.from !== 'me' ? `<a href=# class=hm-link data-u="https://www.openstreetmap.org/?mlat=${m.loc.lat.toFixed(5)}&mlon=${m.loc.lon.toFixed(5)}#map=16/${m.loc.lat.toFixed(5)}/${m.loc.lon.toFixed(5)}">🗺 Open map</a>` : ''}`; }
     else if (m.tog) { let h = m.tog; try { h = new URL(m.tog).hostname.replace(/^www\./, ''); } catch {}
       body = `<div class=hm-file><i>🎬</i><div><b>Watch together</b><small>${esc(h)}</small></div></div><button class=hm-btn data-tog="${m.id}" style="margin-top:6px;width:100%">${m.from === 'me' ? 'Open & start' : 'Join'}</button>`; }
     else { const url = (m.text.match(/https?:\/\/\S+/) || [])[0];
@@ -741,8 +762,11 @@ window.HushMsg = function (A) {
     ta.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !A.mobile) { e.preventDefault(); go(); } };
     view.el.querySelector('#hm-go').onclick = go; if (!A.mobile) setTimeout(() => ta.focus(), 30);
     const fi = view.el.querySelector('#hm-file'); view.el.querySelector('#hm-att').onclick = () => fi.click();
-    fi.onchange = () => { [...fi.files].slice(0, 10).forEach(f => sendFile(key, f, view.once ? { once: true } : {})); view.once = false; fi.value = ''; };
-    view.el.querySelector('#hm-plus').onclick = e => menu(e.clientX, e.clientY - 120, `<button class=i data-a=poll>📊 Poll</button><button class=i data-a=once>👁 View-once photo</button>${key !== 'self' && A.media && A.page && A.page() ? '<button class=i data-a=tog>🎬 Watch this page together</button>' : ''}<button class=i data-a=self>✎ Notes to self</button>`, (m, done) => m.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { done();
+    fi.onchange = async () => { const fs = [...fi.files].slice(0, 10), once = view.once; view.once = false; fi.value = '';
+      if (fs.length === 1 && /^image\/(jpeg|png|webp)$/.test(fs[0].type)) { const ed = await editPhoto(fs[0]); if (ed) sendFile(key, ed, once ? { once: true } : {}); return; }
+      fs.forEach(f => sendFile(key, f, once ? { once: true } : {})); };
+    view.el.querySelector('#hm-plus').onclick = e => menu(e.clientX, e.clientY - 120, `<button class=i data-a=poll>📊 Poll</button><button class=i data-a=once>👁 View-once photo</button>${key !== 'self' && A.media && A.page && A.page() ? '<button class=i data-a=tog>🎬 Watch this page together</button>' : ''}${key !== 'self' ? `<button class=i data-a=loc>📍 ${liveLoc.active(key) ? 'Stop sharing location' : 'Share live location'}</button>` : ''}<button class=i data-a=self>✎ Notes to self</button>`, (m, done) => m.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { done();
+      if (b.dataset.a === 'loc') return liveLoc.active(key) ? liveLoc.stop(key) : liveLoc.pick(key);
       if (b.dataset.a === 'tog') { const p = A.page(); if (p) { sendText(key, '🎬 Watch together: ' + p.url, null, { tog: p.url }); together.join(key, p.url, true); } return; }
       if (b.dataset.a === 'poll') pollForm(key); else if (b.dataset.a === 'once') { view.once = true; fi.accept = 'image/*'; fi.multiple = false; fi.click(); } else openChat('self'); }));
     const pb = view.el.querySelector('[data-jump]'); if (pb) pb.onclick = () => { const t = view.el.querySelector(`[data-m="${pb.dataset.jump}"]`); if (t) { t.scrollIntoView({ block: 'center', behavior: 'smooth' }); t.classList.add('hm-flash'); setTimeout(() => t.classList.remove('hm-flash'), 1200); } };
@@ -1049,6 +1073,33 @@ window.HushMsg = function (A) {
     const items = []; for (const m of list) for (const u of ((m.text || '').match(/https?:\/\/[^\s<]+[^\s<.,;:!?)"'\]]/g) || [])) items.push({ u, from: m.from, at: m.at });
     const v = overlay(`<h3>📚 Reading list</h3><p>Links shared in ${esc(chatName(key))}.</p>${items.reverse().slice(0, 100).map(x => { let h = x.u; try { h = new URL(x.u).hostname.replace(/^www\./, ''); } catch {} return `<button class=hm-row data-rl="${esc(x.u)}" style="width:100%;${done[x.u] ? 'opacity:.55' : ''}"><div class=t><b>${done[x.u] ? '✓ ' : ''}${esc(h)}</b><span>${esc(x.u.slice(0, 80))}</span></div><em>${esc(x.from === 'me' ? 'You' : first(x.from))}<br>${short(x.at)}</em></button>`; }).join('') || '<p>No links shared yet.</p>'}`);
     v.querySelectorAll('[data-rl]').forEach(b => b.onclick = () => { const d = LS.get('readDone', {}); d[b.dataset.rl] = Date.now(); LS.set('readDone', d); v.remove(); A.open(b.dataset.rl); }); }
+  // Photo editor (before sending a photo or posting to Echo): crop square, rotate, add text, blur faces/details with a finger.
+  function editPhoto(file) { return new Promise(res => { const img = new Image(), url = URL.createObjectURL(file); img.onerror = () => res(file); img.onload = () => {
+    const MAX = 1600, k = Math.min(1, MAX / Math.max(img.width, img.height)); let W = Math.round(img.width * k), H = Math.round(img.height * k);
+    let base = document.createElement('canvas'); base.width = W; base.height = H; base.getContext('2d').drawImage(img, 0, 0, W, H); URL.revokeObjectURL(url);
+    let texts = [], tool = 'blur';
+    const v = document.createElement('div'); v.className = 'hm-view'; v.style.flexDirection = 'column';
+    v.innerHTML = `<canvas style="max-width:94vw;max-height:70vh;touch-action:none;border-radius:8px;background:#000"></canvas><div class=bar style="flex-wrap:wrap;justify-content:center">
+      <button data-t=blur style="background:#fff3">🫥 Blur</button><button data-t=text>Aa Text</button><button data-t=crop>⬚ Square</button><button data-t=rot>⟳ Rotate</button><button data-t=undo>↶ Undo</button><button data-x>Cancel</button><button data-t=done style="background:var(--acc);color:var(--bg)">Use photo</button></div>
+      <p style="color:#fff;font-size:12.5px;margin:6px">Blur: drag over faces or details to hide them before anyone sees the photo.</p>`;
+    document.body.append(v); const cv = v.querySelector('canvas'), g = cv.getContext('2d'); const hist = [];
+    const draw = () => { cv.width = base.width; cv.height = base.height; g.drawImage(base, 0, 0); for (const t of texts) { g.font = `700 ${t.s}px system-ui`; g.textAlign = 'center'; g.lineWidth = t.s / 7; g.strokeStyle = '#000'; g.fillStyle = '#fff'; g.strokeText(t.v, t.x, t.y); g.fillText(t.v, t.x, t.y); } };
+    const snap = () => { const c = document.createElement('canvas'); c.width = base.width; c.height = base.height; c.getContext('2d').drawImage(base, 0, 0); hist.push([c, texts.slice()]); if (hist.length > 15) hist.shift(); };
+    const pos = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; };
+    const pix = (x, y, rad) => { const b = base.getContext('2d'), sz = Math.max(8, rad / 3), x0 = Math.max(0, x - rad), y0 = Math.max(0, y - rad);
+      for (let yy = y0; yy < Math.min(base.height, y + rad); yy += sz) for (let xx = x0; xx < Math.min(base.width, x + rad); xx += sz) { const d = b.getImageData(xx, yy, 1, 1).data; b.fillStyle = `rgb(${d[0]},${d[1]},${d[2]})`; b.fillRect(xx, yy, sz, sz); } };
+    let down = false; cv.onpointerdown = e => { const [x, y] = pos(e);
+      if (tool === 'text') { const t = prompt('Text on the photo'); if (t) { snap(); texts.push({ v: t.slice(0, 60), x, y, s: Math.round(base.width / 14) }); draw(); } return; }
+      down = true; snap(); cv.setPointerCapture(e.pointerId); pix(x, y, base.width / 22); draw(); };
+    cv.onpointermove = e => { if (!down) return; const [x, y] = pos(e); pix(x, y, base.width / 22); draw(); }; cv.onpointerup = () => { down = false; };
+    v.onclick = e => { const t = e.target.dataset?.t;
+      if (e.target.dataset?.x !== undefined) { v.remove(); return res(null); }
+      if (t === 'blur' || t === 'text') { tool = t; v.querySelectorAll('[data-t=blur],[data-t=text]').forEach(b => b.style.background = b.dataset.t === t ? '#fff3' : ''); }
+      if (t === 'undo' && hist.length) { const [c, tx] = hist.pop(); base = c; texts = tx; draw(); }
+      if (t === 'rot') { snap(); const c = document.createElement('canvas'); c.width = base.height; c.height = base.width; const cg = c.getContext('2d'); cg.translate(c.width, 0); cg.rotate(Math.PI / 2); cg.drawImage(base, 0, 0); base = c; texts = []; draw(); }
+      if (t === 'crop') { snap(); const m = Math.min(base.width, base.height), c = document.createElement('canvas'); c.width = c.height = m; c.getContext('2d').drawImage(base, (base.width - m) / 2, (base.height - m) / 2, m, m, 0, 0, m, m); base = c; texts = []; draw(); }
+      if (t === 'done') { draw(); cv.toBlob(b => { v.remove(); res(b ? new File([b], (file.name || 'photo').replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }) : file); }, 'image/jpeg', 0.85); } };
+    draw(); }; img.src = url; }); }
   function overlay(html) { const v = document.createElement('div'); v.className = 'hm-view'; v.innerHTML = `<div class=hm-card style="width:min(420px,92vw);color:var(--ink);max-height:90vh;overflow:auto">${html}</div>`;
     document.body.append(v); v.onclick = e => { if (e.target === v || e.target.closest('[data-x]')) v.remove(); }; return v; }
   async function linkShow() {
@@ -1123,6 +1174,7 @@ window.HushMsg = function (A) {
       <div class=hm-card><h3>Chat settings</h3>
         <div class=hm-opt><div>Read receipts<small>Show ✓✓ / “Seen” — if off, you won’t see theirs either</small></div><button class="hm-sw ${p.receipts ? 'on' : ''}" data-pref=receipts aria-label="Read receipts"></button></div>
         <div class=hm-opt><div>Typing indicator<small>Let people see when you’re typing</small></div><button class="hm-sw ${p.typing ? 'on' : ''}" data-pref=typing aria-label="Typing indicator"></button></div>
+        <div class=hm-opt><div>👻 Ghost mode<small>Never share your location, even by accident</small></div><button class="hm-sw ${p.ghost ? 'on' : ''}" data-pref=ghost aria-label="Ghost mode"></button></div>
         <div class=hm-opt><div>Privacy curtain<small>Blur chats when you switch away${A.mobile ? '; block screenshots and the recent-apps preview while Murmur or Echo is open' : ''}</small></div><button class="hm-sw ${p.curtain !== false ? 'on' : ''}" data-pref=curtain aria-label="Privacy curtain"></button></div></div>
       <div class=hm-card><h3>Lock Murmur & Echo</h3><p>${lockCfg ? '🔒 On — ' + (A.biometric ? 'fingerprint/face or ' : '') + 'your PIN is needed after 5 minutes away.' : 'Ask for a PIN' + (A.biometric ? ' or your fingerprint/face' : '') + ' before anyone can open your messages on this device.'}</p>
         <button class=hm-btn id=hm-lock>${lockCfg ? 'Turn off lock' : 'Set a PIN'}</button>${lockCfg ? ' <button class="hm-btn ghost" id=hm-lnow>Lock now</button>' : ''}</div>

@@ -417,7 +417,7 @@ window.HushEcho = function (A) {
       ${mom ? '' : `<div><div style="font:600 12px system-ui;color:var(--mute);margin-bottom:6px">DISAPPEARS</div><div class=ec-seg>${[[0, 'Never'], [86400, '24 hours'], [7 * 86400, '7 days'], [30 * 86400, '30 days']].map(([v, l]) => `<button data-exp=${v} class="${(view.exp || 0) === v ? 'on' : ''}">${l}</button>`).join('')}</div></div>`}
       <div style="display:flex;gap:8px;align-items:center"><label class="hm-btn ghost" style="cursor:pointer">📷 Photo<input type=file id=ec-f accept="image/*" hidden></label>${r || mom ? '' : `<button class="hm-btn ghost" id=ec-poll>${poll ? '✕ Poll' : '📊 Poll'}</button>`}<span style="flex:1"></span><button class=hm-btn id=ec-go>${r ? 'Reply' : mom ? 'Share moment' : 'Post'}</button></div></div></div></div>`;
     let file = view.file || null; const ph = view.el.querySelector('#ec-ph'); if (file) ph.textContent = '📷 ' + file.name;
-    view.el.querySelector('#ec-f').onchange = e => { file = view.file = e.target.files[0] || null; ph.textContent = file ? '📷 ' + file.name : ''; };
+    view.el.querySelector('#ec-f').onchange = async e => { let f = e.target.files[0] || null; if (f && /^image\/(jpeg|png|webp)$/.test(f.type) && M.editPhoto) f = await M.editPhoto(f); file = view.file = f; ph.textContent = file ? '📷 ' + (file.name || 'photo') + ' · edited' : ''; };
     const keepPoll = () => { if (view.poll) view.poll = [...view.el.querySelectorAll('[data-po]')].map(i => i.value); };
     view.el.querySelectorAll('[data-aud]').forEach(b => b.onclick = () => { keepPoll(); view.aud = b.dataset.aud; paint(); });
     const mo = view.el.querySelector('#ec-mom'); if (mo) mo.onchange = () => { keepPoll(); view.moment = mo.checked; if (mo.checked) view.poll = null; paint(); };
