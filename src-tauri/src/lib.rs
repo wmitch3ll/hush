@@ -361,7 +361,7 @@ async fn set_setting(app: AppHandle, key: String, value: String) -> Result<(), S
         // Free-form UI preferences (layout, auto-hide, density...). The UI owns their meaning; Rust only stores them.
         k if k.starts_with("ui.") => {
             let name = &k[3..];
-            let max = if matches!(name, "bangs" | "focus_sites" | "workspaces" | "fp_off" | "tor_sites" | "js_allow" | "spaces" | "essentials" | "tab_notes" | "ws_sep") { 4000 } else { 200 };
+            let max = if matches!(name, "bangs" | "focus_sites" | "workspaces" | "fp_off" | "tor_sites" | "js_allow" | "spaces" | "essentials" | "tab_notes" | "ws_sep" | "scenes") { 4000 } else { 200 };
             if name.is_empty() || name.len() > 40 || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') || value.len() > max {
                 return Err("invalid ui setting".into());
             }
@@ -601,7 +601,7 @@ pub fn run() {
             desktop::toggle_fullscreen, desktop::capture_tab, desktop::peek_open, desktop::peek_close, desktop::peek_expand,
             desktop::screenshot, desktop::save_png, boost_set, remove_custom_filter, bookmarks_reorder,
             extensions::extension_list, extensions::extension_install, extensions::extension_remove,
-            desktop::arc_import, desktop::set_split_more, desktop::page_text, desktop::open_tab, desktop::switch_tab, desktop::close_tab, desktop::navigate, desktop::nav,
+            desktop::arc_import, desktop::set_split_more, desktop::set_split_mode, desktop::page_text, desktop::open_tab, desktop::switch_tab, desktop::close_tab, desktop::navigate, desktop::nav,
             desktop::clear_data, desktop::start_picker, desktop::set_layout, desktop::show_content,
             desktop::download_open, desktop::download_reveal, desktop::float_tab, desktop::float_close, tor::tor_start, tor::tor_new_identity, tor::tor_state, watch_check, msgnet::msg_ws_open, msgnet::msg_ws_send, msgnet::msg_ws_close, msgnet::blob_put, msgnet::blob_get, msgnet::secret_set, msgnet::secret_get, msgnet::secret_del])
         .setup(desktop::setup);

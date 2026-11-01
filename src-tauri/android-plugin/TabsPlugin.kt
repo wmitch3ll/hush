@@ -378,7 +378,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                     // Two-finger gestures and the quick wheel (tools.js): only a short shape / action id is passed on.
                     "hush-float" -> { act.runOnUiThread { onFloatUrl(t, r.url) }; true }
                     // split.js: you tapped this half → it gets the highlight and the sound.
-                    "hush-split" -> { act.runOnUiThread { if (splitId != null && (t.id == active || t.id == splitId) && splitFocus != t.id) { splitFocus = t.id; applySplit() } }; true }
+                    "hush-split" -> { act.runOnUiThread { if (splitIds.isNotEmpty() && t.id in panes() && splitFocus != t.id) { splitFocus = t.id; render(); applySplit() } }; true }
                     // harden.js: a link to another site that wanted a new window → Hush opens it in a background tab.
                     "hush-peek" -> { val u = r.url.getQueryParameter("u") ?: ""; if (u.startsWith("https://") || u.startsWith("http://")) emit("linkTab", JSObject().apply { put("url", u) }); true }
                     "hush-gesture" -> { val h = (r.url.host ?: "").lowercase()
@@ -407,7 +407,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                 v.postDelayed({ if (active == t.id && visible) snap(t) }, 900)
                 try { val d = Native.darkJs(u); if (d.isNotEmpty()) v.evaluateJavascript(d, null) } catch (e: Throwable) {}
                 emitUrl(t, v, "finished")
-                if (splitId != null && (t.id == active || t.id == splitId)) applySplit()
+                if (splitIds.isNotEmpty() && t.id in panes()) applySplit()
             }
             override fun doUpdateVisitedHistory(v: WebView, u: String, reload: Boolean) { t.url = u; emitUrl(t, v, "finished") }
         }
@@ -519,8 +519,8 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         val root = act.findViewById<ViewGroup>(android.R.id.content)
         // Media keeps playing: a tab you chose to keep playing (or the tab you're watching while the tab list is open)
         // stays attached but moved off-screen, so the page isn't paused. Everything else is taken off screen.
-        if (splitId != null && (splitId == active || !tabs.containsKey(splitId))) splitId = null
-        tabs.values.forEach { t -> t.box?.let { b -> val off = (t.id != active || !visible) && !(t.id == floatId && visible) && !(t.id == splitId && visible)
+        splitIds.removeAll { it == active || !tabs.containsKey(it) }
+        tabs.values.forEach { t -> t.box?.let { b -> val off = (t.id != active || !visible) && !(t.id == floatId && visible) && !(t.id in splitIds && visible)
             // Kept tabs sink BEHIND the app's own screen (lower Z): still attached and "visible" to the page so media
             // keeps playing, but every touch goes to the tab list / sheets on top. (Moving them off-screen could leave
             // video layers catching touches.)
@@ -531,7 +531,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                 return@let }
             if (t.id in sunk) { sunk -= t.id; b.translationZ = 0f; b.importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_AUTO; b.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS; if (!off) b.bringToFront() }
         } }
-        tabs.values.forEach { t -> t.box?.let { b -> if (b.parent != null && t.id !in sunk && (t.id != active || !visible) && !(t.id == floatId && visible) && !(t.id == splitId && visible)) {
+        tabs.values.forEach { t -> t.box?.let { b -> if (b.parent != null && t.id !in sunk && (t.id != active || !visible) && !(t.id == floatId && visible) && !(t.id in splitIds && visible)) {
             // Grab the preview first (it needs the tab on screen), then take it off one frame later (the new tab covers it).
             if (b.tag != "leaving") { b.tag = "leaving"; snap(t) { b.tag = null; if ((t.id != active || !visible) && !(t.id == floatId && visible)) (b.parent as? ViewGroup)?.removeView(b) } } } } }
         // Floating video: that tab's view stays on top in a small, movable, resizable frame.
@@ -555,31 +555,57 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         if (b.parent == null) root.addView(b, android.widget.FrameLayout.LayoutParams(-1, -1))
         b.elevation = 0f; b.clipToOutline = false
         layout(b)
-        // Split screen: the active tab on top, the second tab below (drag the line between them to resize).
-        splitId?.let { sid -> tabs[sid]?.let { st -> if (st.wv == null) { st.box = null; st.wv = make(st).also { w -> if (st.saved != null) w.restoreState(st.saved!!) else w.loadUrl(st.url) } }
-            val sb = boxFor(st, st.wv!!); val avail = (root.height.takeIf { it > 0 } ?: act.resources.displayMetrics.heightPixels) - topPx - bottomPx
-            val h1 = (avail * splitFrac).toInt().coerceIn(dp(120), avail - dp(120)); val gap = dp(6)
-            b.layoutParams = android.widget.FrameLayout.LayoutParams(-1, h1).apply { topMargin = topPx }
-            val lp2 = android.widget.FrameLayout.LayoutParams(-1, avail - h1 - gap).apply { topMargin = topPx + h1 + gap }
-            if (sb.parent == null) root.addView(sb, lp2) else sb.layoutParams = lp2
-            val d: android.view.View = splitBar ?: android.view.View(act).also { v: android.view.View -> splitBar = v; v.setBackgroundColor(0x55888888)
-                var y0 = 0f; var f0 = 0f; v.setOnTouchListener(android.view.View.OnTouchListener { _: android.view.View, e: android.view.MotionEvent -> val r: Boolean = when (e.actionMasked) {
-                    android.view.MotionEvent.ACTION_DOWN -> { y0 = e.rawY; f0 = splitFrac; true }
-                    android.view.MotionEvent.ACTION_MOVE -> { val av = (root.height - topPx - bottomPx).coerceAtLeast(1); splitFrac = (f0 + (e.rawY - y0) / av).coerceIn(0.2f, 0.8f); render(); true }
-                    else -> true }; r }) }
-            val dl = android.widget.FrameLayout.LayoutParams(-1, gap).apply { topMargin = topPx + h1 }
-            if (d.parent == null) root.addView(d, dl) else d.layoutParams = dl
-            d.bringToFront() } }
-        if (splitId == null) splitBar?.let { (it.parent as? ViewGroup)?.removeView(it) }
-        if (splitPanes != (if (splitId != null && active != null) listOf(active!!, splitId!!) else emptyList<String>())) applySplit()
+        // Split screen (2–4 tabs). Grid: rows on a tall screen, columns/2×2 when wide; with 2 tabs the line between
+        // them can be dragged. Spotlight: the focused tab big, the others in a strip. Every pane is a full page.
+        val ps = panes()
+        if (ps.size > 1) {
+            val W = root.width.takeIf { it > 0 } ?: act.resources.displayMetrics.widthPixels
+            val H = (root.height.takeIf { it > 0 } ?: act.resources.displayMetrics.heightPixels) - topPx - bottomPx
+            val gap = dp(4); val wide = W > H; val n = ps.size
+            val rects = HashMap<String, IntArray>()   // x, y, w, h (y from the top of the page area)
+            if (splitMode == "spot") {
+                val f = splitFocus?.takeIf { it in ps } ?: ps[0]; val rest = ps.filter { it != f }
+                if (wide) { val bw = (W * 0.72f).toInt(); rects[f] = intArrayOf(0, 0, bw, H); val sh = (H - gap * (rest.size - 1)) / rest.size
+                    rest.forEachIndexed { k, id -> rects[id] = intArrayOf(bw + gap, k * (sh + gap), W - bw - gap, sh) } }
+                else { val bh = (H * 0.68f).toInt(); rects[f] = intArrayOf(0, 0, W, bh); val sw = (W - gap * (rest.size - 1)) / rest.size
+                    rest.forEachIndexed { k, id -> rects[id] = intArrayOf(k * (sw + gap), bh + gap, sw, H - bh - gap) } }
+            } else if (wide && n > 2) { val cw = (W - gap) / 2; val rh = (H - gap) / 2
+                ps.forEachIndexed { k, id -> val last = n == 3 && k == 2; rects[id] = intArrayOf(if (last) 0 else (k % 2) * (cw + gap), (k / 2) * (rh + gap), if (last) W else cw, rh) }
+            } else if (wide) { val cw = (W * splitFrac).toInt().coerceIn(dp(160), W - dp(160)); rects[ps[0]] = intArrayOf(0, 0, cw, H); rects[ps[1]] = intArrayOf(cw + gap, 0, W - cw - gap, H)
+            } else if (n == 2) { val h1 = (H * splitFrac).toInt().coerceIn(dp(120), H - dp(120)); rects[ps[0]] = intArrayOf(0, 0, W, h1); rects[ps[1]] = intArrayOf(0, h1 + gap, W, H - h1 - gap)
+            } else { val rh = (H - gap * (n - 1)) / n; ps.forEachIndexed { k, id -> rects[id] = intArrayOf(0, k * (rh + gap), W, rh) } }
+            ps.forEach { id -> val pt = tabs[id] ?: return@forEach; val r = rects[id] ?: return@forEach
+                if (pt.wv == null) { pt.box = null; pt.wv = make(pt).also { w -> if (pt.saved != null) w.restoreState(pt.saved!!) else w.loadUrl(pt.url) } }
+                val pb = boxFor(pt, pt.wv!!); val lp = android.widget.FrameLayout.LayoutParams(r[2], r[3]).apply { leftMargin = r[0]; topMargin = topPx + r[1] }
+                if (pb.parent == null) root.addView(pb, lp) else pb.layoutParams = lp
+                if (pt.id in sunk) { sunk -= pt.id; pb.translationZ = 0f; pb.importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_AUTO; pb.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS } }
+            // Drag handle between two panes in grid mode.
+            if (n == 2 && splitMode != "spot") {
+                val d: android.view.View = splitBar ?: android.view.View(act).also { v: android.view.View -> splitBar = v; v.setBackgroundColor(0x55888888)
+                    var p0 = 0f; var f0 = 0f; v.setOnTouchListener(android.view.View.OnTouchListener { _: android.view.View, e: android.view.MotionEvent -> val w2 = root.width > root.height - topPx - bottomPx; val r: Boolean = when (e.actionMasked) {
+                        android.view.MotionEvent.ACTION_DOWN -> { p0 = if (w2) e.rawX else e.rawY; f0 = splitFrac; true }
+                        android.view.MotionEvent.ACTION_MOVE -> { val av = (if (w2) root.width else root.height - topPx - bottomPx).coerceAtLeast(1); splitFrac = (f0 + ((if (w2) e.rawX else e.rawY) - p0) / av).coerceIn(0.2f, 0.8f); render(); true }
+                        else -> true }; r }) }
+                val r0 = rects[ps[0]]!!
+                val dl = if (wide) android.widget.FrameLayout.LayoutParams(gap, H).apply { leftMargin = r0[2]; topMargin = topPx } else android.widget.FrameLayout.LayoutParams(-1, gap).apply { topMargin = topPx + r0[3] }
+                if (d.parent == null) root.addView(d, dl) else d.layoutParams = dl
+                d.bringToFront()
+            } else splitBar?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        } else splitBar?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        if (splitPanes != ps) applySplit()
         floatId?.let { tabs[it]?.box }?.takeIf { it.parent != null && floatId != active }?.bringToFront()
     }
 
-    private var splitId: String? = null; private var splitFrac = 0.5f; private var splitBar: android.view.View? = null
+    private val splitIds = mutableListOf<String>(); private var splitFrac = 0.5f; private var splitBar: android.view.View? = null
+    private var splitMode = "grid"; private var splitAwake = true
+    /** Tabs on screen in split view: the active tab first, then up to 3 more (empty = no split). */
+    private fun panes(): List<String> = if (splitIds.isNotEmpty() && active != null && visible) listOf(active!!) + splitIds.filter { it != active && tabs.containsKey(it) }.take(3) else emptyList()
     private var splitFocus: String? = null; private var splitPanes: List<String> = emptyList()
     /** Tell both halves whether split is on and which one has the focus (highlight + sound); halves that left the split go back to normal. */
     private fun applySplit(): Unit = act.runOnUiThread {
-        val panes = if (splitId != null && active != null) listOf(active!!, splitId!!) else emptyList()
+        val panes = panes().takeIf { it.size > 1 } ?: emptyList()
+        // Keep awake: the screen stays on while you're watching a split.
+        if (panes.isNotEmpty() && splitAwake) act.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else act.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (!panes.contains(splitFocus ?: "")) splitFocus = panes.firstOrNull()
         (splitPanes - panes.toSet()).forEach { id -> tabs[id]?.wv?.evaluateJavascript(Native.splitJs() + ";__hushSplit({on:false});", null) }
         panes.forEach { id -> tabs[id]?.wv?.evaluateJavascript(Native.splitJs() + ";__hushSplit({on:true,focus:" + (id == splitFocus) + "});", null) }
@@ -588,7 +614,14 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     @Command fun pageText(i: Invoke) { act.runOnUiThread { val w = active?.let { tabs[it]?.wv } ?: return@runOnUiThread i.reject("no tab")
         w.evaluateJavascript(Native.pageTextJs()) { v -> try { i.resolve(JSObject().put("text", org.json.JSONTokener(v).nextValue() as? String ?: "")) } catch (e: Throwable) { i.resolve(JSObject().put("text", "")) } } } }
     /** Split screen: show this tab under the active one ("" turns split off). */
-    @Command fun splitTab(i: Invoke) { val id = i.parseArgs(IdArgs::class.java).id; splitId = id.takeIf { it.isNotEmpty() && it != active && tabs.containsKey(it) }; splitFocus = active; render(); applySplit(); i.resolve() }
+    /** Split screen: add this tab to the split with the active one (again = take it out, "" = close the split). Up to 4 tabs. */
+    @Command fun splitTab(i: Invoke) { val id = i.parseArgs(IdArgs::class.java).id
+        act.runOnUiThread {
+            if (id.isEmpty()) splitIds.clear() else if (id in splitIds) splitIds.remove(id) else if (id != active && tabs.containsKey(id)) { if (splitIds.size >= 3) { i.reject("Split screen holds up to 4 tabs"); return@runOnUiThread }; splitIds.add(id) }
+            if (!panes().contains(splitFocus ?: "")) splitFocus = active
+            render(); applySplit(); i.resolve(JSObject().put("count", panes().size)) } }
+    /** Split layout ("grid" or "spot" = spotlight) and keep-awake. */
+    @Command fun splitMode(i: Invoke) { val a = i.parseArgs(SplitModeArgs::class.java); act.runOnUiThread { splitMode = if (a.mode == "spot") "spot" else "grid"; splitAwake = a.awake; render(); applySplit(); i.resolve() } }
     @Command fun openTab(i: Invoke) {
         val id = "t" + java.util.UUID.randomUUID().toString().take(8)
         val a = i.parseArgs(Args::class.java)
@@ -759,6 +792,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     @InvokeArg class NavArgs { var action: String = "" }
     @InvokeArg class Args { var url: String = ""; var isPrivate: Boolean = false; var space: String = "" }
     @InvokeArg class IdArgs { var id: String = "" }
+    @InvokeArg class SplitModeArgs { var mode: String = "grid"; var awake: Boolean = true }
 
     companion object {
         private const val PRIVATE = "hush-private"

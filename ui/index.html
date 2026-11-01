@@ -328,6 +328,16 @@ async function closeTab(id,quiet){if(bgMedia==id){bgMedia=null;npDraw()}if(float
 function cycle(d){const w=inWs();if(w.length<2)return;const i=w.findIndex(t=>t.id==cur);select(w[(i+d+w.length)%w.length].id);peek()}
 // Split view: up to 4 tabs. The first pick sits beside the current tab; the 3rd and 4th go underneath (2×2 grid).
 let splitMore=[];
+// Split layout + keep awake + Scenes (saved sets of split tabs, reopened in one go).
+function splitModeSync(){inv('set_split_mode',{mode:pref('split_mode')=='spot'?'spot':'grid',awake:pref('split_awake')!='false'}).catch(()=>{})}
+const scenes=()=>{try{return JSON.parse(pref('scenes')||'[]')}catch(e){return[]}};
+async function sceneSave(){const urls=[cur,split,...splitMore].filter(Boolean).map(i=>tab(i)?.url).filter(u=>/^https?:/.test(u||''));if(urls.length<2)return toast('Open a split view first');
+  const name=(prompt('Name this scene',urls.map(u=>hostOf(u).replace(/^www\./,'')).join(' + '))||'').trim().slice(0,40);if(!name)return;
+  const l=scenes().filter(x=>x.name!=name);l.unshift({name,urls,mode:pref('split_mode')||'grid'});await setPref('scenes',JSON.stringify(l.slice(0,12)));toast('Scene saved')}
+async function sceneOpen(sc){if(split){split=null;splitMore=[];await inv('set_split',{label:null})}if(sc.mode)await setPref('split_mode',sc.mode);
+  const ids=[];for(const u of sc.urls.slice(0,4))ids.push(await openTab(u,{background:ids.length>0,quiet:true}));
+  cur=ids[0];await inv('switch_tab',{label:cur});if(ids[1]){split=ids[1];await inv('set_split',{label:split});splitMore=ids.slice(2);if(splitMore.length)await inv('set_split_more',{labels:splitMore})}
+  splitModeSync();draw();sync();toast('Scene: '+sc.name)}
 function toggleSplit(id){if(id==cur)return toast('Pick a different tab to split with');
   if(split&&split!=id){if(splitMore.includes(id))splitMore=splitMore.filter(x=>x!=id);else if(splitMore.length<2)splitMore.push(id);else return toast('Split view holds up to 4 tabs');
     inv('set_split_more',{labels:splitMore});toast(splitMore.length+2+' tabs side by side');draw();return}
@@ -604,6 +614,10 @@ let sleepT=null;function sleepTimer(){const t=tab(cur);if(!t)return toast('Open 
 const ACTIONS=()=>[
   ['✨ Ask the assistant','On this device',()=>openPanel('ai')],['✨ Summarize this page','On this device',()=>{openPanel('ai');setTimeout(()=>$('#panel [data-q=sum]')?.click(),200)}],
   ['Sleep timer for this video','',()=>{closePanel();sleepTimer()}],
+  ['Split layout: '+(pref('split_mode')=='spot'?'Spotlight → Grid':'Grid → Spotlight'),'Spotlight: the tab you click gets the big spot',async()=>{closePanel();await setPref('split_mode',pref('split_mode')=='spot'?'grid':'spot');splitModeSync()}],
+  ['Keep screen awake in split view: '+(pref('split_awake')!='false'?'on':'off'),'While a split is open',async()=>{closePanel();await setPref('split_awake',pref('split_awake')!='false'?'false':'true');splitModeSync()}],
+  ['Save split as a scene','Reopen these tabs side by side later',()=>{closePanel();sceneSave()}],
+  ...scenes().map(x=>['Scene: '+x.name,x.urls.length+' tabs · '+(x.mode=='spot'?'Spotlight':'Grid'),()=>{closePanel();sceneOpen(x)}]),
   ['Import from Arc','Pinned tabs & folders → bookmarks',async()=>{closePanel();try{const l=await inv('arc_import');let n=0;for(const b of l){try{await inv('bookmark_add',{title:b.title||b.url,url:b.url});n++}catch(e){}}await loadState();toast('Imported '+n+' tabs from Arc as bookmarks')}catch(e){toast(String(e))}}],
   ['Send this page to a friend','Murmur',()=>sharePick()],['Panic: close private & Tor tabs, lock Murmur','Ctrl+Shift+X',()=>panic()],['Note on this page','',()=>tab(cur)&&openPanel('site')],
   ['New tab','Ctrl+T',()=>newTab(false)],['New private tab','Ctrl+Shift+N',()=>newTab(true)],
@@ -854,4 +868,6 @@ async function loadState(first){try{state=await inv('get_state');state.settings.
     const last=inWs().at(-1);if(last)select(last.id);toast('Restored '+state.session.length+' tabs')}
 }catch(e){console.error(e)}}
 layout(true);draw();loadState(true).then(()=>{if(!state.settings.ui.toured)openPanel('tour')});$('#bar').focus();
+
+setTimeout(()=>{try{splitModeSync()}catch(e){}},1500);
 </script>

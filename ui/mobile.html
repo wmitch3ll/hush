@@ -241,7 +241,7 @@ function select(id,anim){const t=tabs.find(x=>x.id===id);if(!t)return;if(t.ws!==
 async function openNative(t){try{const r=await inv("open_tab",{input:t.url,private:t.priv,space:spaceOf(t.ws)});t.native=typeof r==="string"?r:r;render()}catch(e){toast("Couldn’t open that page")}}
 function syncNative(){const t=T();inv("switch_tab",{label:!sheet&&!typing&&t&&t.native?t.native:"none"}).catch(()=>{})}
 async function closeTab(id){const t=tabs.find(x=>x.id===id);if(t&&t.native&&floating===t.native){floating=null;native("floatClose",{stop:true}).catch(()=>{})}if(t&&t.native)inv("close_tab",{label:t.native}).catch(()=>{});
-  tabs=tabs.filter(x=>x.id!==id);if(!inWs().length)newTab(false,true);else if(cur===id)cur=inWs().at(-1).id;render();saveSession();if(sheet==="switcher")drawSwitcher()}
+  splitSet.delete(id);tabs=tabs.filter(x=>x.id!==id);if(!inWs().length)newTab(false,true);else if(cur===id)cur=inWs().at(-1).id;render();saveSession();if(sheet==="switcher")drawSwitcher()}
 function step(d){const w=inWs();if(w.length<2){toast(d>0?"No tab to the right":"No tab to the left");return}const i=w.findIndex(t=>t.id===cur),j=i+d;
   if(j<0||j>=w.length){toast(d>0?"Last tab":"First tab");return}vibe();select(w[j].id,d>0?"sl":"sr");toast(bare(w[j].url)||"New tab")}
 async function go(v){
@@ -404,6 +404,29 @@ var togSt=null;$("#tog").onclick=()=>{if(!togSt)return;const [st,cb]=togSt;actio
 function noteDraw(){let n=0;try{const t=T();if(t&&t.native&&!t.priv&&/^https?:/.test(t.url))n=EC.notesFor(t.url).length}catch(e){}$("#mnote").style.display=n?"grid":"none";$("#mnote b").textContent=n||""}
 $("#mnote").onclick=()=>{show("echos");EC.openPage($("#echos"))};
 var bubbleKey=null;var splitWith=null;
+// Split screen (2–4 tabs): tap a pane for its sound + highlight; videos fill their pane with full controls.
+const splitSet=new Set();
+function splitMode(){native("splitMode",{mode:pref("split_mode")==="spot"?"spot":"grid",awake:pref("split_awake")!=="false"}).catch(()=>{})}
+async function splitToggle(id){const t=tabs.find(x=>x.id===id);if(!t||!t.native)return;
+  try{const r=await native("splitTab",{id:t.native});if(splitSet.has(id))splitSet.delete(id);else splitSet.add(id);splitWith=splitSet.size?[...splitSet][0]:null;splitMode();show(null);
+    toast(splitSet.size?`Split screen · ${(r&&r.count)||splitSet.size+1} tabs — tap one for its sound`:"Split screen closed")}catch(e){toast(String(e&&e.message||e))}}
+function splitClose(){splitSet.clear();splitWith=null;native("splitTab",{id:""}).catch(()=>{});show(null)}
+const scenes=()=>{try{return JSON.parse(pref("scenes")||"[]")}catch(e){return[]}};
+// Scenes: save the tabs in the split (their pages) and bring the whole set back later in one tap.
+async function sceneSave(){const ids=[cur,...splitSet].filter(Boolean),urls=ids.map(i=>tabs.find(x=>x.id===i)?.url).filter(u=>/^https?:/.test(u||""));
+  if(urls.length<2)return toast("Open a split screen first");const name=(prompt("Name this scene",urls.map(u=>hostOf(u).replace(/^www\./,"")).join(" + "))||"").trim().slice(0,40);if(!name)return;
+  const l=scenes().filter(x=>x.name!==name);l.unshift({name,urls,mode:pref("split_mode")||"grid"});await setPref("scenes",JSON.stringify(l.slice(0,12)));toast("Scene saved")}
+async function sceneOpen(sc){splitClose();if(sc.mode)await setPref("split_mode",sc.mode);
+  const [first,...rest]=sc.urls;go(first);for(const u of rest.slice(0,3)){const keep=cur,t=newTab(false,true);t.url=u;cur=keep;
+    try{t.native=await inv("open_tab",{input:u,space:spaceOf(t.ws)});await inv("switch_tab",{label:T().native||"none"});await native("splitTab",{id:t.native});splitSet.add(t.id)}catch(e){}}
+  splitMode();render();toast("Scene: "+sc.name)}
+function splitMenu(){const sc=scenes(),on=splitSet.size>0,spot=pref("split_mode")==="spot",aw=pref("split_awake")!=="false";
+  actions("Split screen",[...(on?[["✕ Close split screen",splitClose]]:[]),
+    [spot?"▦ Layout: Spotlight — switch to Grid":"▦ Layout: Grid — switch to Spotlight",async()=>{await setPref("split_mode",spot?"grid":"spot");splitMode();toast(spot?"Grid":"Spotlight — the tab you tap gets the big spot")}],
+    [aw?"☀ Keep screen awake: on":"☀ Keep screen awake: off",async()=>{await setPref("split_awake",aw?"false":"true");splitMode()}],
+    ...(on?[["＋ Save as a scene",sceneSave]]:[["Add tabs: hold a tab in the tab list › Add to split screen",()=>{show("switcher")}]]),
+    ...sc.map(x=>["▶ "+x.name,()=>sceneOpen(x)]),
+    ...(sc.length?[["🗑 Delete a scene",async()=>{const n=prompt("Scene name to delete:\n"+sc.map(x=>x.name).join("\n"));if(n)await setPref("scenes",JSON.stringify(sc.filter(x=>x.name!==n.trim())))}]]:[])])}
 function openMsgs(chat){native("bubble",{show:false}).catch(()=>{});show("msgs");HM.open($("#msgs"),typeof chat==="string"?chat:null)}
 const EC=HushEcho({haptic:vibe,M:HM.api,toast,mobile:true,page:()=>{const t=T();return t&&t.native&&!t.priv&&/^https?:/.test(t.url)?{url:t.url}:null},open:u=>{show(null);newTab(false,true);go(u)},close:()=>{EC.close();show(null)},openMurmur:pk=>{EC.close();openMsgs(pk||null)},badge:n=>{}});
 function openEcho(){show("echos");EC.open($("#echos"))}
@@ -477,7 +500,7 @@ function drawSwitcher(dir){const el=$("#switcher"),list=inWs();
       left:()=>{c.style.transform="translateX(-400px)";c.style.opacity="0";vibe();setTimeout(()=>closeTab(id),160)},
       right:()=>{c.style.transform="translateX(400px)";c.style.opacity="0";vibe();setTimeout(()=>closeTab(id),160)},
       long:()=>liftCard(c,id,()=>{const t=tabs.find(x=>x.id===id);actions(t.title||bare(t.url)||"New tab",[
-        ...(id!==cur&&t.native&&T()?.native?[["⬒ Split screen with the current tab",()=>{splitWith=id;native("splitTab",{id:t.native}).then(()=>{show(null);toast("Split screen — drag the line to resize · ⋯ › Close split")}).catch(e=>toast(String(e)))}]]:[]),
+        ...(id!==cur&&t.native&&T()?.native?[[splitSet.has(id)?"⬒ Take out of split screen":"⬒ Add to split screen (up to 4)",()=>splitToggle(id)]]:[]),
         ...(t.destruct?[["Cancel self-destruct",()=>{t.destruct=0;drawSwitcher()}]]:HX.DESTRUCT.filter(d=>d[1]).map(([l,m])=>["Self-destruct in "+l,()=>{t.destruct=Date.now()+m*60000;toast("Closes in "+l);drawSwitcher()}])),
         ...wsList().filter(w=>w!==t.ws).map(w=>["Move to "+w,()=>{t.ws=w;saveSession();drawSwitcher()}]),
         ...(t.native?[[t.muted?"Unmute tab":"Mute tab",()=>toggleMute(t)]]:[]),["Copy link",()=>copy(t.url)],["Close tab",()=>closeTab(id)],["Close other tabs",()=>inWs().filter(x=>x.id!==id).forEach(x=>closeTab(x.id))]])})})});
@@ -568,7 +591,7 @@ function openCmd(){vibe();const el=$("#cmd");
     ["Site settings & QR",()=>{if(T()?.native){drawSite();show("site")}}],["All tabs",openSwitcher],["History",()=>{drawHistory();show("history")}],
     ["Downloads",()=>{drawDownloads();show("downloads")}],["Settings",()=>{drawSettings();show("settings")}],
     ["Reading list",()=>{drawReading();show("reading")}],["Focus mode",()=>{drawFocus();show("focus")}],["Voice search",()=>{show(null);voice()}],
-    ["Save page as PDF",()=>{show(null);native("printPage")}],["Pop-out video (picture-in-picture)",()=>{show(null);native("pip")}],["About & updates",()=>{drawAbout();show("about")}],["Close tab",()=>{show(null);closeTab(cur)}],["✨ Assistant (on this device)",()=>{$("#xs").innerHTML=head("Assistant");const d=document.createElement("div");$("#xs").append(d);wire($("#xs"));HX.assistant(d,{pageText:()=>native("pageText").then(r=>r&&r.text||"")});show("xs")}],["Close split screen",()=>{splitWith=null;native("splitTab",{id:""}).catch(()=>{});show(null)}],["Sleep timer for this video",()=>{show(null);actions("Pause the video in…",[[15,"15 min"],[30,"30 min"],[60,"1 hour"],[0,"Off"]].map(([n,l])=>[l,()=>{clearTimeout(window.__sleepT);if(!n)return toast("Sleep timer off");window.__sleepT=setTimeout(()=>{inv("page_action",{action:"media-pause"}).catch(()=>{});toast("😴 Paused")},n*60000);toast("😴 Pausing in "+l)}]))}],["Send this page to a friend",()=>{const t=T();if(!t||!/^https?:/.test(t.url))return toast("Open a page first");const l=(()=>{try{return HM.api.chatList()}catch(e){return[]}})();if(!l.length){openMsgs();return toast("Add a friend in Murmur first")}actions("Send to…",l.slice(0,20).map(c=>[c.name,()=>{HM.api.sendTo(c.key,t.url);toast("🔒 Sent privately through Tor")}]))}],["Panic: close private tabs, lock Murmur",()=>panic()],
+    ["Save page as PDF",()=>{show(null);native("printPage")}],["Pop-out video (picture-in-picture)",()=>{show(null);native("pip")}],["About & updates",()=>{drawAbout();show("about")}],["Close tab",()=>{show(null);closeTab(cur)}],["✨ Assistant (on this device)",()=>{$("#xs").innerHTML=head("Assistant");const d=document.createElement("div");$("#xs").append(d);wire($("#xs"));HX.assistant(d,{pageText:()=>native("pageText").then(r=>r&&r.text||"")});show("xs")}],["⬒ Split screen…",()=>splitMenu()],["Sleep timer for this video",()=>{show(null);actions("Pause the video in…",[[15,"15 min"],[30,"30 min"],[60,"1 hour"],[0,"Off"]].map(([n,l])=>[l,()=>{clearTimeout(window.__sleepT);if(!n)return toast("Sleep timer off");window.__sleepT=setTimeout(()=>{inv("page_action",{action:"media-pause"}).catch(()=>{});toast("😴 Paused")},n*60000);toast("😴 Pausing in "+l)}]))}],["Send this page to a friend",()=>{const t=T();if(!t||!/^https?:/.test(t.url))return toast("Open a page first");const l=(()=>{try{return HM.api.chatList()}catch(e){return[]}})();if(!l.length){openMsgs();return toast("Add a friend in Murmur first")}actions("Send to…",l.slice(0,20).map(c=>[c.name,()=>{HM.api.sendTo(c.key,t.url);toast("🔒 Sent privately through Tor")}]))}],["Panic: close private tabs, lock Murmur",()=>panic()],
     ...wsList().filter(w=>w!==curWs()).map(w=>["Workspace: "+w,()=>{show(null);switchWs(w)}])];
   el.innerHTML=head("Commands")+`<input class="txt" id="cmdq" placeholder="Type a command, tab or site" autocapitalize="off" spellcheck="false"><div class="sug" id="cmdr" style="padding:0"></div>`;
   wire(el);show("cmd");const q=$("#cmdq");setTimeout(()=>q.focus(),60);
@@ -733,5 +756,7 @@ async function loadState(first){try{state=await inv("get_state");state.settings.
     const last=inWs().at(-1);if(last){cur=last.id;openNative(last)}else newTab(false,true);toast("Restored "+state.session.length+" tabs")}
   render()}
 newTab(false,true);render();loadState(true).then(()=>{handleIncoming();if(!state.settings.ui?.toured){$("#xs").innerHTML='<div id="tourx" style="padding:20px 8px"></div>';show("xs");HX.tour($("#tourx"),true,()=>{setPref("toured","1");show(null)})}});
+
+setTimeout(()=>{try{splitMode()}catch(e){}},1500);
 </script>
 </body></html>

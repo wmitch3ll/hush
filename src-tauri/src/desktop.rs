@@ -204,12 +204,20 @@ fn relayout(win: &Window) {
     // 3–4 tab split: the active tab and the split tab on top, extra tabs below (a 2×2 grid, or one wide tab).
     let extra: Vec<String> = if split.is_some() { SPLIT_MORE.lock().iter().filter(|l| st.tabs.lock().contains(*l)).take(2).cloned().collect() } else { vec![] };
     let hh = if extra.is_empty() { ch } else { ((ch - 1.0) / 2.0).max(1.0) };
+    // Spotlight: the focused tab big on the left, the other split tabs stacked on the right.
+    let spot = SPLIT_SPOT.load(Ordering::Relaxed) && split.is_some();
+    let ps = if spot { split_panes(win.app_handle()) } else { vec![] };
+    let focus = SPLIT_FOCUS.lock().clone().filter(|f| ps.contains(f)).or_else(|| ps.first().cloned());
+    let rest: Vec<String> = ps.iter().filter(|l| Some(*l) != focus.as_ref()).cloned().collect();
+    let bw = (cw * 0.72).floor(); let sh = if rest.is_empty() { ch } else { ((ch - (rest.len() as f64 - 1.0)) / rest.len() as f64).max(1.0) };
     for wv in win.webviews() {
         let l = wv.label();
         if l == "rail" { continue; }                      // positioned by set_rail
         if let Some(f) = FLOAT.lock().clone().filter(|f| f.label == l) { let (x, y, w, h) = float_rect(win, &f); let _ = wv.set_position(LogicalPosition::new(x, y)); let _ = wv.set_size(LogicalSize::new(w, h)); continue; }
         if l.starts_with("peek") { let (px, py, pw, ph) = peek_rect(win); let _ = wv.set_position(LogicalPosition::new(px, py)); let _ = wv.set_size(LogicalSize::new(pw, ph)); continue; }
         let (x, y, w, h) = if l == "chrome" { (0.0, 0.0, s.width, s.height) }
+            else if spot && focus.as_deref() == Some(l) { (cx, cy, bw, ch) }
+            else if let Some(i) = rest.iter().position(|e| e == l).filter(|_| spot) { (cx + bw + 1.0, cy + i as f64 * (sh + 1.0), (cw - bw - 1.0).max(1.0), sh) }
             else if let Some(i) = extra.iter().position(|e| e == l) { if extra.len() == 1 { (cx, cy + hh + 1.0, cw, hh) } else { (cx + i as f64 * (half + 1.0), cy + hh + 1.0, half, hh) } }
             else if split.as_deref() == Some(l) { (cx + half + 1.0, cy, half, hh) }       // split view: right half
             else if split.is_some() { (cx, cy, half, hh) }                                  // split view: left half
@@ -255,13 +263,38 @@ fn apply_split(app: &AppHandle) {
     let panes = split_panes(app);
     let focus = { let mut f = SPLIT_FOCUS.lock(); if !f.as_ref().map_or(false, |x| panes.contains(x)) { *f = panes.first().cloned(); } f.clone() };
     let old = std::mem::replace(&mut *SPLIT_PANES.lock(), panes.clone());
+    keep_awake(!panes.is_empty() && SPLIT_AWAKE.load(Ordering::Relaxed));
     for l in old.iter().filter(|l| !panes.contains(l)) { if let Some(w) = app.get_webview(l) { let _ = w.eval(&format!("{};__hushSplit({{on:false}});", include_str!("split.js"))); } }
     for l in &panes { if let Some(w) = app.get_webview(l) { let _ = w.eval(&format!("{};__hushSplit({{on:true,focus:{}}});", include_str!("split.js"), focus.as_deref() == Some(l.as_str()))); } }
 }
-/// split.js: you clicked this half → it gets the highlight and the sound.
+/// split.js: you clicked this half → it gets the highlight and the sound (and, in Spotlight, the big spot).
 fn split_focus(app: &AppHandle, label: &str) {
     if !split_panes(app).iter().any(|l| l == label) { return; }
     *SPLIT_FOCUS.lock() = Some(label.to_string()); apply_split(app);
+    if SPLIT_SPOT.load(Ordering::Relaxed) { if let Some(win) = app.get_window("main") { relayout(&win); } }
+}
+static SPLIT_SPOT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static SPLIT_AWAKE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+/// Split layout: "grid" or "spot" (spotlight), and whether the screen stays awake while a split is open.
+#[tauri::command]
+pub async fn set_split_mode(app: AppHandle, mode: String, awake: bool) {
+    SPLIT_SPOT.store(mode == "spot", Ordering::Relaxed); SPLIT_AWAKE.store(awake, Ordering::Relaxed);
+    if let Some(win) = app.get_window("main") { relayout(&win); }
+    apply_split(&app);
+}
+/// Keep the display on while a split is open (Windows). Released as soon as the split closes.
+/// Windows ties this to one thread, so a small helper thread owns it.
+fn keep_awake(on: bool) {
+    #[cfg(windows)] {
+        static TX: std::sync::LazyLock<std::sync::mpsc::Sender<bool>> = std::sync::LazyLock::new(|| {
+            let (tx, rx) = std::sync::mpsc::channel::<bool>();
+            std::thread::spawn(move || { for on in rx { unsafe { use windows::Win32::System::Power::*;
+                let _ = SetThreadExecutionState(if on { ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED } else { ES_CONTINUOUS }); } } });
+            tx });
+        static LAST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if LAST.swap(on, Ordering::Relaxed) != on { let _ = TX.send(on); }
+    }
+    #[cfg(not(windows))] let _ = on;
 }
 
 /// The current tab's text, for the on-device assistant (summaries stay on this computer).
