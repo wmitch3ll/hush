@@ -6,7 +6,7 @@
 // over a black backdrop, without moving it in the page — so the site's player keeps working.
 const __hushSolo = window.__hushSolo || (window.__hushSolo = (v, on) => { try {
   if (!document.getElementById("hush-solo-css")) { const c = document.createElement("style"); c.id = "hush-solo-css";
-    c.textContent = "video[data-hush-solo]:popover-open{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;min-width:0!important;min-height:0!important;margin:0!important;padding:0!important;border:0!important;object-fit:contain!important;background:#000!important;transform:none!important;display:block!important;visibility:visible!important;opacity:1!important;clip-path:none!important;color:inherit}video[data-hush-solo]::backdrop{background:#000}";
+    c.textContent = "[data-hush-solo]:popover-open{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;min-width:0!important;min-height:0!important;margin:0!important;padding:0!important;border:0!important;object-fit:contain!important;background:#000!important;transform:none!important;display:block!important;visibility:visible!important;opacity:1!important;clip-path:none!important;color:inherit}[data-hush-solo]::backdrop{background:#000}";
     (document.head || document.documentElement).append(c); }
   if (on) { if (!v.isConnected) return false; if (!v.hasAttribute("popover")) { v.setAttribute("popover", "manual"); v.setAttribute("data-hush-solo", ""); }
     if (v.hasAttribute("data-hush-solo") && !v.matches(":popover-open")) v.showPopover(); return true; }
@@ -26,21 +26,26 @@ window.__hushSplit = window.__hushSplit || (() => {
     v.setAttribute("data-hush-split", "");
     for (let e = v.parentElement; e && e !== document.documentElement; e = e.parentElement) e.setAttribute("data-hush-split-anc", "");
     const st = document.createElement("style"); st.id = "hush-split-css";
+    const tag = v.tagName.toLowerCase();
     st.textContent = "html,body{overflow:hidden!important;background:#000!important}body *{visibility:hidden!important}" +
       "[data-hush-split-anc]{visibility:visible!important;transform:none!important;filter:none!important;contain:none!important;will-change:auto!important;perspective:none!important;clip-path:none!important;mask:none!important}" +
-      "video[data-hush-split]{visibility:visible!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;z-index:2147483640!important;object-fit:contain!important;background:#000!important;transform:none!important;margin:0!important;border:0!important}";
+      tag + "[data-hush-split]{visibility:visible!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;z-index:2147483640!important;object-fit:contain!important;background:#000!important;transform:none!important;margin:0!important;border:0!important}";
     (document.head || document.documentElement).append(st);
     __hushSolo(v, true);
-    // The browser's own full controls; some players remove them again, so keep them on.
-    v.__hushCtl = v.controls; v.controls = true;
-    keep = new MutationObserver(() => { if (on && !v.controls) v.controls = true; }); keep.observe(v, { attributes: true, attributeFilter: ["controls"] });
+    // The browser's own full controls; some players remove them again, so keep them on. (A player frame has its own.)
+    if (v.tagName === "VIDEO") { v.__hushCtl = v.controls; v.controls = true;
+      keep = new MutationObserver(() => { if (on && !v.controls) v.controls = true; }); keep.observe(v, { attributes: true, attributeFilter: ["controls"] }); }
     ring();   // the highlight ring goes above the lifted video
   };
+  // The video — or, on streaming sites that embed another site's player, the player FRAME (the video lives inside it).
   const pick = () => { const vids = [...document.querySelectorAll("video")].filter(v => area(v) > 0 || !v.paused);
     const v = vids.find(x => !x.paused && x.readyState > 2) || vids.sort((a, b) => area(b) - area(a))[0];
-    return v && (!v.paused || area(v) >= innerWidth * innerHeight * 0.12) ? v : null; };
+    if (v && (!v.paused || area(v) >= innerWidth * innerHeight * 0.12)) return v;
+    const fr = [...document.querySelectorAll("iframe")].filter(f => area(f) >= innerWidth * innerHeight * 0.08 && getComputedStyle(f).visibility !== "hidden").sort((a, b) => area(b) - area(a))[0];
+    return fr || null; };
+  const media = () => { try { window.__hushMediaSet && window.__hushMediaSet({ on, mute: on && !focus, keep: on && !focus }); } catch (_) {} };
   const want = () => on ? !focus : !!window.__hushMuted;
-  const sound = () => document.querySelectorAll("video,audio").forEach(x => { if (x.muted !== want()) x.muted = want(); });
+  const sound = () => { document.querySelectorAll("video,audio").forEach(x => { if (x.muted !== want()) x.muted = want(); }); media(); };
   // Sites (YouTube…) re-apply their own mute/volume; while split is on, Hush's choice wins.
   document.addEventListener("volumechange", e => { if (on && e.target.muted !== want()) e.target.muted = want(); }, true);
   let tick = 0;
@@ -63,6 +68,7 @@ window.__hushSplit = window.__hushSplit || (() => {
     const retry = n => setTimeout(() => { if (!on || focus || !v.paused || v.ended || Date.now() - touched < 1500) return;
       v.muted = true; v.play().then(() => {}, () => n < 3 && retry(n + 1)); }, n ? 500 : 400);
     retry(0); }, true);
+  addEventListener("message", e => { if (e.data && e.data.__hushTap && on && !focus) { touched = Date.now(); focus = true; sound(); ring(); try { location.href = "hush-split://focus"; } catch (_) {} } });
   // Tapping the other half moves the focus (and the sound) there; the tap itself still reaches the page.
   addEventListener("pointerdown", e => { if (on && !focus && e.isTrusted) { focus = true; sound(); ring(); try { location.href = "hush-split://focus"; } catch (_) {} } }, true);
   return o => { on = !!(o && o.on); focus = !!(o && o.focus); clearInterval(tick);

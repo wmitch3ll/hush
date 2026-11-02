@@ -58,6 +58,27 @@
     ["fbclid","gclid","utm_source","utm_medium","utm_campaign","utm_term","utm_content","mc_eid","msclkid"].forEach(k => u.searchParams.delete(k));
     if (u.href !== location.href) history.replaceState(null, "", u.href); } catch (_) {}
   // Hardware / canvas / WebGL / audio fingerprinting is handled by farble.js (per-site randomized values).
+  // Media agent (every frame, including other sites' player frames on streaming pages): the top page tells each
+  // frame how to treat its videos in split screen — muted or not, and whether to restart a video the system paused
+  // (when another pane takes the sound, Android pauses the others). Frames pass the message on to their own frames.
+  (() => {
+    let st = { on: false, mute: false, keep: false }, touched = 0;
+    const apply = () => document.querySelectorAll("video,audio").forEach(m => { if (st.on && m.muted !== st.mute) m.muted = st.mute; });
+    const relay = d => { for (const f of document.querySelectorAll("iframe,frame")) try { f.contentWindow.postMessage(d, "*"); } catch (_) {} };
+    addEventListener("pointerdown", e => { touched = Date.now();
+      // A tap inside a player frame: tell the top page (desktop split screen uses this to move the sound here).
+      if (window !== top && e.isTrusted) try { top.postMessage({ __hushTap: 1 }, "*"); } catch (_) {} }, true);
+    addEventListener("keydown", () => { touched = Date.now(); }, true);
+    document.addEventListener("volumechange", e => { if (st.on && e.target.muted !== st.mute) e.target.muted = st.mute; }, true);
+    document.addEventListener("play", e => { if (st.on) e.target.muted = st.mute; }, true);
+    document.addEventListener("pause", e => { const v = e.target; if (!st.on || !st.keep || v.ended || Date.now() - touched < 1500) return;
+      const r = n => setTimeout(() => { if (!st.on || !st.keep || !v.paused || v.ended || Date.now() - touched < 1500) return;
+        if (st.mute) v.muted = true; v.play().then(() => {}, () => n < 3 && r(n + 1)); }, n ? 500 : 400); r(0); }, true);
+    addEventListener("message", e => { const d = e.data; if (!d || !d.__hushMedia || window === top || e.source !== parent) return; st = d.__hushMedia; apply(); relay(d); });
+    if (window === top) window.__hushMediaSet = s => { st = s; apply(); relay({ __hushMedia: s }); };
+    // New player frames that load later get the current state too.
+    if (window === top) setInterval(() => { if (st.on) relay({ __hushMedia: st }); }, 2000);
+  })();
   // Groq key helper: on Groq's own key page only, when a new key appears, offer to hand it straight to Hush's
   // assistant (no copy/paste). The key only ever goes to the Hush app on this device.
   if (location.hostname === "console.groq.com" && window.top === window) {

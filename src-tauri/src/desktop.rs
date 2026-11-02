@@ -662,7 +662,9 @@ fn make_tab_with(app: &AppHandle, input: String, private: bool, peek: bool, tor:
         .incognito(private)
         .browser_extensions_enabled(true)
         .extensions_path(crate::extensions::dir(&app))
-        .initialization_script(include_str!("harden.js"))
+        // All frames: streaming sites embed other sites' players; the popup guard and the split-screen media helper
+        // must run inside those player frames too.
+        .initialization_script_for_all_frames(include_str!("harden.js"))
         .initialization_script(&crate::scriptlets_init_js())
         // Tor tabs look identical to every other Tor user (UTC, letterboxing, fonts, hardware).
         .initialization_script(&format!("var __HUSH_UNIFORM={};{}", if tor.is_some() { "'tor'" } else { "''" }, crate::UNIFORM_JS));
