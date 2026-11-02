@@ -4,7 +4,7 @@
 // Rust/Kotlin appends __hushSplit({on, focus}). A tap on an unfocused half reports hush-split://focus (cancelled natively).
 // Top layer: lift the video above EVERYTHING on the page (headers, overlays, shadow-DOM parts that CSS can't hide),
 // over a black backdrop, without moving it in the page — so the site's player keeps working.
-const __hushSolo = window.__hushSolo || (window.__hushSolo = (v, on) => { try {
+window.__hushSolo = window.__hushSolo || ((v, on) => { try {
   if (!document.getElementById("hush-solo-css")) { const c = document.createElement("style"); c.id = "hush-solo-css";
     c.textContent = "[data-hush-solo]:popover-open{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;min-width:0!important;min-height:0!important;margin:0!important;padding:0!important;border:0!important;object-fit:contain!important;background:#000!important;transform:none!important;display:block!important;visibility:visible!important;opacity:1!important;clip-path:none!important;color:inherit}[data-hush-solo]::backdrop{background:#000}";
     (document.head || document.documentElement).append(c); }
