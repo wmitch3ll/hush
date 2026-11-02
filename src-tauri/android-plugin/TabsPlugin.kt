@@ -701,6 +701,9 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             t.box?.foreground = ring; paneFs[t.id]?.first?.foreground = ring?.constantState?.newDrawable() }
         splitPanes = panes }
     /** The active tab's text, for the on-device assistant. */
+    /** Paste and go: the text you last copied (read only when you ask, while Hush is on screen). */
+    @Command fun clipText(i: Invoke) { act.runOnUiThread { try { val cm = act.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        val t = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(act)?.toString() ?: ""; i.resolve(JSObject().put("text", t.take(4000))) } catch (e: Throwable) { i.resolve(JSObject().put("text", "")) } } }
     @Command fun pageText(i: Invoke) { act.runOnUiThread { val w = active?.let { tabs[it]?.wv } ?: return@runOnUiThread i.reject("no tab")
         w.evaluateJavascript(Native.pageTextJs()) { v -> try { i.resolve(JSObject().put("text", org.json.JSONTokener(v).nextValue() as? String ?: "")) } catch (e: Throwable) { i.resolve(JSObject().put("text", "")) } } } }
     /** Split screen: show this tab under the active one ("" turns split off). */

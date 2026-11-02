@@ -358,7 +358,7 @@ async function wake(t){const id=await inv('open_tab',{input:t.url,private:t.priv
 function select(id){closePanel(true);const t=tab(id);if(!t)return;maybeFloat(cur,id);t.last=Date.now();if(t.sleeping){wake(t).then(nid=>{cur=nid;draw();sync()});return}if(t.ws!=curWs()){state.settings.ui.ws=t.ws;inv('set_setting',{key:'ui.ws',value:t.ws})}
   cur=id;if(bgMedia==id){bgMedia=null}npDraw();if(split==id||splitMore.includes(id)){split=null;splitMore=[];inv('set_split',{label:null})}inv('switch_tab',{label:id});draw();sync()}
 const closedStack=[];
-async function closeTab(id,quiet){if(bgMedia==id){bgMedia=null;npDraw()}if(floating==id){floating=null;await inv('float_close',{stop:true}).catch(()=>{})}{const c=tab(id);if(c&&c.url&&!c.priv){closedStack.push({url:c.url,ws:c.ws});if(closedStack.length>25)closedStack.shift()}}const next=await inv('close_tab',{label:id});tabs=tabs.filter(t=>t.id!=id);delete counts[id];if(split==id)split=null;
+async function closeTab(id,quiet){if(bgMedia==id){bgMedia=null;npDraw()}if(floating==id){floating=null;await inv('float_close',{stop:true}).catch(()=>{})}{const c=tab(id);if(c&&c.url&&!c.priv){closedStack.push({url:c.url,ws:c.ws});if(closedStack.length>25)closedStack.shift();if(!quiet&&/^https?:/.test(c.url))setTimeout(()=>toast('Tab closed',['Undo · Ctrl+Shift+T',()=>shortcut('shift+t')]),0)}}const next=await inv('close_tab',{label:id});tabs=tabs.filter(t=>t.id!=id);delete counts[id];if(split==id)split=null;
   const t=tab(next);cur=t&&t.ws==curWs()?next:(inWs().at(-1)?.id??null);if(cur&&cur!=next)inv('switch_tab',{label:cur});
   draw();layout();sync();saveSession();if(!quiet&&tabs.length)peek()}
 function cycle(d){const w=inWs();if(w.length<2)return;const i=w.findIndex(t=>t.id==cur);select(w[(i+d+w.length)%w.length].id);peek()}
@@ -905,7 +905,10 @@ function renderSettings(){
   wire(p);
 }
 
-function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),2400)}
+function toast(m,act){const t=$('#toast');t.textContent=m;t.style.pointerEvents='';
+  // Optional action, e.g. ['Undo', fn]: a clickable button, and the toast stays a little longer.
+  if(act){const b=document.createElement('button');b.textContent=act[0];b.style.cssText='all:unset;margin-left:12px;font-weight:700;cursor:pointer;text-decoration:underline;pointer-events:auto';b.onclick=e=>{e.stopPropagation();t.classList.remove('on');act[1]()};t.append(b);t.style.pointerEvents='auto'}
+  t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>{t.classList.remove('on');t.style.pointerEvents=''},act?5000:2400)}
 const fmt=n=>n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e4?Math.round(n/1e3)+'k':n.toLocaleString();
 async function loadStats(){clearTimeout(statsT);try{if(!$('#stats'))return;const s=await inv('get_stats');
   $('#stats').innerHTML=HX.report(s.week||0)}catch(e){}

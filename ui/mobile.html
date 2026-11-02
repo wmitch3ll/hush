@@ -240,7 +240,8 @@ async function switchWs(name,dir){await setPref("ws",name);const last=inWs().at(
 // ---------- tabs ----------
 function newTab(priv,quiet){maybeFloat(cur);const t={id:nid++,native:null,url:"",title:"",priv:!!priv,ws:curWs(),canBack:false,canFwd:false,last:Date.now()};tabs.push(t);cur=t.id;
   if(!quiet){show(null);render();setTimeout(()=>$("#url").focus(),80)}return t}
-function select(id,anim){const t=tabs.find(x=>x.id===id);if(!t)return;if(t.ws!==curWs())setPref("ws",t.ws);toolsShow(true);if(id!==cur)maybeFloat(cur);if(floating===t.native){floating=null;native("floatClose",{stop:false}).catch(()=>{})}if(bgMedia===id){bgMedia=null;native("media",{id:t.native,action:"release"}).catch(()=>{})}cur=id;t.last=Date.now();show(null);
+let prevTab=null;
+function select(id,anim){const t=tabs.find(x=>x.id===id);if(!t)return;if(id!==cur)prevTab=cur;if(t.ws!==curWs())setPref("ws",t.ws);toolsShow(true);if(id!==cur)maybeFloat(cur);if(floating===t.native){floating=null;native("floatClose",{stop:false}).catch(()=>{})}if(bgMedia===id){bgMedia=null;native("media",{id:t.native,action:"release"}).catch(()=>{})}cur=id;t.last=Date.now();show(null);
   if(anim){const p=$("#pill");p.classList.add(anim);setTimeout(()=>p.classList.remove(anim),180)}
   if(t.url&&!t.native)openNative(t);render()}
 async function openNative(t){try{const r=await inv("open_tab",{input:t.url,private:t.priv,space:spaceOf(t.ws)});t.native=typeof r==="string"?r:r;render()}catch(e){toast("Couldn’t open that page")}}
@@ -274,8 +275,9 @@ function startTour(){touring=true;show(null);syncNative();const u0=(T()||{}).url
      extra:b=>{const g=document.createElement("button");g.textContent="Open the guide";g.onclick=()=>{HUSH_COACH_END();openGuide()};b.querySelector(".hc-row").insertBefore(g,b.querySelector("[data-a=back]"))}}
   ],{onEnd:fin});
   window.HUSH_COACH_END=()=>{document.getElementById("hc")?.remove();fin()}}
-async function closeTab(id){const t=tabs.find(x=>x.id===id);if(t&&t.native&&floating===t.native){floating=null;native("floatClose",{stop:true}).catch(()=>{})}if(t&&t.native)inv("close_tab",{label:t.native}).catch(()=>{});
-  splitSet.delete(id);tabs=tabs.filter(x=>x.id!==id);if(!inWs().length)newTab(false,true);else if(cur===id)cur=inWs().at(-1).id;render();saveSession();if(sheet==="switcher")drawSwitcher()}
+async function closeTab(id){const t=tabs.find(x=>x.id===id);const back=t&&!t.priv&&/^https?:/.test(t.url||"")?{url:t.url,ws:t.ws}:null;if(t&&t.native&&floating===t.native){floating=null;native("floatClose",{stop:true}).catch(()=>{})}if(t&&t.native)inv("close_tab",{label:t.native}).catch(()=>{});
+  splitSet.delete(id);tabs=tabs.filter(x=>x.id!==id);if(!inWs().length)newTab(false,true);else if(cur===id)cur=inWs().at(-1).id;render();saveSession();if(sheet==="switcher")drawSwitcher();
+  if(back)toast("Tab closed",["Undo",()=>{if(back.ws!==curWs())setPref("ws",back.ws);newTab();go(back.url)}])}
 function step(d){const w=inWs();if(w.length<2){toast(d>0?"No tab to the right":"No tab to the left");return}const i=w.findIndex(t=>t.id===cur),j=i+d;
   if(j<0||j>=w.length){toast(d>0?"Last tab":"First tab");return}vibe();select(w[j].id,d>0?"sl":"sr");toast(bare(w[j].url)||"New tab")}
 async function go(v){
@@ -324,8 +326,14 @@ const toPage=()=>pref("bar_pos")==="bottom"?"up":"down";
 gesture($("#top"),{left:()=>step(1),right:()=>step(-1),
   up:()=>toPage()==="up"&&openSwitcher(), down:()=>toPage()==="down"&&openSwitcher(),
   long:()=>{if(document.activeElement!==$("#url"))openCmd()}});
-gesture($("#tb-tabs"),{tap:()=>openSwitcher(),long:()=>{if(T()?.native){vibe();inv("page_action",{action:"wheel"}).catch(()=>{})}}});
-$("#tb-back").onclick=()=>inv("nav",{action:"back"});$("#tb-fwd").onclick=()=>inv("nav",{action:"fwd"});$("#tb-new").onclick=()=>newTab();
+// Tabs button: tap = all tabs; tap twice quickly = jump back to the tab you were just on.
+let tabsT=0;
+gesture($("#tb-tabs"),{tap:()=>{if(tabsT){clearTimeout(tabsT);tabsT=0;if(prevTab&&tabs.some(x=>x.id===prevTab)){select(prevTab);toast("Back to your previous tab")}else openSwitcher();return}
+    tabsT=setTimeout(()=>{tabsT=0;openSwitcher()},260)},long:()=>{if(T()?.native){vibe();inv("page_action",{action:"wheel"}).catch(()=>{})}}});
+gesture($("#tb-back"),{tap:()=>inv("nav",{action:"back"}),long:()=>{drawHistory();show("history")}});$("#tb-fwd").onclick=()=>inv("nav",{action:"fwd"});gesture($("#tb-new"),{tap:()=>newTab(),long:()=>actions("New tab",[["Paste and go",pasteGo],["New private tab",()=>newTab(true)],["New tab",()=>newTab()]])});
+// Paste and go: open whatever link (or search) you just copied, in a new tab.
+async function pasteGo(){let t="";try{t=((await native("clipText"))||{}).text||""}catch(e){}t=t.trim();
+  if(!t)return toast("Nothing copied yet — copy a link first");newTab();go(t.slice(0,2000))}
 $("#tb-menu").onclick=()=>{drawMenu();show("menu")};
 // One tap: your assistant. The button shows its initial.
 $("#tb-ai").onclick=()=>{vibe&&vibe();openAssistant()};
@@ -753,7 +761,10 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
 }
 function clearData(){if(confirm("Clear cookies, cache and site data for every site?")){inv("clear_data");show(null);toast("Browsing data cleared")}}
 
-function toast(m){const e=$("#toast");e.textContent=m;e.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove("on"),1800)}
+function toast(m,act){const e=$("#toast");e.textContent=m;e.style.pointerEvents="";
+  // Optional action, e.g. ["Undo", fn] — the toast stays a little longer and the button is tappable.
+  if(act){const b=document.createElement("button");b.textContent=act[0];b.style.cssText="all:unset;margin-left:12px;font-weight:700;color:var(--acc2,#7cc7ff);cursor:pointer;pointer-events:auto";b.onclick=ev=>{ev.stopPropagation();e.classList.remove("on");act[1]()};e.append(b);e.style.pointerEvents="auto"}
+  e.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>{e.classList.remove("on");e.style.pointerEvents=""},act?5000:1800)}
 // ---------- links from other apps, shares, widget, tile, hush: imports ----------
 async function handleIncoming(){let u="";try{u=(await native("takeIntent")).url||""}catch(e){}if(!u)return;
   if(u==="hush:private")return newTab(true);if(u==="hush:search")return newTab();if(u==="hush:voice"){newTab(false,true);render();return voice()}

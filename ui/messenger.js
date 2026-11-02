@@ -38,6 +38,8 @@ window.HushMsg = function (A) {
   const relays = () => LS.get('relays', RELAYS_DEFAULT);
   const contacts = () => LS.get('contacts', {});
   const chats = () => LS.get('chats', {});
+  // Chats that contain a "Report a problem" message (only the Hush developer receives these).
+  const isReport = k => (chats()[k] || []).some(m => typeof m.text === 'string' && m.text.startsWith('🐞 Hush report'));
   const groups = () => LS.get('groups', {});
   const profile = () => LS.get('profile', { name: '' });
   const prefs = () => LS.get('prefs', { receipts: true, typing: true, curtain: true });
@@ -687,10 +689,10 @@ window.HushMsg = function (A) {
     const keys = [...new Set(['self', ...Object.keys(all), ...Object.keys(c).filter(k => !c[k].blocked && !c[k].auto), ...Object.keys(g)])].filter(k => k && (isGroup(k) || !c[k]?.blocked))
       .map(k => ({ k, last: (all[k] || []).at(-1) })).sort((a, b) => (b.last?.at || c[b.k]?.added || g[b.k]?.at || 0) - (a.last?.at || c[a.k]?.added || g[a.k]?.at || 0))
       .filter(x => !q || chatName(x.k).toLowerCase().includes(q) || (x.last?.text || '').toLowerCase().includes(q))
-      .filter(x => { const f = view.folder || 'all'; return f === 'all' || (f === 'unread' && un[x.k]) || (f === 'groups' && isGroup(x.k)) || (f === 'favs' && LS.get('favs', []).includes(x.k)); });
+      .filter(x => { const f = view.folder || 'all'; return f === 'all' || (f === 'unread' && un[x.k]) || (f === 'groups' && isGroup(x.k)) || (f === 'favs' && LS.get('favs', []).includes(x.k)) || (f === 'reports' && isReport(x.k)); });
     view.el.innerHTML = `<div class="hm hm-mur" style="position:relative">${head('Murmur', '<div class=hm-st></div>', '',
       `<button class=hm-ib data-go=me title="Your Hush ID" aria-label="Your Hush ID">${I.qr}</button>${closeB()}`)}
-      <div class=hm-body><input class=hm-search placeholder="Search chats" value="${esc(view.q)}"><div class=hm-folders style="display:flex;gap:6px;padding:0 12px 8px;overflow-x:auto">${[['all', 'All'], ['unread', 'Unread'], ['groups', 'Groups'], ['favs', '★ Favorites']].map(([k, l]) => `<button data-folder=${k} class="hm-chip ${(view.folder || 'all') === k ? 'on' : ''}" style="padding:5px 12px;border-radius:99px;border:1px solid var(--line);font:600 12.5px system-ui;${(view.folder || 'all') === k ? 'background:var(--ink);color:var(--bg)' : ''}">${l}</button>`).join('')}<button data-bcast class=hm-chip style="padding:5px 12px;border-radius:99px;border:1px solid var(--line);font:600 12.5px system-ui">📣 Broadcast</button></div>
+      <div class=hm-body><input class=hm-search placeholder="Search chats" value="${esc(view.q)}"><div class=hm-folders style="display:flex;gap:6px;padding:0 12px 8px;overflow-x:auto">${[['all', 'All'], ['unread', 'Unread'], ...(Object.keys(chats()).some(isReport) ? [['reports', '🐞 Reports']] : []), ['groups', 'Groups'], ['favs', '★ Favorites']].map(([k, l]) => `<button data-folder=${k} class="hm-chip ${(view.folder || 'all') === k ? 'on' : ''}" style="padding:5px 12px;border-radius:99px;border:1px solid var(--line);font:600 12.5px system-ui;${(view.folder || 'all') === k ? 'background:var(--ink);color:var(--bg)' : ''}">${l}</button>`).join('')}<button data-bcast class=hm-chip style="padding:5px 12px;border-radius:99px;border:1px solid var(--line);font:600 12.5px system-ui">📣 Broadcast</button></div>
       ${!view.q && keys.every(x => x.k === 'self') ? `<div class=hm-welcome style="margin:6px 14px 10px;padding:18px;border-radius:18px;background:color-mix(in srgb,var(--mur) 10%,var(--card));border:1px solid color-mix(in srgb,var(--mur) 25%,transparent)">
         <b style="display:block;font-size:17px;margin-bottom:4px">Add your first friend</b><span style="color:var(--mute);font-size:14px;line-height:1.45">Meet up and scan each other’s code (that also verifies them), or send a one-time invite link.</span>
         <div class=hm-cta style="justify-content:flex-start"><button class=hm-btn data-go=me>Show my code</button><button class="hm-btn ghost" data-go=add>Add a friend</button></div></div>` : ''}
