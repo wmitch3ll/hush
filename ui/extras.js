@@ -406,7 +406,7 @@ window.HushX = function (A) {
         else if (m.id && waits[m.id]) { const q = waits[m.id]; if (m.t === 'tok') { q.out += m.x; q.on && q.on(q.out); } else if (m.t === 'done') { delete waits[m.id]; q.res(q.out.trim()); } else if (m.t === 'error') { delete waits[m.id]; q.rej(new Error(m.e)); } } };
       const md = AI_MODELS[cfg().model] || AI_MODELS.lite; w.postMessage({ t: 'load', model: md.id, kind: md.kind, ort }); }
     let stage = '', warmAt = 0, dog = 0;
-    return { cfg, on: () => !!cfg().on, status: () => st, error: () => err, sub: f => (subs.add(f), () => subs.delete(f)),
+    return { cfg, on: () => !!cfg().on, status: () => (cfg().mode === 'groq' && groqKey() ? 'ready' : st), error: () => err, sub: f => (subs.add(f), () => subs.delete(f)),
       progress: () => pct, stage: () => stage,
       crashed: () => !!lsg(BOOT),
       // Try a key (one tiny request through Tor); on success switch the assistant to Groq.
@@ -422,9 +422,13 @@ window.HushX = function (A) {
         load(); },
       wasCrash: () => crash,
       ask(prompt, on, max) { if (cfg().mode === 'groq') return groqAsk(prompt, on, max); return new Promise((res, rej) => { if (st !== 'ready') return rej(new Error('The assistant isn’t ready yet')); const id = ++seq; waits[id] = { res, rej, on, out: '' }; w.postMessage({ t: 'ask', id, prompt, max }); }); } }; })();
-  function assistant(el, o) { // o: { pageText():Promise<string>, close() }
+  function assistant(el, o) { // o: { pageText():Promise<string>, pageInfo():{host}?, close(), run? }
+    // Setup screens (naming, choosing Groq / on-device, downloading) get a close button when shown full-screen.
+    const xbtn = () => { if (o.close && !el.querySelector('.ax') && !el.querySelector('[data-xclose]')) el.insertAdjacentHTML('afterbegin', '<div style="display:flex;justify-content:flex-end;padding:8px 10px 0"><button data-xclose aria-label="Close" style="all:unset;cursor:pointer;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;color:var(--mute);font-size:18px">✕</button></div>'); };
+    el.addEventListener('click', e => { if (e.target.closest('[data-xclose]')) o.close(); });
+    new MutationObserver(xbtn).observe(el, { childList: true });
     // First time: give it a name.
-    if (!aiNamed()) { el.innerHTML = `<div style="padding:18px;display:grid;gap:12px"><h2 style="margin:0">Name your assistant</h2>
+    if (!aiNamed()) { el.innerHTML = `<style>${AX_CSS}</style><div style="padding:18px;display:grid;gap:12px"><div class=ax-hi style="margin:0;padding:6px 0 0"><div class=ax-av>✦</div><h3>Name your AI assistant</h3></div>
       <p style="margin:0;color:var(--mute)">It’s yours — it runs on this device and helps you read, summarize and reply. Give it a name, like you would a Siri or a Jarvis.</p>
       <input class=txt id=ai-nm maxlength=24 placeholder="e.g. Nova, Jarvis, Echo, Sage" style="margin:0;font-size:16px">
       <div style="display:flex;gap:8px;flex-wrap:wrap">${['Nova', 'Jarvis', 'Sage', 'Atlas', 'Luna', 'Max'].map(n => `<button class=btn data-nm="${n}">${n}</button>`).join('')}</div>
@@ -456,29 +460,98 @@ window.HushX = function (A) {
           A.toast('Checking the key through Tor…');
           try { await ai.connectGroq(k); view = ''; A.toast(aiName() + ' is ready'); draw(); } catch (e) { A.toast(String(e && e.message || e)); } };
         return; }
-      if (!c.on) { el.innerHTML = `<div style="padding:16px;display:grid;gap:12px"><h2 style="margin:0">${esc(aiName())} <button class=btn data-rename style="font-size:12px;padding:2px 10px;vertical-align:middle">Rename</button></h2><p style="margin:0;color:var(--mute)">Summarize pages, explain things and draft replies with an AI that runs <b>entirely on this device</b>. Nothing you read or ask is sent anywhere.</p>
-        <button class=row data-groq style="text-align:left;display:block;width:100%;padding:12px;border:1px solid var(--acc);border-radius:12px;background:var(--card)"><b>Cloud — Groq</b> <small style="color:var(--acc)">· fastest &amp; smartest</small> · free key<br><small style="color:var(--mute)">Instant answers from big AI models. Free (about 1,000 requests a day). Through Tor, but Groq sees what you ask. Takes 2 minutes to set up.</small></button>
+      if (!c.on) { el.innerHTML = `<div style="padding:16px;display:grid;gap:12px">${axHead('Set up your AI assistant')}<p style="margin:0;color:var(--mute)">Summarize pages, explain things and draft replies. Pick how it runs — you can change it any time.</p>
+        <button class=row data-groq style="all:unset;cursor:pointer;box-sizing:border-box;text-align:left;display:block;width:100%;padding:14px;border:1.5px solid var(--acc);border-radius:16px;background:var(--card);line-height:1.45"><b>Cloud — Groq</b> <small style="color:var(--acc)">· fastest &amp; smartest</small> · free key<br><small style="color:var(--mute)">Instant answers from big AI models. Free (about 1,000 requests a day). Groq sees what you ask. About 2 minutes to set up.</small></button>
         <div style="font:600 12px system-ui;color:var(--mute);margin-top:4px">OR ON THIS DEVICE — fully private</div>
-        ${Object.entries(AI_MODELS).map(([k, m]) => { const rec = k === (MOBILE ? 'lite' : 'e2b'), tight = (navigator.deviceMemory || (MOBILE ? 4 : 8)) < m.mem && m.mem > 3;
-          return `<button class=row data-m=${k} style="text-align:left;display:block;width:100%;padding:12px;border:1px solid ${rec ? 'var(--acc)' : 'var(--line)'};border-radius:12px;background:var(--card)"><b>${m.name}</b>${rec ? ' <small style="color:var(--acc)">· recommended</small>' : ''} · ${m.size}<br><small style="color:var(--mute)">${m.note}${tight ? ' — <b>may be too big for this device and close Hush while loading</b>' : ''}</small></button>`; }).join('')}
+        ${Object.entries(AI_MODELS).map(([k, m]) => { const rec = false && k, tight = (navigator.deviceMemory || (MOBILE ? 4 : 8)) < m.mem && m.mem > 3;
+          return `<button class=row data-m=${k} style="all:unset;cursor:pointer;box-sizing:border-box;text-align:left;display:block;width:100%;padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--card);line-height:1.45"><b>${m.name}</b>${rec ? ' <small style="color:var(--acc)">· recommended</small>' : ''} · ${m.size}<br><small style="color:var(--mute)">${m.note}${tight ? ' — <b>may be too big for this device and close Hush while loading</b>' : ''}</small></button>`; }).join('')}
         <p style="margin:0;font-size:12px;color:var(--mute)">The model is downloaded once from Hugging Face (Google’s open Gemma models) and kept on this device. ${navigator.gpu ? '' : '<b>This device can’t run it: no WebGPU support.</b>'}</p></div>`;
         el.querySelector('[data-groq]').onclick = () => { view = 'groq'; draw(); };
         el.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { if (!navigator.gpu) return A.toast('This device can’t run the assistant'); if (confirm('Download ' + AI_MODELS[b.dataset.m].name + ' (' + AI_MODELS[b.dataset.m].size + ')? Use Wi-Fi.')) { ai.enable(b.dataset.m); draw(); } }); return; }
-      if (st !== 'ready') { el.innerHTML = `<div style="padding:16px;display:grid;gap:10px"><h2 style="margin:0">${esc(aiName())} <button class=btn data-rename style="font-size:12px;padding:2px 10px;vertical-align:middle">Rename</button></h2>${st === 'error' ? `<p>⚠ ${esc(ai.error())}</p>${c.model !== 'lite' ? '<button class=btn data-lite>Switch to the Lite model</button>' : ''}<button class=btn data-retry>Try again</button>` : `<p>${ai.stage() === 'warm' ? 'Setting it up on your graphics chip — almost there… (first time can take 1–3 minutes; keep Hush open)' : 'Downloading… ' + Math.round(ai.progress() * 100) + '%'}</p><div style="height:6px;border-radius:3px;background:var(--line);overflow:hidden"><i style="display:block;height:100%;width:${Math.round(ai.progress() * 100)}%;background:var(--acc)"></i></div><p style="font-size:12px;color:var(--mute)">First time only — it’s kept on this device afterwards.</p>`}<button class=btn data-off>Turn off & remove</button></div>`;
+      if (st !== 'ready') { el.innerHTML = `<div style="padding:16px;display:grid;gap:10px">${axHead('Set up your AI assistant')}${st === 'error' ? `<p>⚠ ${esc(ai.error())}</p>${c.model !== 'lite' ? '<button class=btn data-lite>Switch to the Lite model</button>' : ''}<button class=btn data-retry>Try again</button>` : `<p>${ai.stage() === 'warm' ? 'Setting it up on your graphics chip — almost there… (first time can take 1–3 minutes; keep Hush open)' : 'Downloading… ' + Math.round(ai.progress() * 100) + '%'}</p><div style="height:6px;border-radius:3px;background:var(--line);overflow:hidden"><i style="display:block;height:100%;width:${Math.round(ai.progress() * 100)}%;background:var(--acc)"></i></div><p style="font-size:12px;color:var(--mute)">First time only — it’s kept on this device afterwards.</p>`}<button class=btn data-off>Turn off & remove</button></div>`;
         el.querySelector('[data-retry]')?.addEventListener('click', () => { ai.disable(); ai.enable(c.model); draw(); });
         el.querySelector('[data-lite]')?.addEventListener('click', () => { ai.disable(); ai.enable('lite'); draw(); }); el.querySelector('[data-off]').onclick = () => { ai.disable(); try { caches.keys().then(k => k.forEach(n => caches.delete(n))); } catch (e) {} draw(); }; return; }
-      el.innerHTML = `<div style="padding:14px;display:flex;flex-direction:column;gap:10px;height:100%;box-sizing:border-box"><h2 style="margin:0">${esc(aiName())} <button class=btn data-rename style="font-size:12px;padding:2px 10px;vertical-align:middle">Rename</button> <small style="font:500 12px system-ui;color:var(--mute)">${ai.cloud() ? (ai.groqVia() === 'direct' ? 'via Groq · direct (Groq blocks Tor, so it sees your IP)' : 'via Groq · through Tor') : 'on this device'}</small> <button class=btn data-switch style="font-size:12px;padding:2px 10px;vertical-align:middle">Change</button></h2>
-        <div style="display:flex;gap:6px;flex-wrap:wrap"><button class=btn data-q=sum>Summarize this page</button><button class=btn data-q=key>Key points</button><button class=btn data-q=simple>Explain it simply</button></div>
-        <div id=ai-out style="flex:1;overflow:auto;white-space:pre-wrap;line-height:1.5;user-select:text;border:1px solid var(--line);border-radius:12px;padding:12px;min-height:120px;color:var(--ink)">Ask anything, or pick an action above.</div>
-        <div style="display:flex;gap:6px"><input class=txt id=ai-in placeholder="Ask ${esc(aiName())} about this page, or anything" style="flex:1;margin:0"><button class=btn id=ai-go>Ask</button></div></div>`;
-      const out = el.querySelector('#ai-out'), run = async (q, usePage) => { out.textContent = '…'; let page = '';
-        if (usePage) { try { page = (await o.pageText()) || ''; } catch (e) {} if (!page.trim()) return out.textContent = 'Open a page first.'; }
-        const prompt = usePage ? `${q}\n\nPage:\n${page.slice(0, 20000)}` : q;
-        try { await ai.ask(prompt, t => { out.textContent = t; out.scrollTop = out.scrollHeight; }); } catch (e) { out.textContent = '⚠ ' + e.message; } };
-      el.querySelectorAll('[data-q]').forEach(b => b.onclick = () => run({ sum: 'Summarize this web page in 4–6 short sentences.', key: 'List the key points of this web page as short bullet points.', simple: 'Explain what this web page says in simple words, like to a 12-year-old.' }[b.dataset.q], true));
-      const go = () => { const q = el.querySelector('#ai-in').value.trim(); if (!q) return; run(/\b(this|the) (page|article|site)\b/i.test(q) ? q : q, /\b(this|the) (page|article|site)\b/i.test(q)); };
-      el.querySelector('#ai-go').onclick = go; el.querySelector('#ai-in').onkeydown = e => { if (e.key === 'Enter') go(); }; };
-    const un = ai.sub(() => { if (!el.isConnected) return un(); if (ai.status() !== 'ready' || !el.querySelector('#ai-out')) draw(); }); draw(); }
+      chat(el, o); };
+    const un = ai.sub(() => { if (!el.isConnected) return un(); if (ai.status() !== 'ready' || !el.querySelector('.ax')) draw(); }); draw(); }
+
+  // ---------- The assistant's chat screen ----------
+  // One conversation per session (kept in memory, never saved). Messages stream in; the page you're on can be
+  // used as context with one tap. Works the same in the phone sheet and the desktop dock.
+  const AX_CSS = `.ax{display:flex;flex-direction:column;height:100%;min-height:420px;box-sizing:border-box;color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+  .ax-h{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}
+  .ax-av{width:38px;height:38px;border-radius:50%;flex:none;display:grid;place-items:center;font:700 16px system-ui;color:#fff;background:linear-gradient(135deg,#6d5efc,#22b8cf)}
+  .ax-h b{display:block;font-size:16px}.ax-h small{display:block;color:var(--mute);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ax-ib{all:unset;cursor:pointer;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:var(--mute);flex:none}.ax-ib:hover{background:var(--card);color:var(--ink)}
+  .ax-ib svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .ax-m{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth}
+  .ax-hi{margin:auto 0;text-align:center;padding:10px 4px}.ax-hi .ax-av{width:60px;height:60px;font-size:24px;margin:0 auto 10px}.ax-hi h3{margin:0 0 4px;font:700 20px system-ui}.ax-hi p{margin:0 0 16px;color:var(--mute);font-size:14px}
+  .ax-sg{display:grid;grid-template-columns:1fr 1fr;gap:8px;text-align:left}
+  .ax-sg button{all:unset;cursor:pointer;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--card);font-size:13.5px;line-height:1.35}.ax-sg button:hover{border-color:var(--acc)}
+  .ax-sg button b{display:block;font-size:14px;margin-bottom:2px}.ax-sg button span{color:var(--mute)}
+  .ax-u{align-self:flex-end;max-width:85%;background:var(--ink);color:var(--bg);padding:9px 13px;border-radius:18px 18px 4px 18px;white-space:pre-wrap;word-wrap:break-word}
+  .ax-a{align-self:flex-start;max-width:92%;display:flex;gap:8px}.ax-a .ax-av{width:26px;height:26px;font-size:12px;margin-top:2px}
+  .ax-a .t{background:var(--card);border:1px solid var(--line);padding:10px 13px;border-radius:4px 18px 18px 18px;white-space:pre-wrap;word-wrap:break-word;user-select:text}
+  .ax-a .t.err{border-color:#d33;color:#d33}.ax-a .t:empty::after{content:"";display:inline-block;width:28px;height:8px;background:radial-gradient(circle,var(--mute) 35%,transparent 40%) 0 0/10px 8px repeat-x;animation:axd 1s steps(3) infinite}
+  @keyframes axd{from{width:8px}to{width:30px}}
+  .ax-tools{display:flex;gap:4px;margin-top:4px}.ax-tools button{all:unset;cursor:pointer;color:var(--mute);font-size:12px;padding:2px 8px;border-radius:8px}.ax-tools button:hover{background:var(--card);color:var(--ink)}
+  .ax-c{border-top:1px solid var(--line);padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px))}
+  .ax-ctx{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--mute);padding:4px 10px;border:1px solid var(--line);border-radius:999px;margin-bottom:8px;cursor:pointer;user-select:none;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .ax-ctx.on{color:var(--ink);border-color:var(--acc);background:color-mix(in srgb,var(--acc) 10%,transparent)}
+  .ax-row{display:flex;gap:8px;align-items:flex-end}.ax-row textarea{flex:1;resize:none;border:1px solid var(--line);border-radius:20px;padding:10px 14px;background:var(--card);color:var(--ink);font:15px/1.4 system-ui;max-height:140px;min-height:22px;outline:none}
+  .ax-row textarea:focus{border-color:var(--acc)}
+  .ax-send{all:unset;cursor:pointer;width:42px;height:42px;border-radius:50%;background:var(--ink);color:var(--bg);display:grid;place-items:center;flex:none}.ax-send:disabled{opacity:.35;cursor:default}
+  .ax-send svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}`;
+  const AX_SUGG = [['sum', 'Summarize', 'this page in a few lines', 'Summarize this web page in 4–6 short sentences.', true],
+    ['key', 'Key points', 'as quick bullets', 'List the key points of this web page as short bullet points.', true],
+    ['simple', 'Explain simply', 'no jargon', 'Explain what this web page says in simple words.', true],
+    ['ask', 'Ask anything', 'not about the page', '', false]];
+  // Header used on the setup screens too (same look as the chat).
+  const axHead = sub => `<style>${AX_CSS}</style><div class=ax-h style="padding:6px 0 14px;border:0"><div class=ax-av>${esc((aiName().trim()[0] || 'A').toUpperCase())}</div><div style="flex:1;min-width:0"><b>${esc(aiName())}</b><small>${esc(sub)}</small></div><button class=ax-ib data-rename title="Rename"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></button></div>`;
+  let axLog = [];   // [{r:'u'|'a', t, err}]
+  function chat(el, o) {
+    const name = aiName(), ini = esc(name.trim()[0] || 'A').toUpperCase(), sub = ai.cloud() ? (ai.groqVia() === 'direct' ? 'Groq · direct' : 'Groq · through Tor') : 'On this device · private';
+    let ctx = o.ctx !== false;
+    el.innerHTML = `<style>${AX_CSS}</style><div class=ax><div class=ax-h><div class=ax-av>${ini}</div><div style="flex:1;min-width:0"><b>${esc(name)}</b><small>${sub}</small></div>
+      <button class=ax-ib data-new title="New chat"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+      <button class=ax-ib data-rename title="Rename"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></button>
+      <button class=ax-ib data-switch title="Change how it runs (Groq / on this device)"><svg viewBox="0 0 24 24"><circle cx=12 cy=12 r=3 /><path d="M19 12a7 7 0 0 0-.1-1l2-1.6-2-3.4-2.4 1a7 7 0 0 0-1.7-1L14.5 3h-4l-.4 2.6a7 7 0 0 0-1.7 1l-2.4-1-2 3.4L6 10.9a7 7 0 0 0 0 2.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7 7 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6c.1-.4.1-.7.1-1.1z"/></svg></button>
+      ${o.close ? '<button class=ax-ib data-close title="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>' : ''}</div>
+      <div class=ax-m></div>
+      <div class=ax-c><div class=ax-ctx></div><div class=ax-row><textarea rows=1 placeholder="Message ${esc(name)}…" enterkeyhint=send></textarea><button class=ax-send aria-label=Send disabled><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div></div></div>`;
+    const M = el.querySelector('.ax-m'), ta = el.querySelector('textarea'), send = el.querySelector('.ax-send'), cx = el.querySelector('.ax-ctx');
+    let host = ''; Promise.resolve(o.pageInfo ? o.pageInfo() : null).then(p => { host = p && p.host || ''; paintCtx(); });
+    const paintCtx = () => { cx.className = 'ax-ctx' + (ctx && host ? ' on' : ''); cx.style.display = host ? '' : 'none';
+      cx.innerHTML = ctx ? `📄 Using this page · ${esc(host)} <span style="opacity:.6">✕</span>` : `📄 Use this page (${esc(host)})`; };
+    cx.onclick = () => { ctx = !ctx; paintCtx(); };
+    const bubble = m => m.r === 'u' ? `<div class=ax-u>${esc(m.t)}</div>`
+      : `<div class=ax-a><div class=ax-av>${ini}</div><div><div class="t${m.err ? ' err' : ''}">${esc(m.t)}</div>${m.t && !m.err && !m.live ? '<div class=ax-tools><button data-copy>Copy</button></div>' : ''}</div></div>`;
+    const paint = () => { M.innerHTML = axLog.length ? axLog.map(bubble).join('') : `<div class=ax-hi><div class=ax-av>${ini}</div><h3>Hi, I’m ${esc(name)}</h3><p>${ai.cloud() ? 'Fast answers from Groq.' : 'I run on this device — nothing you ask leaves it.'} What can I help with?</p>
+        <div class=ax-sg>${AX_SUGG.map(([k, a, b]) => `<button data-sg=${k}><b>${a}</b><span>${b}</span></button>`).join('')}</div></div>`;
+      M.querySelectorAll('[data-copy]').forEach((b, k) => b.onclick = () => { const txt = axLog.filter(m => m.r === 'a')[k]?.t || ''; try { navigator.clipboard.writeText(txt); A.toast('Copied'); } catch (e) {} });
+      M.querySelectorAll('[data-sg]').forEach(b => b.onclick = () => { const s = AX_SUGG.find(x => x[0] === b.dataset.sg); if (!s[3]) { ta.focus(); return; } ask(s[1], s[3], true); });
+      M.scrollTop = M.scrollHeight; };
+    let busy = false;
+    async function ask(shown, q, usePage) {
+      if (busy) return; busy = true; send.disabled = true;
+      axLog.push({ r: 'u', t: shown }); const a = { r: 'a', t: '', live: true }; axLog.push(a); paint();
+      const tEl = () => M.querySelectorAll('.ax-a .t')[M.querySelectorAll('.ax-a .t').length - 1];
+      let page = ''; if (usePage) { try { page = (await o.pageText()) || ''; } catch (e) {} if (!page.trim()) { a.t = 'I couldn’t read this page — open a website first, or turn off “Use this page”.'; a.err = true; a.live = false; busy = false; paint(); return; } }
+      // Recent turns give follow-up questions context.
+      const hist = axLog.slice(0, -2).slice(-6).map(m => (m.r === 'u' ? 'User: ' : name + ': ') + m.t.slice(0, 1500)).join('\n');
+      const prompt = (hist ? 'Conversation so far:\n' + hist + '\n\n' : '') + (usePage ? `${q}\n\nWeb page${host ? ' (' + host + ')' : ''}:\n${page.slice(0, ai.cloud() ? 40000 : 12000)}` : q);
+      try { await ai.ask(prompt, t => { a.t = t; const e = tEl(); if (e) { e.textContent = t; M.scrollTop = M.scrollHeight; } }, 900); }
+      catch (e) { a.t = String(e && e.message || e); a.err = true; }
+      a.live = false; busy = false; paint(); send.disabled = !ta.value.trim(); }
+    const go = () => { const q = ta.value.trim(); if (!q || busy) return; ta.value = ''; ta.style.height = ''; send.disabled = true;
+      ask(q, q, ctx && !!host); };
+    ta.oninput = () => { send.disabled = !ta.value.trim() || busy; ta.style.height = 'auto'; ta.style.height = Math.min(140, ta.scrollHeight) + 'px'; };
+    ta.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); go(); } };
+    send.onclick = go;
+    el.querySelector('[data-new]').onclick = () => { axLog = []; paint(); ta.focus(); };
+    el.querySelector('[data-close]')?.addEventListener('click', () => o.close());
+    paint(); paintCtx(); if (!A.mobile) setTimeout(() => ta.focus(), 80);
+    if (o.run) { const s = AX_SUGG.find(x => x[0] === o.run); if (s && s[3]) setTimeout(() => ask(s[1], s[3], true), 120); }
+  }
   const SEC = [['', 'Standard'], ['safer', 'Safer'], ['safest', 'Safest']];
   const LEAVE = [['ask', 'Ask me'], ['mini', 'Mini player'], ['background', 'Keep playing'], ['pause', 'Stop']];
 

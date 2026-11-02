@@ -47,6 +47,7 @@ body.tools #tools{display:flex}body.tools #tabs-btn,body.tools #menu-btn{display
 #tools .tb{position:relative}#tb-menu.msgdot::after{content:attr(data-n);position:absolute;top:4px;right:6px;min-width:16px;height:16px;padding:0 4px;border-radius:99px;background:var(--acc);color:var(--bg);font:700 10px/16px system-ui;text-align:center}#tb-tabs.playing::after{content:"";position:absolute;top:8px;right:10px;width:7px;height:7px;border-radius:50%;background:var(--acc)}body.tools.tools-hide #tools{margin-bottom:-53px;opacity:0;pointer-events:none}
 body.bottom #tools{order:-1}
 #tools .tb{all:unset;width:48px;height:44px;display:grid;place-items:center;color:var(--ink);border-radius:12px;cursor:pointer}#tools .tb:active{background:var(--card)}
+#tools .tb-av{font:700 13px/26px system-ui;font-style:normal;width:26px;height:26px;border-radius:50%;color:#fff;text-align:center;background:linear-gradient(135deg,#6d5efc,#22b8cf)}
 #tools .tb:disabled{opacity:.3}#tools svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 #tb-tabs span{min-width:20px;height:20px;padding:0 3px;border:1.8px solid currentColor;border-radius:6px;font:700 11px/17px system-ui;text-align:center;box-sizing:border-box}
 .home{display:grid;place-items:center;text-align:center;padding:12vh 18px 40px}
@@ -129,6 +130,7 @@ body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
     <button class="tb" id="tb-back" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
     <button class="tb" id="tb-fwd" aria-label="Forward"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
     <button class="tb" id="tb-new" aria-label="New tab"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button class="tb" id="tb-ai" aria-label="AI assistant"><i class="tb-av">A</i></button>
     <button class="tb" id="tb-tabs" aria-label="Tabs"><span>1</span></button>
     <button class="tb" id="tb-menu" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
   </nav>
@@ -263,7 +265,7 @@ function startTour(){touring=true;show(null);syncNative();const u0=(T()||{}).url
     {sel:"#m-new",title:"Private tabs",text:"A private tab keeps nothing — no history, and its cookies are gone when you close it. Hold a tab › Self-destruct to have any tab close and wipe itself after a set time.",before:menu},
     {sel:"#url",title:"Commands — and the panic button",text:"Holding the address bar opens Commands: type what you want — “split”, “dark”, “sleep timer”, a friend’s name. “Panic” closes every private tab and locks Murmur in one tap.",doText:"Hold the address bar",before:()=>show(null),until:()=>sheet==="cmd"},
     // 4. Apps
-    {sel:"#m-ai",title:"Offline assistant",text:"Summarize a page or ask questions with an AI that runs on your phone — nothing you read is sent anywhere. Download the Lite model once on Wi-Fi.",before:menu},
+    {sel:"#tb-ai",title:"Your AI assistant",text:"One tap, any time: summarize the page you’re on, ask about it, or ask anything. Name it whatever you like. Run it free on Groq (fast and smart) or fully private on your phone.",before:()=>show(null)},
     {sel:"#m-msg",title:"Murmur — private messages",text:"Chat, send photos and call other Hush users. End-to-end encrypted, always through Tor, no phone number. Add friends by QR code or a one-time invite; watch videos together in sync.",before:menu},
     {sel:"#m-echo",title:"Echo — your private social network",text:"Post to close friends or circles you choose, or go public. Your feed is tuned on your phone, not by someone else’s algorithm.",before:menu},
     {sel:"#m-set",title:"Settings & the guide",text:"Make Hush yours: looks, security level, bottom bar, background play. At the bottom, Settings › Help has the full guide to every feature and this walkthrough.",before:menu},
@@ -324,6 +326,9 @@ gesture($("#top"),{left:()=>step(1),right:()=>step(-1),
 gesture($("#tb-tabs"),{tap:()=>openSwitcher(),long:()=>{if(T()?.native){vibe();inv("page_action",{action:"wheel"}).catch(()=>{})}}});
 $("#tb-back").onclick=()=>inv("nav",{action:"back"});$("#tb-fwd").onclick=()=>inv("nav",{action:"fwd"});$("#tb-new").onclick=()=>newTab();
 $("#tb-menu").onclick=()=>{drawMenu();show("menu")};
+// One tap: your assistant. The button shows its initial.
+$("#tb-ai").onclick=()=>{vibe&&vibe();openAssistant()};
+const aiBtn=()=>{try{const n=HX.aiName();$("#tb-ai .tb-av").textContent=(n.trim()[0]||"A").toUpperCase();$("#tb-ai").setAttribute("aria-label",n)}catch(e){}};addEventListener("hush-ai-name",aiBtn);setTimeout(aiBtn,0);
 gesture($("#tabs-btn"),{tap:()=>openSwitcher(),long:()=>{if(T()?.native){vibe();inv("page_action",{action:"wheel"}).catch(()=>{})}else actions("Tabs",[["New tab",()=>newTab()],["New private tab",()=>newTab(true)],["Close this tab",()=>closeTab(cur)]])}});
 gesture($("#menu-btn"),{tap:()=>{drawMenu();show("menu")},long:()=>T()?.native&&findMode(true)});
 gesture($("#shield"),{tap:()=>{if(T()?.native){drawSite();show("site")}},long:()=>quickShield()});
@@ -373,7 +378,7 @@ window.__hushEvent=(name,d)=>{
     if(d.state==="finished"&&t.id===cur){const n=HX.tabNote.get(d.url);if(n)toast("📝 "+n.slice(0,90))}
     if(d.state==="finished"){if(!t.priv&&d.url.startsWith("http"))inv("history_add",{url:d.url,title:t.title||bare(d.url)}).catch(()=>{});saveSession()}
     if(d.state==="started"&&!torOn&&/^https?:/.test(d.url)&&listHas("tor_sites",bare(d.url))){setTor(true);toast("🧅 Tor mode on — you set this site to always use Tor")}
-    if(t.id===cur){progress(d.state==="started");if(d.state==="started")toolsShow(true);render()}}
+    if(t.id===cur){progress(d.state==="started");toolsShow(true);render();requestAnimationFrame(insets)}}
   else if(name==="download"){
     if(d.state==="started"){downloads.unshift({name:d.name,state:"started"});toast("Downloading "+d.name+" — see notifications")}
     else{downloads.unshift({name:d.name,state:"failed"});toast("Download failed"+(d.error?": "+d.error:""))}
@@ -625,7 +630,9 @@ function drawSite(){const el=$("#site"),t=T(),h=hostOf(t.url),off=allow.has(h),s
     if(v==="auto")delete state.site_dark[h];else state.site_dark[h]=v==="on";applyDarkNow();drawSite()});
   $("#st-read").onclick=()=>{show(null);inv("page_action",{action:"reader"})};$("#st-find").onclick=()=>{show(null);findMode(true)};$("#st-copy").onclick=()=>copy(t.url)}
 
-function openAssistant(){$("#xs").innerHTML=head(esc(HX.aiName()));const d=document.createElement("div");$("#xs").append(d);wire($("#xs"));HX.assistant(d,{pageText:()=>native("pageText").then(r=>r&&r.text||"")});show("xs")}
+function openAssistant(run){const x=$("#xs");x.innerHTML="";x.style.padding="0";const d=document.createElement("div");d.style.cssText="flex:1;min-height:0;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)";x.append(d);
+  const restore=()=>{x.style.padding=""};const obs=new MutationObserver(()=>{if(!x.classList.contains("on")){restore();obs.disconnect()}});obs.observe(x,{attributes:true,attributeFilter:["class"]});
+  HX.assistant(d,{pageText:()=>native("pageText").then(r=>r&&r.text||""),pageInfo:()=>{const t=T();return t&&/^https?:/.test(t.url)&&!t.priv?{host:hostOf(t.url).replace(/^www\./,"")}:null},close:()=>show(null),run});show("xs")}
 function openCmd(){vibe();const el=$("#cmd");
   const ACT=[["New tab",()=>newTab()],["New private tab",()=>newTab(true)],["Find in page",()=>{show(null);findMode(true)}],["Reader view",()=>{show(null);inv("page_action",{action:"reader"})}],
     ["Dark mode for websites: "+(pref("force_dark")==="true"?"on → off":"off → on"),async()=>{await setPref("force_dark",pref("force_dark")==="true"?"false":"true");applyDarkNow();show(null)}],

@@ -452,8 +452,9 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                 try { val d = Native.darkJs(u); if (d.isNotEmpty()) v.evaluateJavascript(d, null) } catch (e: Throwable) {}
                 emitUrl(t, v, "finished")
                 if (splitIds.isNotEmpty() && t.id in panes()) applySplit()
+                barCheck(t, v)
             }
-            override fun doUpdateVisitedHistory(v: WebView, u: String, reload: Boolean) { t.url = u; emitUrl(t, v, "finished") }
+            override fun doUpdateVisitedHistory(v: WebView, u: String, reload: Boolean) { t.url = u; emitUrl(t, v, "finished"); barCheck(t, v) }
         }
         w.webChromeClient = object : WebChromeClient() {
             override fun onCreateWindow(v: WebView, d: Boolean, g: Boolean, m: android.os.Message?) = false
@@ -655,6 +656,10 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         floatId?.let { tabs[it]?.box }?.takeIf { it.parent != null && floatId != active }?.bringToFront()
     }
 
+    /** Bottom bar: a page that can't scroll never sends "scrolled up", so the bar could stay hidden. After a page
+     *  (or an in-page change like YouTube's) settles, if it can't scroll — or it's back at the top — show the bar. */
+    private fun barCheck(t: Tab, v: WebView) { v.postDelayed({ if (t.id == active && (!v.canScrollVertically(1) || v.scrollY < dp(30)))
+        emit("scroll", JSObject().apply { put("id", t.id); put("dir", -1); put("y", 0) }) }, 700) }
     private val splitIds = mutableListOf<String>(); private var splitFrac = 0.5f; private var splitBar: android.view.View? = null
     private var splitMode = "grid"; private var splitAwake = true
     /** In-pane fullscreen videos (split screen): tab id → (holder view on top of that pane, the page's callback). */

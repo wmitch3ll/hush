@@ -105,6 +105,8 @@ input.txt{width:100%;margin-top:6px}
 kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:4px;padding:1px 5px;color:var(--mute)}
 #toast{position:absolute;background:var(--ink);color:var(--bg);padding:7px 12px;border-radius:99px;font-size:12px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:5}
 #toast.on{opacity:1}
+.ai-av{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;font:700 12px/22px system-ui;font-style:normal;color:#fff;background:linear-gradient(135deg,#6d5efc,#22b8cf)}
+#dockv{height:100%}
 </style><link rel=stylesheet href="hush.css">
 
 <div id=tabsbar>
@@ -129,6 +131,7 @@ kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:
   <span id=lctl aria-label="Read aloud controls"><button id=l-prev title="Previous paragraph" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M6 5v14M18 6l-9 6 9 6z"/></svg></button><button id=l-pp title="Pause" aria-label="Pause"><svg viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></svg></button><button id=l-next title="Next paragraph" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M18 5v14M6 6l9 6-9 6z"/></svg></button><b id=l-rate title="Speed">1×</b><button id=l-stop title="Stop reading" aria-label="Stop"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>
   <span id=np><span id=np-t title="Go to this tab"></span><button id=np-pp title="Pause / play" aria-label="Pause or play"></button><button id=np-mini title="Mini player" aria-label="Mini player"><svg viewBox="0 0 24 24"><rect x=3 y=5 width=18 height=14 rx=2 /><rect x=12 y=11 width=7 height=6 rx=1 /></svg></button><button id=np-x title="Stop" aria-label="Stop"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span><span id=tog></span><button id=mnote title="Friends’ notes on this page" aria-label="Notes on this page">📌 <b></b></button>
   <button id=echob title="Echo — private-first social (Ctrl+Shift+E)" aria-label="Echo"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 8-8M8 12a4 4 0 0 1 4-4M20 12a8 8 0 0 1-8 8M16 12a4 4 0 0 1-4 4"/><circle cx=12 cy=12 r=1.5 /></svg><b id=echocnt class=badge></b></button>
+  <button id=aib title="AI assistant (Ctrl+Shift+Space)" aria-label="AI assistant"><i class=ai-av>A</i></button>
   <button id=msgb title="Murmur — private messages through Tor (Ctrl+Shift+M)" aria-label="Murmur messages"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg><b id=msgcnt class=badge></b></button>
   <button id=newid title="New identity: fresh Tor circuits, then reload" aria-label="New Tor identity"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/><circle cx=12 cy=12 r=2 /></svg></button>
   <button id=onion title="Open this page in a Tor tab (Ctrl+Shift+O)" aria-label="Tor"><svg viewBox="0 0 24 24"><circle cx=12 cy=13 r=8 /><path d="M12 5c-3 2-4 5-4 8s1 6 4 8M12 5c3 2 4 5 4 8s-1 6-4 8M12 5v-2"/></svg></button>
@@ -147,7 +150,7 @@ kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:
   <div id=home></div><div id=bms></div>
   <div id=panel class=panel hidden></div>
 </div>
-<aside id=dock aria-label="Hush Hub"><div id=dockh><button data-hub=murmur title="Murmur — messages (Ctrl+Shift+M)"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg><b class=badge id=dmc></b></button><button data-hub=echo title="Echo — social (Ctrl+Shift+E)"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 8-8M8 12a4 4 0 0 1 4-4M20 12a8 8 0 0 1-8 8M16 12a4 4 0 0 1-4 4"/><circle cx=12 cy=12 r=1.5 /></svg><b class=badge id=dec></b></button><button data-hub=notes title="Notes to self"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4"/></svg></button><button data-hub=downloads title="Downloads (Ctrl+J)"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></button><button data-hub=reading title="Reading list"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg></button><span style="flex:1"></span><button data-hub=pop title="Open full size"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-8 8M10 20H4v-6"/></svg></button><button data-hub=close title="Close the dock (Ctrl+Shift+H)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><div id=dockb></div><i id=dockr title="Drag to resize"></i></aside>
+<aside id=dock aria-label="Hush Hub"><div id=dockh><button data-hub=ai title="AI assistant (Ctrl+Shift+Space)"><i class=ai-av style="width:20px;height:20px;font-size:11px;line-height:20px">A</i></button><button data-hub=murmur title="Murmur — messages (Ctrl+Shift+M)"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg><b class=badge id=dmc></b></button><button data-hub=echo title="Echo — social (Ctrl+Shift+E)"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 8-8M8 12a4 4 0 0 1 4-4M20 12a8 8 0 0 1-8 8M16 12a4 4 0 0 1-4 4"/><circle cx=12 cy=12 r=1.5 /></svg><b class=badge id=dec></b></button><button data-hub=notes title="Notes to self"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4"/></svg></button><button data-hub=downloads title="Downloads (Ctrl+J)"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></button><button data-hub=reading title="Reading list"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg></button><span style="flex:1"></span><button data-hub=pop title="Open full size"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-8 8M10 20H4v-6"/></svg></button><button data-hub=close title="Close the dock (Ctrl+Shift+H)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><div id=dockb></div><i id=dockr title="Drag to resize"></i></aside>
 <div id=toast role=status></div>
 <script src="qr.js"></script>
 <script src="extras.js"></script>
@@ -308,7 +311,7 @@ function startTour(){touring=true;closePanel(true);sync();const u0=(tab(cur)||{}
     {title:'Private tabs & panic',text:'Ctrl+Shift+N opens a private tab that keeps nothing. Right-click any tab › Self-destruct to have it close and wipe itself later. Ctrl+Shift+X is the panic button: every private and Tor tab closes, Murmur and Echo lock, and Tor gets a new identity.',place:'center'},
     {title:'Commands: the fast way',text:'Ctrl+K finds anything — tabs, bookmarks, friends, settings and actions like “split layout”, “scene”, “reader”, “sleep timer” or “assistant”.',doText:'Press Ctrl+K',place:'center',until:()=>panel==='pal'},
     // 4. Apps
-    {title:'Offline assistant',text:'Ctrl+K › Ask the assistant: summarize a page or ask questions with an AI that runs on this computer — nothing you read is sent anywhere. The model downloads once.',place:'center',before:()=>closePanel(true)},
+    {sel:'#aib',title:'Your AI assistant',text:'One click (or Ctrl+Shift+Space) opens it beside the page: summarize what you’re reading, ask about it, or ask anything. Name it whatever you like. Run it free on Groq (fast and smart) or fully private on this computer.',before:()=>closePanel(true)},
     {sel:'#msgb',title:'Murmur — private messages',text:'Chat, send photos and call other Hush users. End-to-end encrypted, always through Tor, no phone number. Add friends by QR code or a one-time invite; watch videos together in sync.'},
     {sel:'#echob',title:'Echo — your private social network',text:'Post to close friends or circles you choose, or go public. Your feed is tuned on your computer, not by someone else’s algorithm.'},
     {sel:'#gear',title:'Settings & the guide',text:'Make Hush yours: looks, Legacy tabs, security level, split layout. At the bottom, Settings › Help has the full guide to every feature and this walkthrough.'},
@@ -436,6 +439,7 @@ function shortcut(k){
   else if(k=='f11')inv('toggle_fullscreen');
   else if(k=='shift+o')torTab();
   else if(k=='shift+m')toggleDock('murmur');
+  else if(k=='shift+space')toggleDock('ai');
   else if(k=='shift+e')toggleDock('echo');
   else if(k=='shift+h')dockTab?closeDock():openDock('murmur');
   else if(k=='shift+x')panic();
@@ -497,7 +501,7 @@ const RENDER={ai:()=>HX.assistant($('#panel'),{pageText:()=>inv('page_text')}),b
   diag:()=>{const p=$('#panel');p.innerHTML=`<h2>Diagnostics ${closeBtn}</h2><p style="color:var(--mute);margin:-8px 0 12px">Recent internal events. A screenshot of this helps fix problems.</p><pre style="white-space:pre-wrap;font:12px ui-monospace,monospace;user-select:text">${esc(DIAG.join('\n')||'Nothing yet — open the tab bar or load a page, then come back.')}</pre>`;wire(p)},
   hub:()=>{},
   guide:()=>{const p=$('#panel');p.innerHTML='<div id=guidex style="padding:8px 6px"></div>';HUSH_GUIDE.open($('#guidex'),{mobile:false,done:()=>closePanel(),act:a=>{closePanel();
-    const m={cmd:'pal',tabs:null,site:'site',settings:'settings',split:null,msgs:'msg',echo:'echo',reading:'reading',gest:'gest',tor:'torinfo',assistant:'ai'}[a];
+    const m={cmd:'pal',tabs:null,site:'site',settings:'settings',split:null,msgs:'msg',echo:'echo',reading:'reading',gest:'gest',tor:'torinfo',assistant:null}[a];if(a=='assistant'){openDock('ai');return}
     if(m)openPanel(m);else toast(a=='split'?'Shift-click a tab in the side bar to split with it':'Your tabs are in the side bar')}})},
   tour:()=>{closePanel(true);setTimeout(startTour,50)},
   more:()=>{const p=$('#panel'),h=tbHidden(),t=tab(cur);p.innerHTML=`<h2>Tools ${closeBtn}</h2><div class=tools>${TB.filter(([id])=>id!='back'&&id!='fwd'&&id!='reload').map(([id,l])=>`<button class=tool data-t=${id} ${!t&&!['msgb','echob','dls','onion'].includes(id)?'disabled':''}>${$('#'+id).innerHTML.replace(/<b[^>]*class=[^>]*badge[^>]*>.*?<\/b>/g,'')}<span>${l}</span>${h.has(id)?'':'<em>in toolbar</em>'}</button>`).join('')}</div>
@@ -604,6 +608,7 @@ function openDock(t){if(t=='downloads'||t=='reading'){openPanel(t);return}closeP
   if(dockTab==t){return}HM.close();EC.close();dockTab=t;$('#dock').classList.add('on');
   document.querySelectorAll('#dockh [data-hub]').forEach(b=>b.classList.toggle('on',b.dataset.hub==t));
   const b=$('#dockb');b.innerHTML='<div id=dockv></div>';layout(true);
+  if(t=='ai'){const v=$('#dockv');v.style.height='100%';HX.assistant(v,{pageText:()=>inv('page_text'),pageInfo:()=>{const x=tab(cur);return x&&/^https?:/.test(x.url)&&!x.priv?{host:hostOf(x.url).replace(/^www\./,'')}:null},close:closeDock,run:window.__aiRun});window.__aiRun=null;return}
   if(t=='echo'){if(window.__ecPage){window.__ecPage=0;EC.openPage($('#dockv'))}else EC.open($('#dockv'))}else{HM.open($('#dockv'));if(t=='notes')setTimeout(()=>HM.api.openChat('self'),250)}}
 function closeDock(){if(!dockTab)return;HM.close();EC.close();dockTab=null;$('#dock').classList.remove('on');$('#dockb').textContent='';layout(true)}
 function toggleDock(t){dockTab==t?closeDock():openDock(t)}
@@ -611,7 +616,9 @@ $('#dockh').onclick=e=>{const b=e.target.closest('[data-hub]');if(!b)return;cons
   if(h=='close')closeDock();else if(h=='pop'){const t=dockTab;closeDock();openPanel(t=='echo'?'echo':'msg')}else openDock(h)};
 $('#dockr').onpointerdown=e=>{e.preventDefault();const x0=e.clientX,w0=+pref('dock_w')||380;const mv=m=>{state.settings.ui.dock_w=String(Math.max(300,Math.min(640,w0+(x0-m.clientX))));layout(true)};
   const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up);setPref('dock_w',state.settings.ui.dock_w)};addEventListener('pointermove',mv);addEventListener('pointerup',up)};
-$('#msgb').onclick=()=>toggleDock('murmur');setTimeout(()=>HM.boot(),1500);
+$('#msgb').onclick=()=>toggleDock('murmur');
+$('#aib').onclick=()=>toggleDock('ai');
+const aiBtn=()=>{try{const n=HX.aiName(),i=(n.trim()[0]||'A').toUpperCase();document.querySelectorAll('.ai-av').forEach(e=>e.textContent=i);$('#aib').title=n+' — AI assistant (Ctrl+Shift+Space)'}catch(e){}};addEventListener('hush-ai-name',aiBtn);setTimeout(aiBtn,0);setTimeout(()=>HM.boot(),1500);
 const EC=HushEcho({M:HM.api,toast,mobile:false,page:()=>{const t=tab(cur);return t&&/^https?:/.test(t.url)&&!t.priv?{url:t.url}:null},open:u=>{closePanel();openTab(u)},close:()=>{closePanel();closeDock()},openMurmur:pk=>{closePanel(true);closeDock();openDock('murmur');if(pk)setTimeout(()=>HM.api.openChat(pk),300)},
   badge:n=>{for(const id of ['#echocnt','#dec']){$(id).textContent=n>99?'99+':n;$(id).style.display=n?'grid':'none'}}});
 $('#echob').onclick=()=>toggleDock('echo');setTimeout(()=>{EC.boot();setInterval(noteDraw,4000)},3000);setTimeout(()=>HX.ai.start(),6000);
@@ -649,7 +656,7 @@ document.addEventListener('click',e=>{if(e.target.id=='s-arc')ACTIONS()[0][2]()}
 let sleepT=null;function sleepTimer(){const t=tab(cur);if(!t)return toast('Open a video first');const m=prompt('Pause the video in how many minutes? (0 = cancel)',sleepT?'0':'30');if(m==null)return;clearTimeout(sleepT);sleepT=null;
   const n=+m;if(!(n>0))return toast('Sleep timer off');const id=t.id;sleepT=setTimeout(()=>{inv('page_action',{action:'media-pause',tab:id}).catch(()=>{});sleepT=null;toast('😴 Sleep timer: paused')},n*60000);toast('😴 Pausing in '+n+' min')}
 const ACTIONS=()=>[
-  [`Ask ${HX.aiName()}`,'Your AI assistant, on this computer',()=>openPanel('ai')],[`${HX.aiName()}: summarize this page`,'On this computer',()=>{openPanel('ai');setTimeout(()=>$('#panel [data-q=sum]')?.click(),200)}],
+  [`Ask ${HX.aiName()}`,'Your AI assistant · Ctrl+Shift+Space',()=>{closePanel();openDock('ai')}],[`${HX.aiName()}: summarize this page`,'Your AI assistant',()=>{closePanel();window.__aiRun='sum';closeDock();openDock('ai')}],
   ['Sleep timer for this video','',()=>{closePanel();sleepTimer()}],
   ['Split layout: '+(pref('split_mode')=='spot'?'Spotlight → Grid':'Grid → Spotlight'),'Spotlight: the tab you click gets the big spot',async()=>{closePanel();await setPref('split_mode',pref('split_mode')=='spot'?'grid':'spot');splitModeSync()}],
   ['Keep screen awake in split view: '+(pref('split_awake')!='false'?'on':'off'),'While a split is open',async()=>{closePanel();await setPref('split_awake',pref('split_awake')!='false'?'false':'true');splitModeSync()}],

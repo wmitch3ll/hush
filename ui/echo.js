@@ -278,11 +278,20 @@ window.HushEcho = function (A) {
   // see your IP), shown with where they came from, and "Open" takes you to the original to reply or like there.
   // No pictures are loaded from those servers (that would reveal you); posts with photos say so.
   const OPEN_CATS = {
-    News: ['bsky:nytimes.com', 'bsky:npr.org', 'bsky:apnews.com', 'bsky:washingtonpost.com', 'bsky:theguardian.com', 'masto:ProPublica@newsie.social'],
-    Sports: ['bsky:theathletic.bsky.social', 'bsky:espn.com', 'bsky:nfl.bsky.social', 'bsky:nba.bsky.social'],
-    Tech: ['bsky:theverge.com', 'bsky:wired.com', 'bsky:arstechnica.com', 'masto:eff@mastodon.social', 'masto:torproject@mastodon.social', 'masto:Gargron@mastodon.social'],
+    // News: outlets generally rated center or center-right by media-bias raters (AllSides / Ad Fontes).
+    News: ['bsky:reuters.com', 'bsky:thehill.com', 'bsky:newsweek.com', 'bsky:axios.com', 'bsky:newsnationnow.com', 'bsky:forbes.com', 'bsky:realclearpolitics.com',
+      'bsky:thedispatch.com', 'bsky:washingtonexaminer.com', 'bsky:nationalreview.com', 'bsky:reason.com', 'bsky:bbcnews.bsky.social'],
+    Sports: ['bsky:theathletic.bsky.social', 'bsky:awfulannouncing.bsky.social', 'bsky:mlbtraderumors.bsky.social', 'bsky:splitzoneduo.com', 'bsky:redditcfb.com', 'bsky:cfbnumbers.bsky.social',
+      'bsky:dimeuproxx.bsky.social', 'bsky:marcjspears.bsky.social', 'bsky:howardbeck.bsky.social', 'bsky:jonbois.bsky.social', 'bsky:warriors.bsky.social', 'bsky:ny-knicks.bsky.social',
+      'bsky:bigskyconf.bsky.social', 'bsky:espn.com', 'bsky:nba.com', 'bsky:mlb.com'],
+    Business: ['bsky:bloomberg.com', 'bsky:reuters.com', 'bsky:wsj.com', 'bsky:ft.com', 'bsky:economist.com', 'bsky:cnbc.com', 'bsky:fortune.com', 'bsky:businessinsider.com', 'bsky:marketwatch.com', 'bsky:techcrunch.com'],
+    Gaming: ['bsky:videogameschronicle.com', 'bsky:playstation.com', 'bsky:nintendolife.com', 'bsky:pushsquare.com', 'bsky:purexbox.com', 'bsky:timeextension.com',
+      'bsky:jeffgerstmann.com', 'bsky:nintendousa.bsky.social', 'bsky:limitedrungames.bsky.social', 'bsky:gamingalexandria.bsky.social', 'bsky:capcomart.bsky.social'],
+    Tech: ['bsky:theverge.com', 'bsky:arstechnica.com', 'masto:eff@mastodon.social', 'masto:torproject@mastodon.social', 'masto:Gargron@mastodon.social'],
     Science: ['bsky:nasa.gov', 'bsky:science.org', 'bsky:newscientist.com', 'bsky:natgeo.com'],
-    Fun: ['bsky:theonion.com', 'bsky:xkcd.com', 'bsky:mcsweeneys.net'] };
+    Fun: ['bsky:xkcd.com'] };
+  // Only show accounts that are actually active: posts older than 30 days are hidden from Explore.
+  const FRESH = 30 * 86400e3;
   const openAcc = () => LS.get('openFollow', []), openPosts = () => LS.get('openPosts', {}), openSet = v => LS.set('openFollow', [...new Set(v)].slice(0, 200));
   const invoke = (c, a) => window.__TAURI__.core.invoke(c, a);
   const otxt = h => { try { const d = new DOMParser().parseFromString(String(h).replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>\s*<p>/gi, '\n\n'), 'text/html'); return d.body.textContent || ''; } catch (_) { return ''; } };
@@ -322,8 +331,8 @@ window.HushEcho = function (A) {
       ${o.text ? `<div class=t>${linkify(o.text)}</div>` : ''}${o.photos || o.video ? `<div class=ec-page data-u="${esc(o.url)}">${o.video ? '▶ Video' : '📷 ' + o.photos + ' photo' + (o.photos > 1 ? 's' : '')} — open to view</div>` : ''}
       <div class=ec-act><span style="color:var(--mute);font-size:12.5px">💬 ${o.replies} · ↻ ${o.reposts} · ♥ ${o.likes}</span><span style="flex:1"></span>
         <button data-ofollow="${esc(o.acc)}" class="${fol ? 'on' : ''}" style="font-size:12.5px">${fol ? '✓ Following' : '＋ Follow'}</button><button data-u="${esc(o.url)}" style="font-size:12.5px">Open ↗</button></div></div></div>`; }
-  function openSection() { const cat = view.ocat || 'News', accs = cat === 'Following' ? openAcc() : (OPEN_CATS[cat] || []);
-    const list = Object.values(openPosts()).filter(o => accs.includes(o.acc)).sort((a, b) => b.at - a.at).slice(0, 60);
+  function openSection() { const cat = OPEN_CATS[view.ocat] || view.ocat === 'Following' ? view.ocat : 'Sports', accs = cat === 'Following' ? openAcc() : (OPEN_CATS[cat] || []);
+    const list = Object.values(openPosts()).filter(o => accs.includes(o.acc) && (cat === 'Following' || Date.now() - o.at < FRESH)).sort((a, b) => b.at - a.at).slice(0, 60);
     setTimeout(() => openRefresh(accs), 0);
     return `<div style="padding:12px 14px 0;font:600 12px system-ui;color:var(--mute)">FROM THE OPEN WEB · Bluesky & Mastodon, read through Tor</div>
       <div class=ec-seg style="padding:6px 14px">${[...Object.keys(OPEN_CATS), ...(openAcc().length ? ['Following'] : [])].map(c => `<button data-ocat="${c}" class="${c === cat ? 'on' : ''}">${c}</button>`).join('')}<button data-oadd>＋ Add account</button></div>

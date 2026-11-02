@@ -1,8 +1,19 @@
 // Floating video: the tab shrinks to a small player you can drag anywhere and resize and shows only its playing video, with small controls.
 // Rust appends __hushFloat(true|false). Controls report back by navigating to hush-float://<action> (cancelled in Rust/Kotlin).
+// Top layer: lift the video above EVERYTHING on the page (headers, overlays, shadow-DOM parts that CSS can't hide),
+// over a black backdrop, without moving it in the page — so the site's player keeps working.
+const __hushSolo = window.__hushSolo || (window.__hushSolo = (v, on) => { try {
+  if (!document.getElementById("hush-solo-css")) { const c = document.createElement("style"); c.id = "hush-solo-css";
+    c.textContent = "video[data-hush-solo]:popover-open{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;min-width:0!important;min-height:0!important;margin:0!important;padding:0!important;border:0!important;object-fit:contain!important;background:#000!important;transform:none!important;display:block!important;visibility:visible!important;opacity:1!important;clip-path:none!important;color:inherit}video[data-hush-solo]::backdrop{background:#000}";
+    (document.head || document.documentElement).append(c); }
+  if (on) { if (!v.isConnected) return false; if (!v.hasAttribute("popover")) { v.setAttribute("popover", "manual"); v.setAttribute("data-hush-solo", ""); }
+    if (v.hasAttribute("data-hush-solo") && !v.matches(":popover-open")) v.showPopover(); return true; }
+  if (v.hasAttribute("data-hush-solo")) { try { v.hidePopover(); } catch (_) {} v.removeAttribute("popover"); v.removeAttribute("data-hush-solo"); }
+  return true; } catch (_) { return false; } });
 window.__hushFloat = window.__hushFloat || ((on) => {
   const old = document.getElementById("hush-float"); if (old) old.remove();
   const css0 = document.getElementById("hush-float-css"); if (css0) css0.remove();
+  document.querySelectorAll("video[data-hush-float]").forEach(x => __hushSolo(x, false));
   document.querySelectorAll("[data-hush-float],[data-hush-float-anc]").forEach(e => { e.removeAttribute("data-hush-float"); e.removeAttribute("data-hush-float-anc"); });
   if (!on) { window.dispatchEvent(new Event("resize")); return; }
   const vids = [...document.querySelectorAll("video")];
@@ -17,6 +28,7 @@ window.__hushFloat = window.__hushFloat || ((on) => {
     "[data-hush-float-anc]{visibility:visible!important;transform:none!important;filter:none!important;contain:none!important;will-change:auto!important;perspective:none!important;backdrop-filter:none!important;clip-path:none!important;mask:none!important}" +
     "video[data-hush-float]{visibility:visible!important;position:fixed!important;inset:0!important;left:0!important;top:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;min-width:0!important;min-height:0!important;z-index:2147483646!important;object-fit:contain!important;background:#000!important;transform:none!important;margin:0!important;padding:0!important;border:0!important}";
   (document.head || document.documentElement).append(st);
+  __hushSolo(v, true);
   const go = a => { location.href = "hush-float://" + a; };
   const ui = document.createElement("hush-float"); ui.id = "hush-float";
   const sh = ui.attachShadow({ mode: "closed" });
@@ -30,6 +42,7 @@ window.__hushFloat = window.__hushFloat || ((on) => {
     <div class="b c"><button data-a=play title="Play / pause">${v.paused ? "▶" : "❚❚"}</button></div>
     <div class="g" title="Drag to resize"></div></div>`;
   document.documentElement.append(ui);
+  try { ui.setAttribute("popover", "manual"); ui.style.cssText = "all:initial;position:fixed;inset:0;margin:0;padding:0;border:0;background:transparent;width:100vw;height:100vh;overflow:visible"; ui.showPopover(); } catch (_) {}
   const o = sh.querySelector(".o"), pb = sh.querySelector("[data-a=play]"), grip = sh.querySelector(".g");
   const sync = () => { pb.textContent = v.paused ? "▶" : "❚❚"; };
   v.addEventListener("play", sync); v.addEventListener("pause", sync);

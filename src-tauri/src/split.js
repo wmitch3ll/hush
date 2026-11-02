@@ -2,12 +2,23 @@
 // controls (play, seek, volume, fullscreen). The half you last tapped is "focused": it gets a highlight ring
 // and the sound; the other half keeps playing muted. Text sites are left as they are.
 // Rust/Kotlin appends __hushSplit({on, focus}). A tap on an unfocused half reports hush-split://focus (cancelled natively).
+// Top layer: lift the video above EVERYTHING on the page (headers, overlays, shadow-DOM parts that CSS can't hide),
+// over a black backdrop, without moving it in the page — so the site's player keeps working.
+const __hushSolo = window.__hushSolo || (window.__hushSolo = (v, on) => { try {
+  if (!document.getElementById("hush-solo-css")) { const c = document.createElement("style"); c.id = "hush-solo-css";
+    c.textContent = "video[data-hush-solo]:popover-open{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;min-width:0!important;min-height:0!important;margin:0!important;padding:0!important;border:0!important;object-fit:contain!important;background:#000!important;transform:none!important;display:block!important;visibility:visible!important;opacity:1!important;clip-path:none!important;color:inherit}video[data-hush-solo]::backdrop{background:#000}";
+    (document.head || document.documentElement).append(c); }
+  if (on) { if (!v.isConnected) return false; if (!v.hasAttribute("popover")) { v.setAttribute("popover", "manual"); v.setAttribute("data-hush-solo", ""); }
+    if (v.hasAttribute("data-hush-solo") && !v.matches(":popover-open")) v.showPopover(); return true; }
+  if (v.hasAttribute("data-hush-solo")) { try { v.hidePopover(); } catch (_) {} v.removeAttribute("popover"); v.removeAttribute("data-hush-solo"); }
+  return true; } catch (_) { return false; } });
 window.__hushSplit = window.__hushSplit || (() => {
   let on = false, focus = false, cur = null, keep = null;
   const area = v => v.clientWidth * v.clientHeight;
   const unfill = () => {
     document.getElementById("hush-split-css")?.remove(); keep?.disconnect(); keep = null;
     document.querySelectorAll("[data-hush-split],[data-hush-split-anc]").forEach(e => { e.removeAttribute("data-hush-split"); e.removeAttribute("data-hush-split-anc"); });
+    if (cur) __hushSolo(cur, false);
     if (cur && cur.__hushCtl === false) cur.controls = false; cur = null; window.dispatchEvent(new Event("resize"));
   };
   const fill = v => {
@@ -19,9 +30,11 @@ window.__hushSplit = window.__hushSplit || (() => {
       "[data-hush-split-anc]{visibility:visible!important;transform:none!important;filter:none!important;contain:none!important;will-change:auto!important;perspective:none!important;clip-path:none!important;mask:none!important}" +
       "video[data-hush-split]{visibility:visible!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;z-index:2147483640!important;object-fit:contain!important;background:#000!important;transform:none!important;margin:0!important;border:0!important}";
     (document.head || document.documentElement).append(st);
+    __hushSolo(v, true);
     // The browser's own full controls; some players remove them again, so keep them on.
     v.__hushCtl = v.controls; v.controls = true;
     keep = new MutationObserver(() => { if (on && !v.controls) v.controls = true; }); keep.observe(v, { attributes: true, attributeFilter: ["controls"] });
+    ring();   // the highlight ring goes above the lifted video
   };
   const pick = () => { const vids = [...document.querySelectorAll("video")].filter(v => area(v) > 0 || !v.paused);
     const v = vids.find(x => !x.paused && x.readyState > 2) || vids.sort((a, b) => area(b) - area(a))[0];
@@ -34,7 +47,8 @@ window.__hushSplit = window.__hushSplit || (() => {
   const ring = () => { let r = document.getElementById("hush-split-ring");
     if (!on || !focus) { r?.remove(); return; }
     if (!r) { r = document.createElement("hush-split-ring"); r.id = "hush-split-ring"; document.documentElement.append(r); }
-    r.style.cssText = "all:initial;position:fixed;inset:0;z-index:2147483647;pointer-events:none;box-shadow:inset 0 0 0 3px #4da3ff;border-radius:2px;visibility:visible"; };
+    r.style.cssText = "all:initial;position:fixed;inset:0;z-index:2147483647;pointer-events:none;box-shadow:inset 0 0 0 3px #4da3ff;border-radius:2px;visibility:visible;margin:0;padding:0;border:0;background:transparent;width:100vw;height:100vh";
+    try { if (!r.hasAttribute("popover")) r.setAttribute("popover", "manual"); if (r.matches(":popover-open")) r.hidePopover(); r.showPopover(); } catch (_) {} };
   document.addEventListener("play", e => { if (!on) return; e.target.muted = !focus; if (e.target.tagName === "VIDEO" && cur !== e.target && (area(e.target) > 0)) fill(e.target); }, true);
   // Keep every video playing: when another half takes the sound, the phone pauses the others (audio focus).
   // A pause you didn't make yourself (no tap in this half just before) is undone; the video carries on muted.
@@ -55,5 +69,5 @@ window.__hushSplit = window.__hushSplit || (() => {
     if (!on) { unfill(); ring(); sound(); return; }
     sound(); ring(); const v = pick(); if (v) fill(v);
     // Players swap their <video> element (ads, next episode): keep sound, fill and controls right.
-    tick = setInterval(() => { if (!on) return; sound(); if (!cur || !cur.isConnected) { const nv = pick(); if (nv) fill(nv); } }, 800); };
+    tick = setInterval(() => { if (!on) return; sound(); if (!cur || !cur.isConnected) { const nv = pick(); if (nv) fill(nv); } else if (!cur.matches(":popover-open")) __hushSolo(cur, true); }, 800); };
 })();
