@@ -242,7 +242,7 @@ window.HushEcho = function (A) {
     return all.filter(p => !expired(p) && !p.reply && !p.moment && (p.pk === me() || fr.has(p.pk) || fo.has(p.pk) || (p.boostedBy && (fo.has(p.boostedBy) || fr.has(p.boostedBy)))) && !M.contacts()[p.pk]?.blocked)
       .sort((a, b) => (b.boostAt || b.at) - (a.boostAt || a.at)).slice(0, 300);
   }
-  async function open(el) { view.open = true; view.el = el; el.innerHTML = '<div class=hm><div class=hm-empty>…</div></div>';
+  async function open(el) { view.open = true; view.el = el; el.innerHTML = '<div class="hm hm-echo"><div class=hm-empty>…</div></div>';
     if (!await M.ready()) { view.screen = 'nomurmur'; return paint(); }
     M.gate(el, () => { if (view.el !== el) return; M.start(); if (!prof()) view.screen = 'setup'; else { subscribe(); keepAlive(); view.catch = catchUp(); } paint(); }); }
   function close() { view.open = false; view.el = null; M.unreq('echo-x'); M.unreq('echo-s'); }
@@ -255,12 +255,12 @@ window.HushEcho = function (A) {
     wire(); M.hydrate(view.el); }
   function go(screen, extra = {}) { Object.assign(view, { screen, jump: true }, extra); paint(); }
   function drawNoMurmur() {
-    view.el.innerHTML = `<div class=hm>${head('echo.', closeB())}<div class=hm-body><div class=hm-card style="text-align:center"><div style="font-size:40px">📣</div><h3>Set up your Hush ID first</h3>
+    view.el.innerHTML = `<div class="hm hm-echo">${head('echo.', closeB())}<div class=hm-body><div class=hm-card style="text-align:center"><div style="font-size:40px">📣</div><h3>Set up your Hush ID first</h3>
       <p>Echo uses the same private Hush ID as Murmur, so your friends there are your friends here. It takes ten seconds.</p><button class=hm-btn id=ec-m>Open Murmur</button></div></div></div>`;
     view.el.querySelector('#ec-m').onclick = () => A.openMurmur && A.openMurmur(); }
   function drawSetup() {
     const p = prof() || { name: M.profile().name || '', bio: '', public: false };
-    view.el.innerHTML = `<div class=hm>${head(view.screen === 'edit' ? 'Edit profile' : 'echo.', view.screen === 'edit' ? '' : closeB(), view.screen === 'edit' ? backB : '')}<div class=hm-body>
+    view.el.innerHTML = `<div class="hm hm-echo">${head(view.screen === 'edit' ? 'Edit profile' : 'echo.', view.screen === 'edit' ? '' : closeB(), view.screen === 'edit' ? backB : '')}<div class=hm-body>
       ${view.screen === 'edit' ? '' : `<div class=hm-card style="text-align:center"><div style="font:300 34px ui-serif,Georgia,serif">echo.</div><p><b>Share with friends. Privately by default.</b></p>
         <p>Posts go only to your Murmur friends, encrypted — nobody else, not even the relays, can read them. You can make your profile public later if you want to be found.</p></div>`}
       <div class=hm-card><h3>Your profile</h3><input class=hm-in id=ec-n maxlength=40 placeholder="Name" value="${esc(p.name)}"><textarea class=hm-in id=ec-b rows=3 maxlength=300 placeholder="Bio (optional)">${esc(p.bio)}</textarea>
@@ -348,7 +348,7 @@ window.HushEcho = function (A) {
     let body = '';
     if (view.tab === 'home') { const f = tune(feed()), fo = openAcc(); if (fo.length) setTimeout(() => openRefresh(fo), 0);
       const mix = [...f.map(p => ({ at: p.boostAt || p.at, h: () => card(p) })), ...Object.values(openPosts()).filter(o => fo.includes(o.acc)).map(o => ({ at: o.at, h: () => ocard(o) }))].sort((a, b) => b.at - a.at).slice(0, 300);
-      body = homeTop() + (mix.map(x => x.h()).join('') || (M.status() !== 'on' ? '<div class=sk-row><div class="sk c"></div><div style="flex:1"><div class="sk l"></div><div class="sk l2"></div></div></div>'.repeat(3) : '') + `<div class=hm-empty><svg class=empty-art viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=1.2><circle cx=12 cy=12 r=3/><path d="M5.6 18.4a9 9 0 0 1 0-12.8M18.4 5.6a9 9 0 0 1 0 12.8M8.5 15.5a5 5 0 0 1 0-7M15.5 8.5a5 5 0 0 1 0 7"/></svg><b>Your feed is quiet</b>Posts from your Murmur friends and people you follow show up here. Tap ✎ to post something — it goes to friends only unless you choose Public.</div>`); }
+      body = homeTop() + (mix.map(x => x.h()).join('') || (M.status() !== 'on' ? '<div class=sk-row><div class="sk c"></div><div style="flex:1"><div class="sk l"></div><div class="sk l2"></div></div></div>'.repeat(3) : '') + `<div class=hm-empty><svg class=empty-art viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=1.2><circle cx=12 cy=12 r=3/><path d="M5.6 18.4a9 9 0 0 1 0-12.8M18.4 5.6a9 9 0 0 1 0 12.8M8.5 15.5a5 5 0 0 1 0-7M15.5 8.5a5 5 0 0 1 0 7"/></svg><b>Your feed is quiet</b>Posts from your Murmur friends and accounts you follow show up here.<div class=hm-cta><button class=hm-btn data-gotab=explore>Find accounts to follow</button><button class="hm-btn ghost" data-compose>Write a post</button></div></div>`); }
     else if (view.tab === 'explore') { const pub = Object.values(posts()).filter(p => p.aud === 'public' && !expired(p) && !p.reply && !p.moment && !M.contacts()[p.pk]?.blocked).sort((a, b) => b.at - a.at).slice(0, 200);
       const tr = trending(), comms = LS.get('comms', []), packs = Object.values(LS.get('packs', {}));
       const sel = view.comm, list = sel ? Object.values(posts()).filter(p => p.comm === sel && !expired(p) && !p.reply).sort((a, b) => b.at - a.at) : pub;
@@ -363,7 +363,7 @@ window.HushEcho = function (A) {
     else { const p = prof(), mine = Object.values(posts()).filter(x => x.pk === me() && !expired(x)).sort((a, b) => b.at - a.at);
       body = `${banner(me())}<div class=ec-prof style="margin-top:-46px"><div style="display:flex;justify-content:center">${av(me(), 84)}</div><h2>${esc(p.name)}</h2>${M.myProfile().status ? `<p>${esc(M.myProfile().status)}</p>` : ''}<p>${tagOf(me())} · ${p.public ? '<span class=ec-pill>🌐 Public</span>' : '<span class=ec-pill>🔒 Friends only</span>'}</p>${p.bio ? `<p>${esc(p.bio)}</p>` : ''}
         <p style="font-size:12.5px">${M.friends().length} friends · ${follows().length} following</p><div style="display:flex;gap:8px;justify-content:center"><button class="hm-btn ghost" data-edit>Edit profile</button><button class="hm-btn ghost" data-circles>◎ Circles</button></div></div>` + (profileList(me(), true) || '') + (mine.length ? '' : '<div class=hm-empty>You haven’t posted yet.</div>'); }
-    view.el.innerHTML = `<div class=hm>${head('echo.', closeB())}${tabs()}<div class=hm-body>${body}</div><button class=ec-fab data-compose aria-label="New post">${IC.pen}</button></div>`;
+    view.el.innerHTML = `<div class="hm hm-echo">${head('echo.', closeB())}${tabs()}<div class=hm-body>${body}</div><button class=ec-fab data-compose aria-label="New post">${IC.pen}</button></div>`;
     const q = view.el.querySelector('#ec-q'); if (q) { let deb; q.oninput = () => { clearTimeout(deb); deb = setTimeout(() => { const v = q.value.trim(); if (v.length < 2 || v === view.q) return; view.q = v; view.results = 'loading';
         const pos = q.selectionStart; paint(); const q2 = view.el.querySelector('#ec-q'); if (q2) { q2.focus(); try { q2.setSelectionRange(pos, pos); } catch {} } search(view.q, () => { view.results = 'done'; if (view.tab === 'search') { const f = document.activeElement === view.el.querySelector('#ec-q'); paint(); if (f) view.el.querySelector('#ec-q')?.focus(); } }); }, 450); };
       q.onkeydown = e => { if (e.key === 'Enter') { view.q = q.value.trim(); if (!view.q) return; view.results = 'loading'; paint(); search(view.q, () => { view.results = 'done'; paint(); }); } }; if (!view.q) setTimeout(() => q.focus(), 50); }
@@ -388,7 +388,7 @@ window.HushEcho = function (A) {
   function notesFor(url) { const u = normUrl(url); if (!u) return []; const fr = new Set(M.friends()), fo = new Set(follows());
     return Object.values(posts()).filter(p => p.page === u && !expired(p) && (p.pk === me() || fr.has(p.pk) || fo.has(p.pk)) && !M.contacts()[p.pk]?.blocked).sort((a, b) => b.at - a.at); }
   function drawPage() { const pg = A.page && A.page(), u = view.pageUrl || pg?.url || '', l = notesFor(u);
-    view.el.innerHTML = `<div class=hm>${head('📌 ' + esc(hostOf(u)), '', backB)}<div class=hm-body><div style="padding:10px 14px;color:var(--mute);font-size:12.5px">Notes your friends left on this page. Only they can read them.</div>${l.map(p => card(p)).join('') || '<div class=hm-empty>No notes on this page yet</div>'}</div>
+    view.el.innerHTML = `<div class="hm hm-echo">${head('📌 ' + esc(hostOf(u)), '', backB)}<div class=hm-body><div style="padding:10px 14px;color:var(--mute);font-size:12.5px">Notes your friends left on this page. Only they can read them.</div>${l.map(p => card(p)).join('') || '<div class=hm-empty>No notes on this page yet</div>'}</div>
       <button class=ec-fab data-pagenote aria-label="Add a note">${IC.pen}</button></div>`; }
   function tuneUI() { const v = document.createElement('div'); v.className = 'hm-view';
     v.innerHTML = `<div class=hm-card style="width:min(420px,92vw);color:var(--ink)"><h3>🎚 Tune my feed</h3><p>Ask for more or less of a topic for a while. Only this device knows — nothing is sent anywhere.</p>
@@ -437,7 +437,7 @@ window.HushEcho = function (A) {
     const rp = mv.querySelector('[data-mreply]'); if (rp) rp.onclick = () => { clearTimeout(mvTimer); view.screen = null; A.openMurmur && A.openMurmur(p.pk); }; }
   function drawCircles() { const cs = circles(), ed = view.circle != null ? (cs[view.circle] || { name: '', members: [] }) : null, fr = M.friends();
     if (ed) { const sel = new Set(ed.members);
-      view.el.innerHTML = `<div class=hm>${head(view.circle && cs[view.circle] ? 'Edit circle' : 'New circle', '', backB)}<div class=hm-body><div class=ec-c>
+      view.el.innerHTML = `<div class="hm hm-echo">${head(view.circle && cs[view.circle] ? 'Edit circle' : 'New circle', '', backB)}<div class=hm-body><div class=ec-c>
         <input class=hm-in id=ec-cn maxlength=30 placeholder="Circle name — e.g. Close friends, Family" value="${esc(ed.name)}">
         <div style="font:600 12px system-ui;color:var(--mute)">WHO’S IN IT (${fr.length} friends)</div>
         ${fr.map(pk => `<label class=ec-chk>${av(pk, 32)}<span style="flex:1">${esc(nameOf(pk))}</span><input type=checkbox data-cm="${pk}" ${sel.has(pk) ? 'checked' : ''}></label>`).join('') || '<div class=hm-empty>Add friends in Murmur first</div>'}
@@ -448,7 +448,7 @@ window.HushEcho = function (A) {
         const all = circles(), id = view.circle || Math.random().toString(36).slice(2, 10); all[id] = { name, members }; LS.set('circles', all); view.circle = null; paint(); A.toast('Circle saved'); };
       const d = view.el.querySelector('#ec-cd'); if (d) d.onclick = () => { if (!confirm('Delete this circle? Posts already shared stay with the people who got them.')) return; const all = circles(); delete all[view.circle]; LS.set('circles', all); view.circle = null; paint(); };
       return; }
-    view.el.innerHTML = `<div class=hm>${head('Circles', '', backB)}<div class=hm-body><div style="padding:12px 14px;color:var(--mute);font-size:13px">Share some posts with just a few friends — pick a circle when you post.</div>
+    view.el.innerHTML = `<div class="hm hm-echo">${head('Circles', '', backB)}<div class=hm-body><div style="padding:12px 14px;color:var(--mute);font-size:13px">Share some posts with just a few friends — pick a circle when you post.</div>
       ${Object.entries(cs).map(([id, c]) => `<button class=ec-person data-circ="${id}"><div class=hm-av style="background:var(--acc);color:var(--bg);width:40px;height:40px">◎</div><div style="text-align:left"><b>${esc(c.name)}</b><div style="color:var(--mute);font-size:13px">${c.members.length} ${c.members.length === 1 ? 'person' : 'people'}</div></div></button>`).join('') || '<div class=hm-empty>No circles yet</div>'}
       <div style="padding:14px;display:flex;gap:8px;flex-wrap:wrap">${Object.values(cs).some(c => c.name === 'Close friends') ? '' : '<button class=hm-btn data-close-fr>＋ Close friends</button>'}<button class="hm-btn ghost" data-circ="">+ New circle</button></div></div></div>`;
     view.el.querySelectorAll('[data-circ]').forEach(b => b.onclick = () => { view.circle = b.dataset.circ; paint(); });
@@ -472,7 +472,7 @@ window.HushEcho = function (A) {
     const p = prof(), r = view.replyTo && posts()[view.replyTo], qt = view.quote && posts()[view.quote], pg = A.page && A.page();
     const canPub = p.public, cs = circles(); let aud = view.aud || (r ? r.aud : 'friends'); if (qt && qt.aud !== 'public' && aud === 'public') aud = 'friends';
     const mom = !!view.moment, pageOn = view.pageUrl != null ? !!view.pageUrl : false, poll = view.poll || null;
-    view.el.innerHTML = `<div class=hm>${head(r ? 'Reply' : mom ? 'New moment' : qt ? 'Quote' : 'New post', '', backB)}<div class=hm-body><div class=ec-c>
+    view.el.innerHTML = `<div class="hm hm-echo">${head(r ? 'Reply' : mom ? 'New moment' : qt ? 'Quote' : 'New post', '', backB)}<div class=hm-body><div class=ec-c>
       ${r ? `<div class=ec-reply>Replying to <b>${esc(nameOf(r.pk))}</b>: “${esc(r.text.slice(0, 80))}”</div>` : ''}
       <textarea id=ec-t maxlength=2000 placeholder="${r ? 'Write your reply' : mom ? 'Add a caption (or just text)' : qt ? 'Add your thoughts' : 'What’s happening?'}"></textarea>
       ${qt ? `<div class=ec-q><b>${esc(nameOf(qt.pk))}</b><div>${esc(qt.text.slice(0, 200))}</div></div>` : ''}
@@ -522,13 +522,13 @@ window.HushEcho = function (A) {
   function drawThread() {
     const all = posts(), p = all[view.id]; if (!p) { view.screen = null; return drawMain(); }
     const parent = p.reply && all[p.reply], replies = Object.values(all).filter(x => x.reply === p.id && !expired(x)).sort((a, b) => a.at - b.at);
-    view.el.innerHTML = `<div class=hm>${head('Post', '', backB)}<div class=hm-body>${parent ? card(parent) : ''}${card(p)}${replies.map(x => card(x)).join('') || '<div class=hm-empty style="padding:20px">No replies yet</div>'}</div>
+    view.el.innerHTML = `<div class="hm hm-echo">${head('Post', '', backB)}<div class=hm-body>${parent ? card(parent) : ''}${card(p)}${replies.map(x => card(x)).join('') || '<div class=hm-empty style="padding:20px">No replies yet</div>'}</div>
       <button class=ec-fab data-replyto="${p.id}" aria-label=Reply>${IC.reply}</button></div>`;
   }
   function drawPerson() {
     const pk = view.pk, pr = profiles()[pk] || {}, friend = isFriend(pk), fo = follows().includes(pk);
     const list = Object.values(posts()).filter(x => x.pk === pk && !expired(x) && !x.reply && !x.moment);
-    view.el.innerHTML = `<div class=hm>${head(esc(nameOf(pk)), '', backB)}<div class=hm-body>${banner(pk)}<div class=ec-prof style="margin-top:-46px"><div style="display:flex;justify-content:center">${av(pk, 84)}</div>
+    view.el.innerHTML = `<div class="hm hm-echo">${head(esc(nameOf(pk)), '', backB)}<div class=hm-body>${banner(pk)}<div class=ec-prof style="margin-top:-46px"><div style="display:flex;justify-content:center">${av(pk, 84)}</div>
       <h2>${esc(nameOf(pk))}</h2>${M.contacts()[pk]?.status ? `<p>${esc(M.contacts()[pk].status)}</p>` : ''}<p>${tagOf(pk)} · ${friend ? '<span class=ec-pill>Friend</span>' : pr.public ? '<span class=ec-pill>🌐 Public</span>' : ''}</p>${pr.bio ? `<p>${esc(pr.bio)}</p>` : ''}
       <div style="display:flex;gap:8px;justify-content:center;margin-top:8px">${pk !== me() && pr.public && !friend ? `<button class="hm-btn ${fo ? 'ghost' : ''}" id=ec-fo>${fo ? 'Following' : 'Follow'}</button>` : ''}${pk !== me() ? '<button class="hm-btn ghost" id=ec-msg>Message</button>' : ''}</div></div>
       ${list.length ? profileList(pk, false) : `<div class=hm-empty>${friend || pr.public ? 'No posts yet' : 'This profile is private'}</div>`}</div></div>`;
@@ -557,6 +557,7 @@ window.HushEcho = function (A) {
       if (view.screen === 'compose') Object.assign(view, { moment: false, pageUrl: null, poll: null, quote: null });
       const back = view.screen === 'circles' && view.fromCompose ? 'compose' : null; if (back) { view.fromCompose = false; return go('compose'); } go(view.screen === 'compose' && view.replyTo ? 'post' : null, view.screen === 'compose' && view.replyTo ? { id: view.replyTo, replyTo: null } : { replyTo: null }); });
     el.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => go(null, { tab: b.dataset.tab }));
+    el.querySelectorAll('[data-gotab]').forEach(b => b.onclick = () => go(null, { tab: b.dataset.gotab }));
     el.querySelectorAll('[data-compose]').forEach(b => b.onclick = () => go('compose', { replyTo: null, draft: null, quote: null }));
     el.querySelectorAll('[data-mnew]').forEach(b => b.onclick = () => go('compose', { replyTo: null, moment: true, quote: null, poll: null }));
     el.querySelectorAll('[data-moment]').forEach(b => b.onclick = () => go('moment', { mpk: b.dataset.moment, mi: (() => { const l = momentsBy()[b.dataset.moment] || [], sn = new Set(LS.get('mseen', [])), i = l.findIndex(x => !sn.has(x.id)); return i < 0 ? 0 : i; })() }));

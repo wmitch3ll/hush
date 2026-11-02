@@ -1,0 +1,72 @@
+/* Hush apps — "quiet rooms": Murmur, Echo and the AI assistant share one calm house, each with its own light.
+   Murmur: lamp-glow teal. Echo: dusk coral. Assistant: violet→cyan. Loaded after each app's own styles and
+   scoped to the app roots (.hm-mur / .hm-echo / .ax) with higher specificity, so app logic is untouched. */
+:root{--mur:#2bb3a3;--mur-2:#1e8f83;--echo:#f2765d;--echo-2:#d9573e;--aiv:#6d5efc;--aic:#22b8cf;--room-r:16px}
+:root[data-theme=dark],:root[data-theme=black]{--mur:#3fc9b8;--echo:#ff8a70}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--mur:#3fc9b8;--echo:#ff8a70}}
+
+/* ---------- Shared room shell ---------- */
+.hm.hm-mur,.hm.hm-echo{--room:var(--mur);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.hm.hm-echo{--room:var(--echo)}
+/* The one bold moment: each room's header carries a soft glow in its own color. */
+.hm.hm-mur .hm-h,.hm.hm-echo .hm-h{position:relative;padding:16px 16px 14px;border-bottom:1px solid var(--line);
+  background:radial-gradient(120% 140% at 0% 0%,color-mix(in srgb,var(--room) 22%,transparent) 0%,transparent 60%),var(--bg)}
+.hm.hm-mur .hm-h h2,.hm.hm-echo .hm-h h2{font:750 22px/1.15 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:-.01em;margin:0}
+.hm.hm-echo .hm-h h2{font-style:italic;letter-spacing:-.02em}
+/* Tor status: a small live pill instead of grey text. */
+.hm.hm-mur .hm-st,.hm.hm-echo .hm-st{display:inline-flex;margin-top:5px;padding:2px 9px 2px 7px;border-radius:999px;font-size:12px;color:var(--mute);
+  background:color-mix(in srgb,var(--room) 10%,transparent);border:1px solid color-mix(in srgb,var(--room) 22%,transparent)}
+.hm.hm-mur .hm-st:empty,.hm.hm-echo .hm-st:empty{display:none}
+/* Icon buttons in headers: bigger targets, quieter look. */
+.hm.hm-mur .hm-ib,.hm.hm-echo .hm-ib{width:40px;height:40px;border-radius:12px;color:var(--ink)}
+.hm.hm-mur .hm-ib:hover,.hm.hm-echo .hm-ib:hover{background:color-mix(in srgb,var(--room) 12%,transparent)}
+
+/* Search */
+.hm.hm-mur .hm-search,.hm.hm-echo .hm-search{border-radius:14px;padding:11px 14px 11px 38px;font-size:15px;border:1px solid transparent;
+  background:var(--card) no-repeat 13px 50%/16px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a8f98' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-4-4'/%3E%3C/svg%3E")}
+.hm.hm-mur .hm-search:focus,.hm.hm-echo .hm-search:focus{outline:none;border-color:var(--room)}
+
+/* Filter chips: one scrolling row, never wrapping onto two lines. */
+.hm.hm-mur .hm-folders,.hm.hm-echo .ec-seg{flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.hm.hm-mur .hm-folders::-webkit-scrollbar,.hm.hm-echo .ec-seg::-webkit-scrollbar{display:none}
+.hm.hm-mur .hm-folders button,.hm.hm-echo .ec-seg button{white-space:nowrap;flex:none;border-radius:999px;padding:7px 14px;font-size:13.5px}
+.hm.hm-mur .hm-folders button.on,.hm.hm-echo .ec-seg button.on{background:var(--room)!important;color:#fff!important;border-color:var(--room)!important}
+
+/* Chat rows */
+.hm.hm-mur .hm-row{padding:11px 16px;border-radius:0;transition:background .12s}
+.hm.hm-mur .hm-row:hover{background:color-mix(in srgb,var(--room) 7%,transparent)}
+.hm.hm-mur .hm-av,.hm.hm-echo .hm-av{box-shadow:inset 0 0 0 1px #ffffff22}
+
+/* Primary actions take the room's color. */
+.hm.hm-mur .hm-btn,.hm.hm-echo .hm-btn:not(.ghost){background:var(--room);color:#fff;border-radius:14px;padding:11px 18px;font-weight:650}
+.hm.hm-mur .hm-btn.ghost,.hm.hm-echo .hm-btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.hm.hm-mur .hm-fab,.hm.hm-echo .ec-fab{background:var(--room);color:#fff;border-radius:20px;width:58px;height:58px;
+  box-shadow:0 10px 28px color-mix(in srgb,var(--room) 45%,transparent)}
+.hm.hm-mur .hm-fab:active,.hm.hm-echo .ec-fab:active{transform:scale(.94)}
+
+/* Composer */
+.hm.hm-mur .hm-c{padding:10px 12px;gap:8px;background:var(--bg)}
+.hm.hm-mur .hm-c textarea{border-radius:22px!important;padding:10px 14px!important;font-size:15px!important}
+.hm.hm-mur .hm-send{background:var(--room);color:#fff}
+
+/* Message bubbles: mine in the room color, theirs on card. */
+.hm.hm-mur .hm-m.me{background:var(--room);color:#fff}
+
+/* Empty states: a next step, not a mood. */
+.hm.hm-mur .hm-empty,.hm.hm-echo .hm-empty{padding:44px 28px;line-height:1.5;font-size:14.5px}
+.hm.hm-mur .hm-empty b,.hm.hm-echo .hm-empty b{display:block;color:var(--ink);font-size:18px;margin-bottom:6px}
+.hm-cta{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:16px}
+
+/* ---------- Echo ---------- */
+.hm.hm-echo .ec-tabs{padding:0 6px;gap:2px;border-bottom:1px solid var(--line)}
+.hm.hm-echo .ec-tabs button{border-radius:12px 12px 0 0;font-weight:600;font-size:14px;padding:12px 6px}
+.hm.hm-echo .ec-tabs button.on{color:var(--room)!important;box-shadow:inset 0 -3px 0 var(--room)!important}
+.hm.hm-echo .ec-post{padding:14px 16px;gap:12px}
+.hm.hm-echo .ec-post .t{font-size:15.5px;line-height:1.5}
+.hm.hm-echo .ec-act button.on{color:var(--room)}
+.hm.hm-echo .ec-open .ec-aud{border-radius:999px;padding:1px 8px;background:color-mix(in srgb,var(--room) 10%,transparent)}
+.hm.hm-echo .ec-moments{padding:12px 12px 10px}
+/* Skeleton rows only while there's genuinely nothing yet — not stacked over an empty-state message. */
+.hm.hm-echo .hm-body:has(.hm-empty) > .sk-row{display:none}
+
+@media (prefers-reduced-motion:reduce){.hm.hm-mur .hm-row{transition:none}}

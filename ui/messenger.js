@@ -651,7 +651,7 @@ window.HushMsg = function (A) {
     if (!ns.length) { e.classList.remove('hm-typing'); return paintStatus(); }
     e.className = 'hm-st hm-typing'; e.innerHTML = `${isGroup(view.chat) ? esc(ns.join(', ')) + (ns.length > 1 ? ' are' : ' is') + ' typing' : 'typing'}<span class=hm-dots><i></i><i></i><i></i></span>`; }
   async function open(el, chat) { view.open = true; view.el = el; if (chat) { view.screen = 'chat'; view.chat = chat; }
-    el.innerHTML = '<div class=hm><div class=hm-empty>…</div></div>';
+    el.innerHTML = '<div class="hm hm-mur"><div class=hm-empty>…</div></div>';
     if (!await loadKey()) { view.screen = view.screen === 'restore' ? 'restore' : 'welcome'; repaint(); return; }
     gate(el, () => { if (view.el !== el) return; start(); repaint(); if (view.screen === 'chat') sendRead(view.chat); }); }
   function close() { view.open = false; view.el = null; document.querySelector('.hm-menu')?.remove(); }
@@ -669,7 +669,7 @@ window.HushMsg = function (A) {
     view.el.querySelectorAll('[data-close]').forEach(b => b.onclick = () => A.close && A.close()); }
 
   function drawWelcome() {
-    view.el.innerHTML = `<div class=hm>${head('Murmur', '<small>Private messages</small>', '', closeB())}<div class=hm-body>
+    view.el.innerHTML = `<div class="hm hm-mur">${head('Murmur', '<small>Private messages</small>', '', closeB())}<div class=hm-body>
       <div class=hm-card style="text-align:center"><div style="font-size:42px">💬</div><h3 style="font-size:22px;font-family:ui-serif,Georgia,serif;font-weight:400">murmur.</h3><p style="margin-top:-4px"><b>Private messages, built into Hush</b></p>
       <p>Chat, share photos and files, and make group chats with other Hush users. Everything is end-to-end encrypted and always sent through <b>Tor</b> — no server ever sees what you say, who you are, or where you are. No phone number, no email, no account.</p>
       <input class=hm-in id=hm-name placeholder="Your name (what friends see)" maxlength=40 style="text-align:center">
@@ -687,9 +687,12 @@ window.HushMsg = function (A) {
       .map(k => ({ k, last: (all[k] || []).at(-1) })).sort((a, b) => (b.last?.at || c[b.k]?.added || g[b.k]?.at || 0) - (a.last?.at || c[a.k]?.added || g[a.k]?.at || 0))
       .filter(x => !q || chatName(x.k).toLowerCase().includes(q) || (x.last?.text || '').toLowerCase().includes(q))
       .filter(x => { const f = view.folder || 'all'; return f === 'all' || (f === 'unread' && un[x.k]) || (f === 'groups' && isGroup(x.k)) || (f === 'favs' && LS.get('favs', []).includes(x.k)); });
-    view.el.innerHTML = `<div class=hm style="position:relative">${head('Murmur', '<div class=hm-st></div>', '',
+    view.el.innerHTML = `<div class="hm hm-mur" style="position:relative">${head('Murmur', '<div class=hm-st></div>', '',
       `<button class=hm-ib data-go=me title="Your Hush ID" aria-label="Your Hush ID">${I.qr}</button>${closeB()}`)}
       <div class=hm-body><input class=hm-search placeholder="Search chats" value="${esc(view.q)}"><div class=hm-folders style="display:flex;gap:6px;padding:0 12px 8px;overflow-x:auto">${[['all', 'All'], ['unread', 'Unread'], ['groups', 'Groups'], ['favs', '★ Favorites']].map(([k, l]) => `<button data-folder=${k} class="hm-chip ${(view.folder || 'all') === k ? 'on' : ''}" style="padding:5px 12px;border-radius:99px;border:1px solid var(--line);font:600 12.5px system-ui;${(view.folder || 'all') === k ? 'background:var(--ink);color:var(--bg)' : ''}">${l}</button>`).join('')}<button data-bcast class=hm-chip style="padding:5px 12px;border-radius:99px;border:1px solid var(--line);font:600 12.5px system-ui">📣 Broadcast</button></div>
+      ${!view.q && keys.every(x => x.k === 'self') ? `<div class=hm-welcome style="margin:6px 14px 10px;padding:18px;border-radius:18px;background:color-mix(in srgb,var(--mur) 10%,var(--card));border:1px solid color-mix(in srgb,var(--mur) 25%,transparent)">
+        <b style="display:block;font-size:17px;margin-bottom:4px">Add your first friend</b><span style="color:var(--mute);font-size:14px;line-height:1.45">Meet up and scan each other’s code (that also verifies them), or send a one-time invite link.</span>
+        <div class=hm-cta style="justify-content:flex-start"><button class=hm-btn data-go=me>Show my code</button><button class="hm-btn ghost" data-go=add>Add a friend</button></div></div>` : ''}
       ${keys.map(({ k, last }) => `<button class=hm-row data-chat="${k}">${avatar(k)}<div class=t><b>${esc(chatName(k))}${badgeV(k)}</b><span>${k === 'self' && !last ? 'Links, photos and notes — synced to your devices' : last ? (last.from === 'me' && k !== 'self' ? 'You: ' : isGroup(k) ? esc(first(last.from)) + ': ' : '') + esc(preview(last).slice(0, 80)) : c[k]?.request ? 'Wants to chat' : isGroup(k) ? 'New group' : 'Say hi 👋'}</span></div>
         <em>${last ? short(last.at) : ''}${un[k] ? `<br><span class=u>${un[k]}</span>` : ''}</em></button>`).join('') ||
         (status !== 'on' && !okRelays() ? '<div class=sk-row><div class="sk c"></div><div style="flex:1"><div class="sk l"></div><div class="sk l2"></div></div></div>'.repeat(3) : '') + `<div class=hm-empty><svg class=empty-art viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=1.2><path d="M4 5h16v11H9l-5 4z"/><path d="M8 10h8M8 13h5"/></svg><b>No chats yet</b>Tap <b>+</b> to add someone with their Hush ID, or show them yours with the QR button.</div>`}</div>
@@ -764,7 +767,7 @@ window.HushMsg = function (A) {
       if (m === lastMine && m.read?.length && prefs().receipts) html += `<div class=hm-seen>${isGroup(key) ? 'Seen by ' + m.read.map(first).join(', ') : 'Seen'}</div>`; }
     const cs = chatSet(key), th = THEMES[(LS.get('themes', {})[key]) || 'default'] || THEMES.default, pinned = cs.pin && list.find(x => x.id === cs.pin && !x.unsent);
     if (cs.wall) fileUrl(cs.wall).then(u => { const b = view.el?.querySelector('.hm-body'); if (u && b && view.chat === key) { b.style.backgroundImage = `linear-gradient(color-mix(in srgb,var(--bg) 55%,transparent),color-mix(in srgb,var(--bg) 55%,transparent)),url(${u})`; b.style.backgroundSize = 'cover'; b.style.backgroundAttachment = 'local'; } });
-    view.el.innerHTML = `<div class=hm style="${th.css}">${head(esc(chatName(key)) + badgeV(key), key !== 'self' && !isGroup(key) && contacts()[key]?.status ? `<small style="display:block;color:var(--mute);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(contacts()[key].status)}</small><div class=hm-st></div>` : '<div class=hm-st></div>', `<button class=hm-ib data-go=list aria-label=Back>${I.back}</button>${avatar(key, 36)}`,
+    view.el.innerHTML = `<div class="hm hm-mur" style="${th.css}">${head(esc(chatName(key)) + badgeV(key), key !== 'self' && !isGroup(key) && contacts()[key]?.status ? `<small style="display:block;color:var(--mute);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(contacts()[key].status)}</small><div class=hm-st></div>` : '<div class=hm-st></div>', `<button class=hm-ib data-go=list aria-label=Back>${I.back}</button>${avatar(key, 36)}`,
       `<button class=hm-ib id=hm-cm aria-label="Chat options">⋯</button>`)}
       ${pinned ? `<div class=hm-pinbar data-jump="${pinned.id}">📌 <span>${esc(preview(pinned).slice(0, 90))}</span></div>` : ''}${cs.ttl ? `<div class=hm-pinbar style="cursor:default">⏲ Disappearing messages: ${ttlLabel(cs.ttl)}</div>` : ''}
       <div class=hm-body id=hm-scroll>${!isGroup(key) && impostor(key) ? `<div class=hm-req style="border-color:#ef4444"><b style="color:#ef4444">⚠ This is not your verified ${esc(nameOf(impostor(key)))}.</b> It’s a different Hush ID using the same name. Don’t share anything sensitive unless you’ve checked with them another way.</div>` : ''}${c.request ? `<div class=hm-req><b>${esc(nameOf(key))}</b> isn’t in your contacts yet. Only reply if you know them.<div style="margin-top:8px;display:flex;gap:8px"><button class="hm-btn" id=hm-acc>Accept</button><button class="hm-btn ghost" id=hm-blk>Block</button></div></div>` : ''}
@@ -977,7 +980,7 @@ window.HushMsg = function (A) {
           const all = chats(); delete all[key]; LS.set('chats', all); if (g) { const gs = groups(); delete gs[key]; LS.set('groups', gs); } else { delete c[key]; LS.set('contacts', c); } view.screen = 'list'; repaint(); } }));
   }
   function drawAdd() {
-    view.el.innerHTML = `<div class=hm>${head('New chat', '', `<button class=hm-ib data-go=list aria-label=Back>${I.back}</button>`)}<div class=hm-body>
+    view.el.innerHTML = `<div class="hm hm-mur">${head('New chat', '', `<button class=hm-ib data-go=list aria-label=Back>${I.back}</button>`)}<div class=hm-body>
       <button class="hm-row" data-go=group style="margin-top:6px">${avatar('a,b', 44)}<div class=t><b>New group</b><span>Chat with several people at once</span></div></button>
       <div class=hm-card style="text-align:center"><h3>📷 Scan their Hush Card</h3><p>The fastest way — point your camera at their card or QR code.</p><button class=hm-btn id=hm-scan>Scan a code</button></div>
       <div class=hm-card><h3>Or paste their ID</h3><p>Paste their Hush ID (it starts with <b>npub</b>). They can find it under the QR button in their Murmur.</p>
@@ -991,7 +994,7 @@ window.HushMsg = function (A) {
   }
   function drawGroup() {
     const c = contacts(), people = Object.keys(c).filter(k => !c[k].blocked && !c[k].request && (!c[k].auto || chats()[k]));
-    view.el.innerHTML = `<div class=hm>${head('New group', `<small>${view.pick.size} selected</small>`, `<button class=hm-ib data-go=add aria-label=Back>${I.back}</button>`)}<div class=hm-body>
+    view.el.innerHTML = `<div class="hm hm-mur">${head('New group', `<small>${view.pick.size} selected</small>`, `<button class=hm-ib data-go=add aria-label=Back>${I.back}</button>`)}<div class=hm-body>
       <div class=hm-card><input class=hm-in id=hm-gn placeholder="Group name" maxlength=60 style="margin:0"></div>
       ${people.map(k => `<label class=hm-pick>${avatar(k, 36)}<div style="flex:1"><b>${esc(nameOf(k))}</b></div><input type=checkbox data-p="${k}" ${view.pick.has(k) ? 'checked' : ''}></label>`).join('') ||
         '<div class=hm-empty><b>No contacts yet</b>Add people first with their Hush ID, then make a group.</div>'}
@@ -1005,7 +1008,7 @@ window.HushMsg = function (A) {
   }
   async function drawVerify() {
     const pk = view.verify, code = await safetyCode(pk), v = verified(pk);
-    view.el.innerHTML = `<div class=hm>${head('Safety code', `<small>${esc(nameOf(pk))}</small>`, `<button class=hm-ib id=hm-vb aria-label=Back>${I.back}</button>`)}<div class=hm-body>
+    view.el.innerHTML = `<div class="hm hm-mur">${head('Safety code', `<small>${esc(nameOf(pk))}</small>`, `<button class=hm-ib id=hm-vb aria-label=Back>${I.back}</button>`)}<div class=hm-body>
       <div class=hm-card style="text-align:center"><div style="font:600 26px/1.5 ui-monospace,monospace;letter-spacing:2px">${code.split(' ').map(x => `<span style="display:inline-block;margin:0 6px">${x}</span>`).join('')}</div>
       <p style="margin-top:12px">Open this screen on ${esc(first(pk))}’s device too. <b>If the numbers match</b>, you’re really talking to them and nobody can be in the middle. Best done in person or on a call.</p>
       <button class="hm-btn ${v ? 'ghost' : ''}" id=hm-vt>${v ? 'Remove verification' : '✓ The numbers match — mark as verified'}</button></div>
@@ -1044,7 +1047,7 @@ window.HushMsg = function (A) {
   async function pbkdf(pass, salt, it) { const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
     return crypto.subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: it }, k, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']); }
   function drawBackup() {
-    view.el.innerHTML = `<div class=hm>${head('Back up', '', `<button class=hm-ib data-go=me aria-label=Back>${I.back}</button>`)}<div class=hm-body>
+    view.el.innerHTML = `<div class="hm hm-mur">${head('Back up', '', `<button class=hm-ib data-go=me aria-label=Back>${I.back}</button>`)}<div class=hm-body>
       <div class=hm-card><h3>📄 Backup file (recommended)</h3><p>Saves your ID, contacts, groups, settings${hooks.backup.length ? ' and Echo profile & posts' : ''}, locked with a password you choose. Keep it somewhere safe — like a USB drive or your password manager. Hush can’t recover a forgotten password.</p>
         <input class=hm-in id=hm-bp1 type=password placeholder="Backup password (at least 8 characters)" autocomplete=new-password><input class=hm-in id=hm-bp2 type=password placeholder="Same password again" autocomplete=new-password>
         <button class=hm-btn id=hm-bf>Save backup file</button>
@@ -1165,7 +1168,7 @@ window.HushMsg = function (A) {
       } catch (e) { b.disabled = false; b.textContent = 'Link'; A.toast(String(e.message) === 'code' ? 'Wrong code — check it and try again' : 'Couldn’t download the link — check the connection and try again'); } };
   }
   function drawRestore() {
-    view.el.innerHTML = `<div class=hm>${head('Restore', '', `<button class=hm-ib data-go=welcome aria-label=Back>${I.back}</button>`)}<div class=hm-body>
+    view.el.innerHTML = `<div class="hm hm-mur">${head('Restore', '', `<button class=hm-ib data-go=welcome aria-label=Back>${I.back}</button>`)}<div class=hm-body>
       <div class=hm-card><h3>📄 From a backup file</h3><p>Restores your ID, contacts, groups and settings.</p><input type=file id=hm-rf class=hm-in accept=".hushbackup,application/octet-stream,application/json">
         <input class=hm-in id=hm-rp type=password placeholder="Backup password — or your 24 words if you locked it with them"><button class=hm-btn id=hm-rgo>Restore</button></div>
       <div class=hm-card><h3>🔑 From recovery words</h3><p>Restores your ID only. Type your 24 words separated by spaces.</p><textarea class=hm-in id=hm-rw rows=4 autocapitalize=off spellcheck=false placeholder="word1 word2 word3 …"></textarea>
@@ -1186,7 +1189,7 @@ window.HushMsg = function (A) {
   function addContact(pk, name, invite, verifiedNow) { setTimeout(() => shareCard(), 1500); const c = contacts(); c[pk] = { ...(c[pk] || {}), added: c[pk]?.added || Date.now(), ...(name ? { name: name.slice(0, 40), named: true } : {}), ...(invite ? { invite } : {}), ...(verifiedNow ? { verified: true } : {}) }; delete c[pk].request; delete c[pk].blocked; delete c[pk].auto; LS.set('contacts', c); }
   function drawMe() {
     const id = npub(me), link = 'hush://add#' + id, p = prefs();
-    view.el.innerHTML = `<div class=hm>${head('Your Hush ID', '', `<button class=hm-ib data-go=list aria-label=Back>${I.back}</button>`)}<div class=hm-body>
+    view.el.innerHTML = `<div class="hm hm-mur">${head('Your Hush ID', '', `<button class=hm-ib data-go=list aria-label=Back>${I.back}</button>`)}<div class=hm-body>
       <div class=hm-card style="text-align:center"><div class=hm-qr>${A.qr ? A.qr(link) : ''}</div><p>Friends scan this with their phone camera, or paste your ID into New chat.</p>
       <div class=hm-id>${esc(id)}</div><div style="margin-top:10px;display:flex;gap:8px;justify-content:center"><button class=hm-btn id=hm-copy>Copy ID</button>${navigator.share ? '<button class="hm-btn ghost" id=hm-sh>Share</button>' : ''}</div></div>
       <div class=hm-card style="padding:0;overflow:hidden"><div class=hm-banner style="${profile().banner ? '' : 'background:linear-gradient(135deg,' + (profile().aura || colorOf(me)) + ',var(--card))'}">${profile().banner ? `<img data-av='${esc(JSON.stringify(profile().banner))}' alt="" style="width:100%;height:100%;object-fit:cover;opacity:0">` : ''}<label class=hm-bannerbtn>🖼 Banner<input type=file accept="image/*" id=hm-bn hidden></label></div>
