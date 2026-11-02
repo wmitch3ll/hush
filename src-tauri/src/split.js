@@ -13,7 +13,7 @@ const __hushSolo = window.__hushSolo || (window.__hushSolo = (v, on) => { try {
   if (v.hasAttribute("data-hush-solo")) { try { v.hidePopover(); } catch (_) {} v.removeAttribute("popover"); v.removeAttribute("data-hush-solo"); }
   return true; } catch (_) { return false; } });
 window.__hushSplit = window.__hushSplit || (() => {
-  let on = false, focus = false, cur = null, keep = null;
+  let on = false, focus = false, cur = null, keep = null, sw = 0;   // sw: when the sound last moved between panes
   const area = v => v.clientWidth * v.clientHeight;
   const unfill = () => {
     document.getElementById("hush-split-css")?.remove(); keep?.disconnect(); keep = null;
@@ -43,7 +43,7 @@ window.__hushSplit = window.__hushSplit || (() => {
     if (v && (!v.paused || area(v) >= innerWidth * innerHeight * 0.12)) return v;
     const fr = [...document.querySelectorAll("iframe")].filter(f => area(f) >= innerWidth * innerHeight * 0.08 && getComputedStyle(f).visibility !== "hidden").sort((a, b) => area(b) - area(a))[0];
     return fr || null; };
-  const media = () => { try { window.__hushMediaSet && window.__hushMediaSet({ on, mute: on && !focus, keep: on && !focus }); } catch (_) {} };
+  const media = () => { try { window.__hushMediaSet && window.__hushMediaSet(on ? { on, mute: !focus, keep: true, sw } : { on: false }); } catch (_) {} };
   const want = () => on ? !focus : !!window.__hushMuted;
   const sound = () => { document.querySelectorAll("video,audio").forEach(x => { if (x.muted !== want()) x.muted = want(); }); media(); };
   // Sites (YouTube…) re-apply their own mute/volume; while split is on, Hush's choice wins.
@@ -64,14 +64,17 @@ window.__hushSplit = window.__hushSplit || (() => {
     // Only muted halves are restarted: if another app takes the sound, the half with Hush's sound stays paused.
     // Decide a moment later: when the sound moves to the other pane, this pane learns it lost the focus a beat
     // AFTER the system paused it — checking right away (still "focused") skipped the restart.
-    if (!on || v.tagName !== "VIDEO" || v.ended || Date.now() - touched < 1500) return;
-    const retry = n => setTimeout(() => { if (!on || focus || !v.paused || v.ended || Date.now() - touched < 1500) return;
-      v.muted = true; v.play().then(() => {}, () => n < 3 && retry(n + 1)); }, n ? 500 : 400);
+    const switching = () => Date.now() - sw < 2500;
+    if (!on || v.tagName !== "VIDEO" || v.ended || (!switching() && (focus || Date.now() - touched < 1500))) return;
+    const retry = n => setTimeout(() => { if (!on || !v.paused || v.ended || (!switching() && (focus || Date.now() - touched < 1500))) return;
+      v.muted = !focus; v.play().then(() => {}, () => n < 4 && retry(n + 1)); }, n ? 450 : 250);
     retry(0); }, true);
-  addEventListener("message", e => { if (e.data && e.data.__hushTap && on && !focus) { touched = Date.now(); focus = true; sound(); ring(); try { location.href = "hush-split://focus"; } catch (_) {} } });
+  const ask = () => { try { location.href = "hush-split://focus"; } catch (_) {} };
+  addEventListener("message", e => { if (e.data && e.data.__hushTap && on && !focus) ask(); });
   // Tapping the other half moves the focus (and the sound) there; the tap itself still reaches the page.
-  addEventListener("pointerdown", e => { if (on && !focus && e.isTrusted) { focus = true; sound(); ring(); try { location.href = "hush-split://focus"; } catch (_) {} } }, true);
-  return o => { on = !!(o && o.on); focus = !!(o && o.focus); clearInterval(tick);
+  // Report the tap; Hush mutes the other pane first and then gives this one the sound (never both audible at once).
+  addEventListener("pointerdown", e => { if (on && !focus && e.isTrusted) ask(); }, true);
+  return o => { on = !!(o && o.on); const f = !!(o && o.focus); if (o && o.sw) sw = o.sw; else if (f !== focus) sw = Date.now(); focus = f; clearInterval(tick);
     if (!on) { unfill(); ring(); sound(); return; }
     sound(); ring(); const v = pick(); if (v) fill(v);
     // Players swap their <video> element (ads, next episode): keep sound, fill and controls right.

@@ -63,17 +63,21 @@
   // (when another pane takes the sound, Android pauses the others). Frames pass the message on to their own frames.
   (() => {
     let st = { on: false, mute: false, keep: false }, touched = 0;
-    const apply = () => document.querySelectorAll("video,audio").forEach(m => { if (st.on && m.muted !== st.mute) m.muted = st.mute; });
+    // st.mute: true/false = force it, null = leave the sound alone. st.sw: when the sound last moved between panes —
+    // for 2.5s after that, ANY pause is the system reacting to the switch, so it's undone. st.pause: stop everything.
+    const apply = () => document.querySelectorAll("video,audio").forEach(m => { if (st.pause) m.pause(); else if (st.on && st.mute !== null && st.mute !== undefined && m.muted !== st.mute) m.muted = st.mute; });
     const relay = d => { for (const f of document.querySelectorAll("iframe,frame")) try { f.contentWindow.postMessage(d, "*"); } catch (_) {} };
     addEventListener("pointerdown", e => { touched = Date.now();
       // A tap inside a player frame: tell the top page (desktop split screen uses this to move the sound here).
       if (window !== top && e.isTrusted) try { top.postMessage({ __hushTap: 1 }, "*"); } catch (_) {} }, true);
     addEventListener("keydown", () => { touched = Date.now(); }, true);
-    document.addEventListener("volumechange", e => { if (st.on && e.target.muted !== st.mute) e.target.muted = st.mute; }, true);
-    document.addEventListener("play", e => { if (st.on) e.target.muted = st.mute; }, true);
-    document.addEventListener("pause", e => { const v = e.target; if (!st.on || !st.keep || v.ended || Date.now() - touched < 1500) return;
-      const r = n => setTimeout(() => { if (!st.on || !st.keep || !v.paused || v.ended || Date.now() - touched < 1500) return;
-        if (st.mute) v.muted = true; v.play().then(() => {}, () => n < 3 && r(n + 1)); }, n ? 500 : 400); r(0); }, true);
+    const forced = () => st.on && st.mute !== null && st.mute !== undefined;
+    document.addEventListener("volumechange", e => { if (forced() && e.target.muted !== st.mute) e.target.muted = st.mute; }, true);
+    document.addEventListener("play", e => { if (forced()) e.target.muted = st.mute; }, true);
+    const switching = () => st.sw && Date.now() - st.sw < 2500;
+    document.addEventListener("pause", e => { const v = e.target; if (!st.on || v.ended || (!st.keep && !switching()) || (!switching() && Date.now() - touched < 1500)) return;
+      const r = n => setTimeout(() => { if (!st.on || !v.paused || v.ended || (!st.keep && !switching()) || (!switching() && Date.now() - touched < 1500)) return;
+        if (forced()) v.muted = st.mute; v.play().then(() => {}, () => n < 4 && r(n + 1)); }, n ? 450 : 250); r(0); }, true);
     addEventListener("message", e => { const d = e.data; if (!d || !d.__hushMedia || window === top || e.source !== parent) return; st = d.__hushMedia; apply(); relay(d); });
     if (window === top) window.__hushMediaSet = s => { st = s; apply(); relay({ __hushMedia: s }); };
     // New player frames that load later get the current state too.

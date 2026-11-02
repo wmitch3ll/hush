@@ -65,8 +65,17 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     private var bgPlay = true
     @Volatile private var inBg = false
     /** Start/stop the background playback service to match: Hush in the background + a tab making sound. */
-    private fun bgCheck() { val playing = tabs.values.firstOrNull { it.audio }
-        if (inBg && bgPlay && playing != null) HushPlayback.start(act, playing.wv?.title ?: "") else if (inBg) HushPlayback.stop(act) }
+    /** The playback service must be started while Hush is still on screen: since Android 12 an app may not start
+     *  a foreground service from the background (it's silently refused — that's why sound used to stop when you
+     *  switched apps). So it starts as soon as something plays, and keeps Hush alive while it plays. In the
+     *  foreground it stops a little after the sound stops; in the background it stays until you return, tap Pause,
+     *  or close Hush. */
+    private var svcOn = false; private val svcStop = Runnable { if (!inBg && tabs.values.none { it.audio }) { HushPlayback.stop(act); svcOn = false } }
+    private fun bgCheck() { if (!bgPlay) { if (svcOn) { HushPlayback.stop(act); svcOn = false }; return }
+        val playing = tabs.values.firstOrNull { it.audio }
+        val h = act.window.decorView
+        if (playing != null) { h.removeCallbacks(svcStop); if (!svcOn || inBg) { HushPlayback.start(act, playing.wv?.title ?: ""); svcOn = true } }
+        else if (svcOn && !inBg) { h.removeCallbacks(svcStop); h.postDelayed(svcStop, 20000) } }
     private var pendingUrl: String? = null
     private var fsView: View? = null; private var fsCb: WebChromeClient.CustomViewCallback? = null
     private var pendingPerm: PermissionRequest? = null
@@ -197,20 +206,27 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         chrome = webView
         // Background play: when you switch to another app while a tab is playing, a media playback service keeps
         // Hush's sound going (Android would otherwise stop it). Another app playing its own audio still pauses it.
-        HushPlayback.onPause = { act.runOnUiThread { tabs.values.forEach { t -> t.audio = false
-            t.wv?.evaluateJavascript("window.__hushBgGuard&&__hushBgGuard(false);document.querySelectorAll('video,audio').forEach(m=>m.pause())", null) } } }
+        HushPlayback.onPause = { act.runOnUiThread { svcOn = false; tabs.values.forEach { t -> t.audio = false
+            t.wv?.evaluateJavascript("window.__hushBgGuard&&__hushBgGuard(false);document.querySelectorAll('video,audio').forEach(m=>m.pause());window.__hushMediaSet&&__hushMediaSet({on:false,pause:true})", null) } } }
         act.application.registerActivityLifecycleCallbacks(object : android.app.Application.ActivityLifecycleCallbacks {
             override fun onActivityStopped(a: Activity) { if (a !== act) return; inBg = true; bgCheck()
                 // Arm the keep-playing guard in every open tab; any tab that's playing starts the playback service.
-                if (bgPlay) tabs.values.forEach { t -> t.wv?.evaluateJavascript(BG_GUARD_JS + ";__hushBgGuard(true)") { r -> if (r == "true") { t.audio = true; bgCheck() } } }
+                if (bgPlay) tabs.values.forEach { t -> t.wv?.evaluateJavascript(BG_GUARD_JS + ";__hushBgGuard(true)") { r -> if (r == "true") { t.audio = true; bgCheck() } }
+                    // …and inside every frame (streaming sites play in other sites' player frames)
+                    if (t.id !in panes()) t.wv?.evaluateJavascript("window.__hushMediaSet&&__hushMediaSet({on:true,mute:null,keep:true})", null) }
                 // Something may have paused the tab views on the way out: wake the ones that are playing.
                 act.window.decorView.postDelayed({ if (inBg && bgPlay) tabs.values.filter { it.audio || it.id == active || it.id in panes() }.forEach { t -> t.wv?.let { w -> w.onResume(); w.resumeTimers() } } }, 300) }
-            override fun onActivityStarted(a: Activity) { if (a !== act) return; inBg = false; HushPlayback.stop(act)
-                tabs.values.forEach { t -> t.wv?.evaluateJavascript("window.__hushBgGuard&&__hushBgGuard(false)", null) } }
+            override fun onActivityStarted(a: Activity) { if (a !== act) return; inBg = false; bgCheck()
+                tabs.values.forEach { t -> t.wv?.evaluateJavascript("window.__hushBgGuard&&__hushBgGuard(false)" + (if (t.id !in panes()) ";window.__hushMediaSet&&__hushMediaSet({on:false})" else ""), null) } }
             override fun onActivityCreated(a: Activity, b: Bundle?) {}
             override fun onActivityResumed(a: Activity) { if (a === act) inBg = false }
             // Mark "going to the background" early (pause comes before the window is hidden), so tabs stay "visible".
-            override fun onActivityPaused(a: Activity) { if (a === act && !act.isFinishing && !act.isChangingConfigurations) inBg = true }
+            override fun onActivityPaused(a: Activity) { if (a !== act || act.isFinishing || act.isChangingConfigurations) return
+                // Still allowed to start the service here. If the page's own report missed it (players inside other
+                // sites' frames), ask Android whether this app is playing sound right now.
+                val am = act.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+                if (bgPlay && !svcOn && am.isMusicActive) { (tabs[active ?: ""] ?: tabs.values.firstOrNull())?.audio = true; bgCheck() }
+                inBg = true }
             override fun onActivitySaveInstanceState(a: Activity, b: Bundle) {}
             override fun onActivityDestroyed(a: Activity) { if (a === act) HushPlayback.stop(act) }
         })
@@ -389,7 +405,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         val audioMsgs = try { WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) } catch (e: Throwable) { false }
         if (audioMsgs) try {
             WebViewCompat.addWebMessageListener(w, "hushAudio", setOf("*")) { _, msg, _, _, _ ->
-                t.audio = msg.data == "1"; emit("tabAudio", JSObject().apply { put("id", t.id); put("audio", t.audio) }); if (inBg) act.runOnUiThread { bgCheck() } }
+                t.audio = msg.data == "1"; emit("tabAudio", JSObject().apply { put("id", t.id); put("audio", t.audio) }); act.runOnUiThread { bgCheck() } }
             if (earlyScripts) WebViewCompat.addDocumentStartJavaScript(w, AUDIO_JS, setOf("*"))
         } catch (e: Throwable) {}
         w.webViewClient = object : WebViewClient() {
@@ -675,7 +691,11 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         if (panes.isNotEmpty() && splitAwake) act.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else act.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (!panes.contains(splitFocus ?: "")) splitFocus = panes.firstOrNull()
         (splitPanes - panes.toSet()).forEach { id -> tabs[id]?.wv?.evaluateJavascript(Native.splitJs() + ";__hushSplit({on:false});", null) }
-        panes.forEach { id -> tabs[id]?.wv?.evaluateJavascript(Native.splitJs() + ";__hushSplit({on:true,focus:" + (id == splitFocus) + "});", null) }
+        // Order matters: mute the other panes FIRST, then give the sound to the focused one a moment later. If the
+        // new pane got its sound first, two panes would be audible at once and Android would pause one of them.
+        val sw = System.currentTimeMillis()
+        panes.filter { it != splitFocus }.forEach { id -> tabs[id]?.wv?.evaluateJavascript(Native.splitJs() + ";__hushSplit({on:true,focus:false,sw:" + sw + "});", null) }
+        splitFocus?.takeIf { it in panes }?.let { f -> act.window.decorView.postDelayed({ if (splitFocus == f) tabs[f]?.wv?.evaluateJavascript(Native.splitJs() + ";__hushSplit({on:true,focus:true,sw:" + sw + "});", null) }, 180) }
         // Highlight ring drawn natively, so it shows over a fullscreen video too.
         if (Build.VERSION.SDK_INT >= 23) tabs.values.forEach { t -> val ring = if (t.id == splitFocus && panes.isNotEmpty()) android.graphics.drawable.GradientDrawable().apply { setStroke(dp(3), 0xFF4DA3FF.toInt()); setColor(0) } else null
             t.box?.foreground = ring; paneFs[t.id]?.first?.foreground = ring?.constantState?.newDrawable() }

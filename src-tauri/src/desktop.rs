@@ -267,7 +267,12 @@ fn apply_split(app: &AppHandle) {
     let old = std::mem::replace(&mut *SPLIT_PANES.lock(), panes.clone());
     keep_awake(!panes.is_empty() && SPLIT_AWAKE.load(Ordering::Relaxed));
     for l in old.iter().filter(|l| !panes.contains(l)) { if let Some(w) = app.get_webview(l) { let _ = w.eval(&format!("{};__hushSplit({{on:false}});", include_str!("split.js"))); } }
-    for l in &panes { if let Some(w) = app.get_webview(l) { let _ = w.eval(&format!("{};__hushSplit({{on:true,focus:{}}});", include_str!("split.js"), focus.as_deref() == Some(l.as_str()))); } }
+    // Mute the other panes first, then give the focused pane its sound a moment later (never two audible at once).
+    let sw = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+    for l in panes.iter().filter(|l| focus.as_deref() != Some(l.as_str())) { if let Some(w) = app.get_webview(l) { let _ = w.eval(&format!("{};__hushSplit({{on:true,focus:false,sw:{sw}}});", include_str!("split.js"))); } }
+    if let Some(f) = focus.clone().filter(|f| panes.contains(f)) { let a = app.clone();
+        std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_millis(180));
+            if SPLIT_FOCUS.lock().as_deref() == Some(f.as_str()) { if let Some(w) = a.get_webview(&f) { let _ = w.eval(&format!("{};__hushSplit({{on:true,focus:true,sw:{sw}}});", include_str!("split.js"))); } } }); }
 }
 /// split.js: you clicked this half → it gets the highlight and the sound (and, in Spotlight, the big spot).
 fn split_focus(app: &AppHandle, label: &str) {
