@@ -520,15 +520,16 @@ pub const BUILD: &str = match option_env!("HUSH_BUILD") { Some(b) => b, None => 
 #[tauri::command]
 async fn check_update() -> Result<Value, String> {
     let body = tauri::async_runtime::spawn_blocking(|| -> Result<String, String> {
-        ureq::get("https://api.github.com/repos/wmitch3ll/hush/releases?per_page=1").set("User-Agent", "Hush-browser")
+        ureq::get("https://api.github.com/repos/wmitch3ll/hush/releases?per_page=15").set("User-Agent", "Hush-browser")
             .set("Accept", "application/vnd.github+json").call().map_err(|e| match e {
                 ureq::Error::Status(404, _) => "private".to_string(), e => e.to_string() })?
             .into_string().map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())??;
     let v: Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
-    let r = v.get(0).ok_or("no releases yet")?;
-    let tag = r["tag_name"].as_str().unwrap_or("");
-    let latest: u64 = tag.trim_start_matches("build-").parse().unwrap_or(0);
+    // GitHub doesn't always list the newest build first, so pick the highest build number.
+    let num = |r: &Value| r["tag_name"].as_str().unwrap_or("").trim_start_matches("build-").parse::<u64>().unwrap_or(0);
+    let r = v.as_array().and_then(|a| a.iter().filter(|r| !r["draft"].as_bool().unwrap_or(false)).max_by_key(|r| num(r))).ok_or("no releases yet")?;
+    let latest: u64 = num(r);
     let mine: u64 = BUILD.parse().unwrap_or(0);
     Ok(json!({ "current": BUILD, "latest": latest, "newer": mine > 0 && latest > mine, "name": r["name"], "page": r["html_url"],
                "apk": r["assets"].as_array().and_then(|a| a.iter().find(|x| x["name"].as_str().map(|n| n.ends_with(".apk")).unwrap_or(false))).map(|x| x["browser_download_url"].clone()) }))
