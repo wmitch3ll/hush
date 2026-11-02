@@ -556,7 +556,7 @@ window.HushX = function (A) {
   // Reports go straight to the Hush developer as an end-to-end encrypted Murmur message, through Tor — no accounts,
   // no third-party servers, and the developer can reply in the same chat. You choose what extra detail to include.
   // The developer's Hush ID (public, like a username). Reports are sent here.
-  const DEV_ID = '';
+  const DEV_ID = 'npub1q7gl4kc356ytd2m4l0awsym824aa67kga5su98pcwp53ptscn80swhm3l8';
   const errLog = [];
   try { addEventListener('error', e => { errLog.push(new Date().toISOString().slice(11, 19) + ' ' + String(e.message || e.error || 'error').slice(0, 160)); if (errLog.length > 15) errLog.shift(); });
     addEventListener('unhandledrejection', e => { errLog.push(new Date().toISOString().slice(11, 19) + ' ' + String(e.reason && e.reason.message || e.reason || 'rejection').slice(0, 160)); if (errLog.length > 15) errLog.shift(); }); } catch (e) {}
