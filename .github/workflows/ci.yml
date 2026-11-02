@@ -91,7 +91,7 @@ jobs:
           { cargo tauri android init --ci &&
             cargo tauri icon icons/source.png &&
             (cd .. && sh tools/android-post-init.sh) &&
-            cargo tauri android build --debug --apk --target aarch64 --ci ; } 2>&1 | tee ../build.log
+            cargo tauri android build --apk --target aarch64 --ci ; } 2>&1 | tee ../build.log
       - name: Report build errors as annotations
         if: failure()
         shell: bash
@@ -103,10 +103,10 @@ jobs:
           echo "::error title=Android build failed::${msg}"
       - name: Collect APK
         run: |
-          f=$(find src-tauri/gen/android -name "*.apk" | head -1); echo "found $f"
-          cp "$f" hush-debug.apk
+          f=$(find src-tauri/gen/android -name "*release*.apk" ! -name "*unsigned*" | head -1); [ -n "$f" ] || f=$(find src-tauri/gen/android -name "*.apk" | head -1); echo "found $f ($(du -h "$f" | cut -f1))"
+          cp "$f" hush.apk
       - uses: actions/upload-artifact@v4
-        with: { name: hush-debug-apk, path: hush-debug.apk }
+        with: { name: hush-apk, path: hush.apk }
 
   windows-installer:
     # Hush-setup.exe (x64) and Hush-setup-arm64.exe — per-user install, no admin needed. Main branch only.
@@ -159,6 +159,6 @@ jobs:
         run: |
           ls -la dist
           printf '%s\n\n%s\n' "Debug build of $(git rev-parse --short HEAD): $MSG" \
-            "Phone: hush-debug.apk · Windows: Hush-setup.exe (most PCs) or Hush-setup-arm64.exe (Snapdragon / ARM laptops). If Windows says 'Windows protected your PC', click More info → Run anyway." > notes.txt
-          gh release create "build-${{ github.run_number }}" dist/hush-debug.apk dist/Hush-setup*.exe --prerelease \
+            "Phone: hush.apk · Windows: Hush-setup.exe (most PCs) or Hush-setup-arm64.exe (Snapdragon / ARM laptops). If Windows says 'Windows protected your PC', click More info → Run anyway." > notes.txt
+          gh release create "build-${{ github.run_number }}" dist/hush.apk dist/Hush-setup*.exe --prerelease \
             --title "Hush test build ${{ github.run_number }}" --notes-file notes.txt

@@ -72,7 +72,9 @@ PY
 for f in "$A"/src/main/res/mipmap-anydpi-v26/ic_launcher.xml "$A"/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml; do
   [ -f "$f" ] && ! grep -q monochrome "$f" && sed -i 's#</adaptive-icon>#    <monochrome android:drawable="@drawable/ic_launcher_monochrome"/>\n</adaptive-icon>#' "$f" && echo "themed icon: $f"
 done
-# Signing: when HUSH_KEYSTORE is set (CI), debug builds are signed with Hush's permanent key so updates install in place.
+# Signing: when HUSH_KEYSTORE is set (CI), builds are signed with Hush's permanent key so updates install in place.
+# Release builds (what ships): optimized + stripped, so the APK is a fraction of the debug size. Code shrinking (R8)
+# stays OFF: Rust calls into the Kotlin side by exact class/method names (JNI), which shrinking would rename.
 grep -q 'create("hush")' "$A/build.gradle.kts" || cat >> "$A/build.gradle.kts" <<'SIGN'
 
 android {
@@ -83,7 +85,11 @@ android {
                 keyAlias = "hush"; keyPassword = System.getenv("HUSH_KEYSTORE_PASSWORD") ?: "hushdebug" }
         }
     }
-    buildTypes { getByName("debug") { if (System.getenv("HUSH_KEYSTORE") != null) signingConfig = signingConfigs.getByName("hush") } }
+    buildTypes {
+        getByName("debug") { if (System.getenv("HUSH_KEYSTORE") != null) signingConfig = signingConfigs.getByName("hush") }
+        getByName("release") { if (System.getenv("HUSH_KEYSTORE") != null) signingConfig = signingConfigs.getByName("hush")
+            isMinifyEnabled = false; isShrinkResources = false }
+    }
 }
 SIGN
-echo "Android plugin installed. Next: cd src-tauri && cargo tauri android build --debug --apk --target aarch64"
+echo "Android plugin installed. Next: cd src-tauri && cargo tauri android build --apk --target aarch64"
