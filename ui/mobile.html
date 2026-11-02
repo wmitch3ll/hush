@@ -631,6 +631,13 @@ function drawSite(){const el=$("#site"),t=T(),h=hostOf(t.url),off=allow.has(h),s
     if(v==="auto")delete state.site_dark[h];else state.site_dark[h]=v==="on";applyDarkNow();drawSite()});
   $("#st-read").onclick=()=>{show(null);inv("page_action",{action:"reader"})};$("#st-find").onclick=()=>{show(null);findMode(true)};$("#st-copy").onclick=()=>copy(t.url)}
 
+// Report a problem: an encrypted Murmur message to the developer (needs your free Hush ID; set up in 10 seconds).
+function openReport(){const x=$("#xs");x.innerHTML="";x.style.padding="0";const d=document.createElement("div");d.style.cssText="flex:1;min-height:0;overflow:auto;padding-top:env(safe-area-inset-top,0px)";x.append(d);
+  const obs=new MutationObserver(()=>{if(!x.classList.contains("on")){x.style.padding="";obs.disconnect()}});obs.observe(x,{attributes:true,attributeFilter:["class"]});
+  HX.reportForm(d,{close:()=>show(null),site:()=>{const t=T();return t&&/^https?:/.test(t.url)&&!t.priv?hostOf(t.url):null},
+    info:()=>({"Hush":"build "+(window.__hushBuild||"?")+" (Android)",Device:navigator.userAgent.replace(/^.*?\(|\).*$/g,"").slice(0,80),Screen:innerWidth+"×"+innerHeight+" @"+devicePixelRatio+"x",Tor:torOn?"on":"off","Split screen":splitSet.size?(splitSet.size+1)+" tabs, "+(pref("split_mode")||"grid"):"off",Tabs:tabs.length,"Background play":pref("bg_play")!=="false"?"on":"off"}),
+    send:async t=>{const dev=HM.api.parseId(HX.devId());if(!dev){toast("Reporting isn’t set up in this build yet");return false}
+      if(!(await HM.api.ready())){toast("First, make your free Hush ID — it takes 10 seconds");openMsgs();return "setup"}return HM.api.sendTo(dev,t)}});show("xs")}
 function openAssistant(run){const x=$("#xs");x.innerHTML="";x.style.padding="0";const d=document.createElement("div");d.style.cssText="flex:1;min-height:0;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)";x.append(d);
   const restore=()=>{x.style.padding=""};const obs=new MutationObserver(()=>{if(!x.classList.contains("on")){restore();obs.disconnect()}});obs.observe(x,{attributes:true,attributeFilter:["class"]});
   HX.assistant(d,{pageText:()=>native("pageText").then(r=>r&&r.text||""),pageInfo:()=>{const t=T();return t&&/^https?:/.test(t.url)&&!t.priv?{host:hostOf(t.url).replace(/^www\./,"")}:null},close:()=>show(null),run});show("xs")}
@@ -641,7 +648,7 @@ function openCmd(){vibe();const el=$("#cmd");
     ["Site settings & QR",()=>{if(T()?.native){drawSite();show("site")}}],["All tabs",openSwitcher],["History",()=>{drawHistory();show("history")}],
     ["Downloads",()=>{drawDownloads();show("downloads")}],["Settings",()=>{drawSettings();show("settings")}],
     ["Reading list",()=>{drawReading();show("reading")}],["Focus mode",()=>{drawFocus();show("focus")}],["Voice search",()=>{show(null);voice()}],
-    ["Save page as PDF",()=>{show(null);native("printPage")}],["Pop-out video (picture-in-picture)",()=>{show(null);native("pip")}],["About & updates",()=>{drawAbout();show("about")}],["Close tab",()=>{show(null);closeTab(cur)}],[HX.aiName()+" — AI assistant on this phone",()=>openAssistant()],["⬒ Split screen…",()=>splitMenu()],["📘 Hush guide",()=>openGuide()],["Sleep timer for this video",()=>{show(null);actions("Pause the video in…",[[15,"15 min"],[30,"30 min"],[60,"1 hour"],[0,"Off"]].map(([n,l])=>[l,()=>{clearTimeout(window.__sleepT);if(!n)return toast("Sleep timer off");window.__sleepT=setTimeout(()=>{inv("page_action",{action:"media-pause"}).catch(()=>{});toast("😴 Paused")},n*60000);toast("😴 Pausing in "+l)}]))}],["Send this page to a friend",()=>{const t=T();if(!t||!/^https?:/.test(t.url))return toast("Open a page first");const l=(()=>{try{return HM.api.chatList()}catch(e){return[]}})();if(!l.length){openMsgs();return toast("Add a friend in Murmur first")}actions("Send to…",l.slice(0,20).map(c=>[c.name,()=>{HM.api.sendTo(c.key,t.url);toast("🔒 Sent privately through Tor")}]))}],["Panic: close private tabs, lock Murmur",()=>panic()],
+    ["Save page as PDF",()=>{show(null);native("printPage")}],["Pop-out video (picture-in-picture)",()=>{show(null);native("pip")}],["About & updates",()=>{drawAbout();show("about")}],["Close tab",()=>{show(null);closeTab(cur)}],[HX.aiName()+" — AI assistant on this phone",()=>openAssistant()],["⬒ Split screen…",()=>splitMenu()],["📘 Hush guide",()=>openGuide()],["Report a problem",()=>openReport()],["Sleep timer for this video",()=>{show(null);actions("Pause the video in…",[[15,"15 min"],[30,"30 min"],[60,"1 hour"],[0,"Off"]].map(([n,l])=>[l,()=>{clearTimeout(window.__sleepT);if(!n)return toast("Sleep timer off");window.__sleepT=setTimeout(()=>{inv("page_action",{action:"media-pause"}).catch(()=>{});toast("😴 Paused")},n*60000);toast("😴 Pausing in "+l)}]))}],["Send this page to a friend",()=>{const t=T();if(!t||!/^https?:/.test(t.url))return toast("Open a page first");const l=(()=>{try{return HM.api.chatList()}catch(e){return[]}})();if(!l.length){openMsgs();return toast("Add a friend in Murmur first")}actions("Send to…",l.slice(0,20).map(c=>[c.name,()=>{HM.api.sendTo(c.key,t.url);toast("🔒 Sent privately through Tor")}]))}],["Panic: close private tabs, lock Murmur",()=>panic()],
     ...wsList().filter(w=>w!==curWs()).map(w=>["Workspace: "+w,()=>{show(null);switchWs(w)}])];
   el.innerHTML=head("Commands")+`<input class="txt" id="cmdq" placeholder="Type a command, tab or site" autocapitalize="off" spellcheck="false"><div class="sug" id="cmdr" style="padding:0"></div>`;
   wire(el);show("cmd");const q=$("#cmdq");setTimeout(()=>q.focus(),60);
@@ -715,6 +722,7 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
     Tab cards: swipe sideways to close · hold to move or copy · Workspaces: swipe the chips<br>Shield: tap for site settings · hold to toggle · Links: hold for options<br>
     Tabs button: hold for new / private tab · Menu: hold to find in page · Pull down a page to refresh · Swipe a sheet’s title down to close it</div>
    <h3>Help</h3><button class="item" id="s-guide"><div>📘 Hush guide &amp; tutorial<small>Every feature, what it’s good for, and how to use it — step by step</small></div><span style="color:var(--mute)">›</span></button>
+   <button class="item" id="s-report"><div>Report a problem<small>Goes straight to the developer — encrypted, through Tor</small></div><span style="color:var(--mute)">›</span></button>
    <button class="item" id="s-tour"><div>Replay the welcome walkthrough<small>Hands-on: try each main feature yourself (2 minutes)</small></div><span style="color:var(--mute)">›</span></button>
    <p style="color:var(--mute);font-size:12px;text-align:center;margin-top:14px">Hush keeps everything on this device. No accounts, no tracking.</p>`;
   wire(el);
@@ -724,7 +732,7 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
   el.querySelectorAll("[data-sw]").forEach(b=>b.onclick=async()=>{const k=b.dataset.sw,on=b.classList.contains("on"),bin=["force_dark","pull_refresh","desktop","bg_play","tools_autohide"].includes(k);
     await setPref(k,bin?String(!on):(on?"off":"on"));if(k==="force_dark")applyDarkNow();if(k==="restore")saveSession();drawSettings()});
   HX.settingsSearch(el,$("#s-q"),".item");
-  $("#s-guide").onclick=()=>openGuide();$("#s-tour").onclick=()=>startTour();
+  $("#s-guide").onclick=()=>openGuide();$("#s-report").onclick=()=>openReport();$("#s-tour").onclick=()=>startTour();
   HX.lookPicker($("#s-look"),()=>{applyPrefs();drawSettings()});
   $("#s-gest").onclick=()=>{$("#xs").innerHTML=head("Gestures & quick wheel")+'<div id="gx" style="padding:0 4px 20px"></div>';wire($("#xs"));HX.gesturePanel($("#gx"));show("xs")};
   $("#s-watch").onclick=openWatch;
@@ -811,5 +819,7 @@ async function loadState(first){try{state=await inv("get_state");state.settings.
 newTab(false,true);render();loadState(true).then(()=>{handleIncoming();if(!state.settings.ui?.toured)setTimeout(startTour,600)});
 
 setTimeout(()=>{try{splitMode()}catch(e){}},1500);
+
+inv('app_info').then(r=>{window.__hushBuild=r&&r.build}).catch(()=>{});
 </script>
 </body></html>

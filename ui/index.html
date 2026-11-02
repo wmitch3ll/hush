@@ -501,6 +501,10 @@ const RENDER={ai:()=>HX.assistant($('#panel'),{pageText:()=>inv('page_text')}),b
   archive:()=>{const p=$('#panel');p.innerHTML=`<h2>Archived tabs ${closeBtn}</h2><div id=arx></div>`;HX.archivePanel($('#arx'),u=>openTab(u));wire(p)},
   diag:()=>{const p=$('#panel');p.innerHTML=`<h2>Diagnostics ${closeBtn}</h2><p style="color:var(--mute);margin:-8px 0 12px">Recent internal events. A screenshot of this helps fix problems.</p><pre style="white-space:pre-wrap;font:12px ui-monospace,monospace;user-select:text">${esc(DIAG.join('\n')||'Nothing yet — open the tab bar or load a page, then come back.')}</pre>`;wire(p)},
   hub:()=>{},
+  report:()=>{const p=$('#panel');p.innerHTML='<div id=reportx></div>';HX.reportForm($('#reportx'),{close:()=>closePanel(),site:()=>{const x=tab(cur);return x&&/^https?:/.test(x.url)&&!x.priv?hostOf(x.url):null},
+    info:()=>({Hush:'build '+(window.__hushBuild||'?')+' (Windows)',Screen:innerWidth+'×'+innerHeight+' @'+devicePixelRatio+'x',Tor:tabs.some(t=>t.tor)?'Tor tab open':'off','Split screen':split?(2+splitMore.length)+' tabs, '+(pref('split_mode')||'grid'):'off',Tabs:tabs.length,'Legacy tabs':legacyTabs()?'on':'off'}),
+    send:async t=>{const dev=HM.api.parseId(HX.devId());if(!dev){toast('Reporting isn’t set up in this build yet');return false}
+      if(!(await HM.api.ready())){toast('First, make your free Hush ID — it takes 10 seconds');closePanel();openDock('murmur');return 'setup'}return HM.api.sendTo(dev,t)}})},
   guide:()=>{const p=$('#panel');p.innerHTML='<div id=guidex style="padding:8px 6px"></div>';HUSH_GUIDE.open($('#guidex'),{mobile:false,done:()=>closePanel(),act:a=>{closePanel();
     const m={cmd:'pal',tabs:null,site:'site',settings:'settings',split:null,msgs:'msg',echo:'echo',reading:'reading',gest:'gest',tor:'torinfo',assistant:null}[a];if(a=='assistant'){openDock('ai');return}
     if(m)openPanel(m);else toast(a=='split'?'Shift-click a tab in the side bar to split with it':'Your tabs are in the side bar')}})},
@@ -670,7 +674,7 @@ const ACTIONS=()=>[
   ['Split view with last tab','Ctrl+\\',()=>{closePanel();shortcut('\\')}],['Site settings & QR code','',()=>tab(cur)&&openPanel('site')],
   ['Toggle dark mode for websites','',async()=>{await setPref('force_dark',pref('force_dark')=='true'?'false':'true');applyDarkNow();closePanel()}],
   ['Read later','',async()=>{const t=tab(cur);if(!t)return;await inv('bookmark_add',{title:hostOf(t.url),url:t.url,folder:'reading'});await loadState();closePanel();toast('Added to reading list')}],
-  ['Reading list','',()=>openPanel('reading')],['Hush guide & tutorial','Every feature, step by step',()=>openPanel('guide')],['Take the tour','',()=>openPanel('tour')],['Self-destruct this tab','',()=>cur&&destructMenu(cur)],['Change watch','',()=>openPanel('watch')],['Gestures & quick wheel','',()=>openPanel('gest')],['Diagnostics','',()=>openPanel('diag')],['New Tor tab','Ctrl+Shift+O',()=>{closePanel();torTab(true)}],['Murmur — private messages','Ctrl+Shift+M',()=>openPanel('msg')],['Echo — social','Ctrl+Shift+E',()=>openPanel('echo')],['What is Tor?','',()=>openPanel('torinfo')],['New Tor identity','',()=>{closePanel();newIdentity()}],['Listen to this page','Ctrl+Shift+R',()=>{closePanel();tab(cur)&&listenToggle()}],['Boosts for this site','Ctrl+Shift+A',()=>tab(cur)&&openPanel('boost')],['Screenshot — whole page','Ctrl+Shift+S',()=>{closePanel();tab(cur)&&snapshot(true)}],['Screenshot — visible area','',()=>{closePanel();tab(cur)&&snapshot(false)}],['Archived tabs','',()=>openPanel('archive')],['Customize start page','',()=>{closePanel();renderHome()}],['Save page as PDF / print','Ctrl+P',()=>{closePanel();tab(cur)&&inv('page_action',{action:'print'})}],
+  ['Reading list','',()=>openPanel('reading')],['Hush guide & tutorial','Every feature, step by step',()=>openPanel('guide')],['Report a problem','Goes straight to the developer',()=>openPanel('report')],['Take the tour','',()=>openPanel('tour')],['Self-destruct this tab','',()=>cur&&destructMenu(cur)],['Change watch','',()=>openPanel('watch')],['Gestures & quick wheel','',()=>openPanel('gest')],['Diagnostics','',()=>openPanel('diag')],['New Tor tab','Ctrl+Shift+O',()=>{closePanel();torTab(true)}],['Murmur — private messages','Ctrl+Shift+M',()=>openPanel('msg')],['Echo — social','Ctrl+Shift+E',()=>openPanel('echo')],['What is Tor?','',()=>openPanel('torinfo')],['New Tor identity','',()=>{closePanel();newIdentity()}],['Listen to this page','Ctrl+Shift+R',()=>{closePanel();tab(cur)&&listenToggle()}],['Boosts for this site','Ctrl+Shift+A',()=>tab(cur)&&openPanel('boost')],['Screenshot — whole page','Ctrl+Shift+S',()=>{closePanel();tab(cur)&&snapshot(true)}],['Screenshot — visible area','',()=>{closePanel();tab(cur)&&snapshot(false)}],['Archived tabs','',()=>openPanel('archive')],['Customize start page','',()=>{closePanel();renderHome()}],['Save page as PDF / print','Ctrl+P',()=>{closePanel();tab(cur)&&inv('page_action',{action:'print'})}],
   ['Bookmarks','Ctrl+Shift+B',()=>openPanel('bookmarks')],['Reopen closed tab','Ctrl+Shift+T',()=>{closePanel();shortcut('shift+t')}],
   ['Mute / unmute tab','Ctrl+M',()=>{closePanel();shortcut('m')}],['Full screen','F11',()=>{closePanel();shortcut('f11')}],
   ['Zoom in','Ctrl+=',()=>shortcut('+')],['Zoom out','Ctrl+−',()=>shortcut('-')],['Reset zoom','Ctrl+0',()=>shortcut('0')],
@@ -875,6 +879,7 @@ function renderSettings(){
    <kbd>Ctrl</kbd>+<kbd>\\</kbd> split view · <kbd>Ctrl</kbd>+<kbd>B</kbd> show/hide tabs · <kbd>Ctrl</kbd>+<kbd>D</kbd> bookmark · <kbd>Ctrl</kbd>+<kbd>H</kbd> history · <kbd>Ctrl</kbd>+<kbd>J</kbd> downloads · <kbd>Ctrl</kbd>+<kbd>,</kbd> settings<br>
    Point at the screen edge to slide the tab bar in · drag tabs to reorder · shift-click a tab to split · middle-click to close · right-click a tab for mute, duplicate, move to workspace</div>
   <h3>Help</h3>${row('📘 Hush guide & tutorial','Every feature, what it’s good for, and how to use it — step by step','<button class=btn id=s-guide>Open</button>')}
+  ${row('Report a problem','Goes straight to the developer — encrypted, through Tor','<button class=btn id=s-report>Report</button>')}
   ${row('Welcome walkthrough','Hands-on: try each main feature yourself (2 minutes)','<button class=btn id=s-tour>Replay</button>')}`;
   p.querySelectorAll('.seg button[data-k]').forEach(b=>b.onclick=async()=>{await setPref(b.dataset.k,b.dataset.v);if(b.dataset.k=='zoom')tabs.forEach(t=>{t.zoom=+b.dataset.v/100;inv('set_zoom',{factor:t.zoom,tab:t.id}).catch(()=>{})});draw();layout(true);renderSettings()});
   p.querySelectorAll('[data-color]').forEach(b=>b.onclick=async()=>{await setPref('color',b.dataset.color);renderSettings()});
@@ -885,7 +890,7 @@ function renderSettings(){
   $('#s-tori').onclick=()=>openPanel('torinfo');HX.settingsSearch(p,$('#s-q'),'.row');
   p.querySelectorAll('[data-tbt]').forEach(b=>b.onclick=async()=>{const h=tbHidden();h.has(b.dataset.tbt)?h.delete(b.dataset.tbt):h.add(b.dataset.tbt);await setPref('tb_hide',[...h].join(','));applyToolbar();renderSettings()});
   HX.lookPicker($('#s-look'),()=>{applyColor();renderSettings()});$('#s-gest').onclick=()=>openPanel('gest');$('#s-watch').onclick=()=>openPanel('watch');
-  $('#s-guide').onclick=()=>openPanel('guide');$('#s-tour').onclick=()=>openPanel('tour');$('#s-ext').onclick=()=>openPanel('ext');$('#s-rl').onclick=()=>openPanel('reading');$('#s-focus').onclick=()=>openPanel('focus');$('#s-send').onclick=()=>openPanel('send');$('#s-about').onclick=()=>openPanel('about');
+  $('#s-guide').onclick=()=>openPanel('guide');$('#s-report').onclick=()=>openPanel('report');$('#s-tour').onclick=()=>openPanel('tour');$('#s-ext').onclick=()=>openPanel('ext');$('#s-rl').onclick=()=>openPanel('reading');$('#s-focus').onclick=()=>openPanel('focus');$('#s-send').onclick=()=>openPanel('send');$('#s-about').onclick=()=>openPanel('about');
   $('#s-bangs').onclick=async()=>{const v=prompt('Your shortcuts, separated by | as  key=https://site.com/search?q=%s',pref('bangs'));if(v===null)return;
     const list=v.split(/\||\n/).map(x=>x.trim()).filter(x=>/^[a-z0-9]{1,12}=https:\/\/\S+$/i.test(x));await setPref('bangs',list.join('|'));renderSettings();toast(list.length+' shortcuts saved')};$('#s-ws').onclick=()=>openPanel('ws');
   $('#s-engine').onchange=async e=>{s.search=e.target.value;await inv('set_setting',{key:'search',value:s.search});renderSettings()};
@@ -918,4 +923,6 @@ async function loadState(first){try{state=await inv('get_state');state.settings.
 layout(true);draw();loadState(true).then(()=>{if(!state.settings.ui.toured)setTimeout(startTour,600)});$('#bar').focus();
 
 setTimeout(()=>{try{splitModeSync()}catch(e){}},1500);
+
+inv('app_info').then(r=>{window.__hushBuild=r&&r.build}).catch(()=>{});
 </script>

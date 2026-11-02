@@ -552,6 +552,45 @@ window.HushX = function (A) {
     paint(); paintCtx(); if (!A.mobile) setTimeout(() => ta.focus(), 80);
     if (o.run) { const s = AX_SUGG.find(x => x[0] === o.run); if (s && s[3]) setTimeout(() => ask(s[1], s[3], true), 120); }
   }
+  // ---------- Report a problem ----------
+  // Reports go straight to the Hush developer as an end-to-end encrypted Murmur message, through Tor — no accounts,
+  // no third-party servers, and the developer can reply in the same chat. You choose what extra detail to include.
+  // The developer's Hush ID (public, like a username). Reports are sent here.
+  const DEV_ID = '';
+  const errLog = [];
+  try { addEventListener('error', e => { errLog.push(new Date().toISOString().slice(11, 19) + ' ' + String(e.message || e.error || 'error').slice(0, 160)); if (errLog.length > 15) errLog.shift(); });
+    addEventListener('unhandledrejection', e => { errLog.push(new Date().toISOString().slice(11, 19) + ' ' + String(e.reason && e.reason.message || e.reason || 'rejection').slice(0, 160)); if (errLog.length > 15) errLog.shift(); }); } catch (e) {}
+  const REPORT_KINDS = [['bug', 'Something broke'], ['video', 'Video / split screen'], ['murmur', 'Murmur'], ['echo', 'Echo'], ['ai', 'AI assistant'], ['idea', 'Idea / request']];
+  function reportForm(el, o) { // o: { send(text):Promise<bool>, info():object, site():string|null, close(), setup() }
+    let kind = 'bug';
+    const draw = () => { el.innerHTML = `<style>${AX_CSS}</style><div style="padding:16px 16px 24px;display:grid;grid-template-columns:minmax(0,1fr);gap:14px;max-width:560px;margin:0 auto;box-sizing:border-box;width:100%;font:15px/1.45 system-ui">
+      <div class=ax-h style="padding:0;border:0"><div class=ax-av style="background:linear-gradient(135deg,#2bb3a3,#1e8f83)">!</div><div style="flex:1;min-width:0"><b>Report a problem</b><small>Goes straight to the developer · encrypted · through Tor</small></div>${o.close ? '<button class=ax-ib data-x title="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>' : ''}</div>
+      <div><div style="font-weight:650;margin-bottom:8px">What’s it about?</div><div style="display:flex;flex-wrap:wrap;gap:8px">${REPORT_KINDS.map(([k, l]) => `<button data-k=${k} style="all:unset;cursor:pointer;padding:8px 14px;border-radius:999px;border:1px solid ${k === kind ? 'var(--mur,#2bb3a3)' : 'var(--line)'};background:${k === kind ? 'var(--mur,#2bb3a3)' : 'var(--card)'};color:${k === kind ? '#fff' : 'var(--ink)'};font-size:14px">${l}</button>`).join('')}</div></div>
+      <label style="display:grid;gap:8px"><span style="font-weight:650">What happened?</span>
+        <textarea id=rp-t rows=6 maxlength=3000 placeholder="What you were doing, what you expected, and what happened instead. The more detail, the faster it gets fixed." style="box-sizing:border-box;width:100%;resize:vertical;border:1px solid var(--line);border-radius:14px;padding:12px;background:var(--card);color:var(--ink);font:15px/1.45 system-ui"></textarea></label>
+      <div style="display:grid;gap:10px;font-size:14px">
+        <label style="display:flex;gap:10px;align-items:flex-start"><input type=checkbox id=rp-dev checked style="margin-top:3px"><span>Include device details<br><small style="color:var(--mute)">Hush version, phone or PC, screen size, Tor on/off, split screen state</small></span></label>
+        <label style="display:flex;gap:10px;align-items:flex-start"><input type=checkbox id=rp-err checked style="margin-top:3px"><span>Include recent error messages<br><small style="color:var(--mute)">${errLog.length ? errLog.length + ' recorded this session' : 'none recorded this session'}</small></span></label>
+        ${o.site && o.site() ? `<label style="display:flex;gap:10px;align-items:flex-start"><input type=checkbox id=rp-site style="margin-top:3px"><span>Include the site I’m on<br><small style="color:var(--mute)">${esc(o.site())} — only if the problem is on this site</small></span></label>` : ''}
+      </div>
+      <button data-send style="all:unset;cursor:pointer;text-align:center;padding:13px;border-radius:14px;background:var(--mur,#2bb3a3);color:#fff;font-weight:700">Send report</button>
+      <p style="margin:0;color:var(--mute);font-size:12.5px">It arrives as a Murmur message, so the developer can reply to you right there. Nothing else about you is sent.</p></div>`;
+      el.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { const t = el.querySelector('#rp-t').value; kind = b.dataset.k; draw(); el.querySelector('#rp-t').value = t; });
+      el.querySelector('[data-x]')?.addEventListener('click', () => o.close());
+      el.querySelector('[data-send]').onclick = async () => {
+        const t = el.querySelector('#rp-t').value.trim(); if (t.length < 5) return A.toast('Tell us a little about what happened');
+        const lines = ['🐞 Hush report — ' + (REPORT_KINDS.find(x => x[0] === kind) || [0, kind])[1], '', t];
+        if (el.querySelector('#rp-dev')?.checked) { const i = o.info() || {}; lines.push('', '— Device —', ...Object.entries(i).map(([k, v]) => k + ': ' + v)); }
+        if (el.querySelector('#rp-site')?.checked) lines.push('', 'Site: ' + o.site());
+        if (el.querySelector('#rp-err')?.checked && errLog.length) lines.push('', '— Recent errors —', ...errLog.slice(-10));
+        const b = el.querySelector('[data-send]'); b.textContent = 'Sending through Tor…'; b.style.opacity = '.7';
+        let ok = false; try { ok = await o.send(lines.join('\n').slice(0, 3900)); } catch (e) {}
+        if (ok === 'setup') { b.textContent = 'Send report'; b.style.opacity = ''; return; }
+        if (!ok) { b.textContent = 'Send report'; b.style.opacity = ''; return A.toast('Couldn’t send — check your connection and try again'); }
+        el.innerHTML = `<style>${AX_CSS}</style><div class=ax-hi style="padding:40px 20px"><div class=ax-av style="background:linear-gradient(135deg,#2bb3a3,#1e8f83)">✓</div><h3>Report sent — thank you</h3><p>It went straight to the developer. Any reply shows up in Murmur.</p>${o.close ? '<button class=hm-btn data-x style="all:unset;cursor:pointer;padding:11px 20px;border-radius:14px;background:var(--mur,#2bb3a3);color:#fff;font-weight:650">Done</button>' : ''}</div>`;
+        el.querySelector('[data-x]')?.addEventListener('click', () => o.close()); };
+    };
+    draw(); }
   const SEC = [['', 'Standard'], ['safer', 'Safer'], ['safest', 'Safest']];
   const LEAVE = [['ask', 'Ask me'], ['mini', 'Mini player'], ['background', 'Keep playing'], ['pause', 'Stop']];
 
@@ -589,6 +628,6 @@ window.HushX = function (A) {
       c.ontouchend = e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null; if (dx < -50 && i < S.length - 1) { i++; draw(); } else if (dx > 50 && i) { i--; draw(); } }; };
     draw();
   }
-  return { ai, aiName, aiRename, assistant, settingsSearch, tour, TOR_INFO, mediaPrompt, LEAVE, SEC, bump, report, tabNote, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
+  return { ai, aiName, aiRename, assistant, reportForm, devId: () => DEV_ID, errLog: () => errLog.slice(), settingsSearch, tour, TOR_INFO, mediaPrompt, LEAVE, SEC, bump, report, tabNote, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
     destructSweep, destructLabel, DESTRUCT, watchAdd, watchSweep, watchPanel, watchCount, syncLink, LS };
 };
