@@ -145,7 +145,7 @@ pub async fn blob_get(app: AppHandle, url: String) -> Result<tauri::ipc::Respons
 
 /// Public posts from open networks for Echo's Discover feed (Bluesky, Mastodon), fetched through Tor so those
 /// services never see your IP. Read-only GETs to a fixed list of public servers; returns the JSON reply as text.
-pub const PUBLIC_FEED_HOSTS: &[&str] = &["public.api.bsky.app", "mastodon.social", "mastodon.online", "mstdn.social", "fosstodon.org", "flipboard.social", "newsie.social", "mas.to", "hachyderm.io", "infosec.exchange", "techhub.social", "journa.host", "press.coop"];
+pub const PUBLIC_FEED_HOSTS: &[&str] = &["public.api.bsky.app", "mastodon.social", "mastodon.online", "mstdn.social", "mastodon.world", "fosstodon.org", "flipboard.social", "newsie.social", "mas.to", "hachyderm.io", "infosec.exchange", "techhub.social", "journa.host", "press.coop"];
 pub fn public_feed_ok(url: &str) -> bool {
     url::Url::parse(url).ok().filter(|u| u.scheme() == "https" && u.port().is_none())
         .and_then(|u| u.host_str().map(|h| PUBLIC_FEED_HOSTS.contains(&h) && (u.path().starts_with("/xrpc/app.bsky.") || u.path().starts_with("/api/v1/")))).unwrap_or(false)

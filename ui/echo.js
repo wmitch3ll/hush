@@ -283,11 +283,14 @@ window.HushEcho = function (A) {
       'bsky:thedispatch.com', 'bsky:washingtonexaminer.com', 'bsky:nationalreview.com', 'bsky:reason.com', 'bsky:bbcnews.bsky.social'],
     Sports: ['bsky:theathletic.bsky.social', 'bsky:awfulannouncing.bsky.social', 'bsky:mlbtraderumors.bsky.social', 'bsky:splitzoneduo.com', 'bsky:redditcfb.com', 'bsky:cfbnumbers.bsky.social',
       'bsky:dimeuproxx.bsky.social', 'bsky:marcjspears.bsky.social', 'bsky:howardbeck.bsky.social', 'bsky:jonbois.bsky.social', 'bsky:warriors.bsky.social', 'bsky:ny-knicks.bsky.social',
-      'bsky:bigskyconf.bsky.social', 'bsky:espn.com', 'bsky:nba.com', 'bsky:mlb.com'],
+      'bsky:bigskyconf.bsky.social', 'bsky:espn.com', 'bsky:nba.com', 'bsky:mlb.com',
+      'masto:BleacherReport@flipboard.com', 'masto:SportingNews@flipboard.com', 'masto:NBCSports@flipboard.com', 'masto:si_flipboard@flipboard.com', 'masto:usatodaysports@flipboard.com',
+      'masto:Yardbarker@flipboard.com', 'masto:247Sports@flipboard.com', 'masto:nflscores@mastodon.online', 'masto:premierleaguescores@mastodon.world'],
     Business: ['bsky:bloomberg.com', 'bsky:reuters.com', 'bsky:wsj.com', 'bsky:ft.com', 'bsky:economist.com', 'bsky:cnbc.com', 'bsky:fortune.com', 'bsky:businessinsider.com', 'bsky:marketwatch.com', 'bsky:techcrunch.com'],
     Gaming: ['bsky:videogameschronicle.com', 'bsky:playstation.com', 'bsky:nintendolife.com', 'bsky:pushsquare.com', 'bsky:purexbox.com', 'bsky:timeextension.com',
-      'bsky:jeffgerstmann.com', 'bsky:nintendousa.bsky.social', 'bsky:limitedrungames.bsky.social', 'bsky:gamingalexandria.bsky.social', 'bsky:capcomart.bsky.social'],
-    Tech: ['bsky:theverge.com', 'bsky:arstechnica.com', 'masto:eff@mastodon.social', 'masto:torproject@mastodon.social', 'masto:Gargron@mastodon.social'],
+      'bsky:jeffgerstmann.com', 'bsky:nintendousa.bsky.social', 'bsky:limitedrungames.bsky.social', 'bsky:gamingalexandria.bsky.social', 'bsky:capcomart.bsky.social',
+      'masto:GIbiz@mastodon.social', 'masto:gamingonlinux@mastodon.social'],
+    Tech: ['bsky:theverge.com', 'bsky:arstechnica.com', 'masto:eff@mastodon.social', 'masto:torproject@mastodon.social', 'masto:Gargron@mastodon.social', 'masto:arstechnica@mastodon.social', 'masto:signalapp@mastodon.world', 'masto:internetarchive@mastodon.archive.org'],
     Science: ['bsky:nasa.gov', 'bsky:science.org', 'bsky:newscientist.com', 'bsky:natgeo.com'],
     Fun: ['bsky:xkcd.com'] };
   // Only show accounts that are actually active: posts older than 30 days are hidden from Explore.
@@ -305,8 +308,10 @@ window.HushEcho = function (A) {
           text: String(p.record.text || '').slice(0, 3000), photos: imgs.length, video: !!(p.embed && /video/.test(p.embed.$type || '')), likes: p.likeCount || 0, reposts: p.repostCount || 0, replies: p.replyCount || 0,
           url: 'https://bsky.app/profile/' + a.handle + '/post/' + rk }; });
     }
-    const [user, host] = id.split('@');
-    const a = JSON.parse(await invoke('public_feed', { url: `https://${host}/api/v1/accounts/lookup?acct=${encodeURIComponent(user)}` }));
+    const [user, home] = id.split('@'), DIRECT = ['mastodon.social', 'mastodon.online', 'mstdn.social', 'mastodon.world', 'newsie.social'];
+    // Accounts on other servers (Flipboard, etc.) are read through mastodon.social, which keeps their public posts.
+    const host = DIRECT.includes(home) ? home : 'mastodon.social', acct = host === home ? user : user + '@' + home;
+    const a = JSON.parse(await invoke('public_feed', { url: `https://${host}/api/v1/accounts/lookup?acct=${encodeURIComponent(acct)}` }));
     const l = JSON.parse(await invoke('public_feed', { url: `https://${host}/api/v1/accounts/${encodeURIComponent(a.id)}/statuses?limit=15&exclude_replies=true&exclude_reblogs=true` }));
     return (l || []).map(x => ({ id: 'm:' + x.uri, acc, net: 'masto', name: a.display_name || a.username, handle: '@' + a.acct + (a.acct.includes('@') ? '' : '@' + host), at: Date.parse(x.created_at) || Date.now(),
       text: otxt(x.content).slice(0, 3000), photos: (x.media_attachments || []).filter(m => m.type === 'image').length, video: (x.media_attachments || []).some(m => /video|gifv/.test(m.type)),
