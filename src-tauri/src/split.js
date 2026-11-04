@@ -73,7 +73,12 @@ window.__hushSplit = window.__hushSplit || (() => {
   addEventListener("message", e => { if (e.data && e.data.__hushTap && on && !focus) ask(); });
   // Tapping the other half moves the focus (and the sound) there; the tap itself still reaches the page.
   // Report the tap; Hush mutes the other pane first and then gives this one the sound (never both audible at once).
-  addEventListener("pointerdown", e => { if (on && !focus && e.isTrusted) ask(); }, true);
+  // The first tap/click on a pane that doesn't have the sound ONLY selects it: the page never sees that tap, so it
+  // can't also pause/play the video (that caused the play-pause flash when switching). Later taps work normally.
+  let eat = 0;
+  const swallow = e => { if (Date.now() < eat) { e.preventDefault(); e.stopImmediatePropagation(); } };
+  addEventListener("pointerdown", e => { if (on && !focus && e.isTrusted) { eat = Date.now() + 700; e.preventDefault(); e.stopImmediatePropagation(); ask(); } }, true);
+  for (const t of ["mousedown", "mouseup", "pointerup", "click", "dblclick", "touchstart", "touchend"]) addEventListener(t, swallow, true);
   return o => { on = !!(o && o.on); const f = !!(o && o.focus); if (o && o.sw) sw = o.sw; else if (f !== focus) sw = Date.now(); focus = f; clearInterval(tick);
     if (!on) { unfill(); ring(); sound(); return; }
     sound(); ring(); const v = pick(); if (v) fill(v);

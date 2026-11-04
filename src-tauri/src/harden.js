@@ -58,6 +58,10 @@
     ["fbclid","gclid","utm_source","utm_medium","utm_campaign","utm_term","utm_content","mc_eid","msclkid"].forEach(k => u.searchParams.delete(k));
     if (u.href !== location.href) history.replaceState(null, "", u.href); } catch (_) {}
   // Hardware / canvas / WebGL / audio fingerprinting is handled by farble.js (per-site randomized values).
+  // Thin scrollbars everywhere (split panes, small windows): a low-priority default — :where() has zero
+  // specificity, so any site that styles its own scrollbars keeps its look.
+  try { const st = document.createElement("style"); st.textContent = ":where(html){scrollbar-width:thin;scrollbar-color:rgba(127,127,127,.45) transparent}";
+    (document.head || document.documentElement).append(st); } catch (_) {}
   // Media agent (every frame, including other sites' player frames on streaming pages): the top page tells each
   // frame how to treat its videos in split screen — muted or not, and whether to restart a video the system paused
   // (when another pane takes the sound, Android pauses the others). Frames pass the message on to their own frames.
@@ -67,9 +71,14 @@
     // for 2.5s after that, ANY pause is the system reacting to the switch, so it's undone. st.pause: stop everything.
     const apply = () => document.querySelectorAll("video,audio").forEach(m => { if (st.pause) m.pause(); else if (st.on && st.mute !== null && st.mute !== undefined && m.muted !== st.mute) m.muted = st.mute; });
     const relay = d => { for (const f of document.querySelectorAll("iframe,frame")) try { f.contentWindow.postMessage(d, "*"); } catch (_) {} };
+    // Split screen, inside a player frame of the pane WITHOUT the sound: the first tap only selects the pane (the
+    // player never sees it, so it doesn't pause/play); it's reported to the top page, which moves the sound here.
+    let eat = 0;
+    const swallow = e => { if (Date.now() < eat) { e.preventDefault(); e.stopImmediatePropagation(); } };
     addEventListener("pointerdown", e => { touched = Date.now();
-      // A tap inside a player frame: tell the top page (desktop split screen uses this to move the sound here).
-      if (window !== top && e.isTrusted) try { top.postMessage({ __hushTap: 1 }, "*"); } catch (_) {} }, true);
+      if (window !== top && e.isTrusted) { if (st.on && st.mute === true) { eat = Date.now() + 700; e.preventDefault(); e.stopImmediatePropagation(); }
+        try { top.postMessage({ __hushTap: 1 }, "*"); } catch (_) {} } }, true);
+    for (const t of ["mousedown", "mouseup", "pointerup", "click", "dblclick", "touchstart", "touchend"]) addEventListener(t, swallow, true);
     addEventListener("keydown", () => { touched = Date.now(); }, true);
     const forced = () => st.on && st.mute !== null && st.mute !== undefined;
     document.addEventListener("volumechange", e => { if (forced() && e.target.muted !== st.mute) e.target.muted = st.mute; }, true);

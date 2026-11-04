@@ -1,0 +1,50 @@
+/* Hush for Windows — cleanup layer. Loaded last; only styling. Calm, grouped, fewer boxes. */
+
+/* Address bar: a softer focus ring instead of a heavy black outline. */
+#pill:focus-within{border-color:color-mix(in srgb,var(--ink) 28%,var(--line));box-shadow:0 0 0 4px color-mix(in srgb,var(--ink) 6%,transparent)}
+#pill{border-radius:12px}
+
+/* Toolbar icon buttons: same size, gentle hover, clear disabled state. */
+#addr > button,#addr .tb{border-radius:10px}
+#addr > button:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 7%,transparent)}
+#addr > button:disabled{opacity:.32}
+
+/* ---------- Panels (Settings, Tools, History…) ---------- */
+#panel h2{font-weight:650;letter-spacing:-.01em}
+/* Section headings: quiet sentence case, not tracked-out capitals. */
+#panel h3{text-transform:none;letter-spacing:0;font-size:14px;font-weight:650;color:var(--ink);margin:30px 2px 10px}
+/* Settings rows: one grouped panel per section with hairline dividers, instead of a floating card per row. */
+#panel > .row{margin:0;border-radius:0;border-bottom-width:0;box-shadow:none}
+#panel > h3 + .row,#panel > .row:first-child,#panel > :not(.row) + .row{border-top-left-radius:14px;border-top-right-radius:14px}
+#panel > .row:has(+ :not(.row)),#panel > .row:last-child{border-bottom-width:1px;border-bottom-left-radius:14px;border-bottom-right-radius:14px;margin-bottom:6px}
+#panel > .row + .row{border-top-color:color-mix(in srgb,var(--line) 70%,transparent)}
+#panel > .row > div:first-child small,#panel > .row > div:first-child > div{line-height:1.45}
+/* Links inside panels follow the theme instead of browser-default blue. */
+#panel a{color:var(--ink);text-decoration-color:color-mix(in srgb,var(--ink) 30%,transparent);text-underline-offset:3px}
+#panel a:hover{text-decoration-color:var(--ink)}
+/* Search fields */
+#panel input.txt[placeholder^="Search"]{border-radius:12px;padding:10px 14px 10px 36px;
+  background:var(--card) no-repeat 12px 50%/16px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a8f98' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-4-4'/%3E%3C/svg%3E")}
+
+/* ---------- Tools panel ---------- */
+#panel .tool{transition:background .12s,border-color .12s}
+#panel .tool:hover:not(:disabled){border-color:color-mix(in srgb,var(--ink) 25%,var(--line))}
+#panel .tool:disabled{opacity:1;background:transparent;border-style:dashed;color:var(--mute)}
+#panel .tool:disabled svg{opacity:.45}
+#panel .tool em{font-style:normal;font-weight:600;font-size:10.5px;color:var(--mute)}
+
+/* ---------- Command bar (Ctrl+K) ---------- */
+#palq{border-radius:14px;font-size:17px}
+.res{gap:2px}
+.res button{padding:10px 12px;border-radius:10px}
+.res button.sel{background:color-mix(in srgb,var(--ink) 7%,var(--card));box-shadow:inset 3px 0 0 var(--acc)}
+/* Actions don't need a placeholder icon box; tabs and sites keep their letter badge. */
+.res i:empty{display:none}
+/* Shortcut hints look like keys. */
+.res small.k{display:inline-flex;gap:3px}
+.res small.k kbd{font:600 11px/1 system-ui;padding:3px 6px;border-radius:5px;border:1px solid var(--line);background:var(--bg);color:var(--mute)}
+
+/* Thin scrollbars in Hush's own UI too. */
+html,#panel,.res{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--ink) 25%,transparent) transparent}
+
+@media (prefers-reduced-motion:reduce){#panel .tool{transition:none}}

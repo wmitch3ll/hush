@@ -231,6 +231,7 @@ pub fn page_action_js(action: &str, arg: &str) -> Result<String, String> {
         "dark-off" => "__hushPage.dark(false)".to_string(),
         "reader" => "__hushPage.reader()".to_string(),
         "find" => format!("__hushPage.find({a},false)"),
+        "find-prev" => format!("__hushPage.find({a},true)"),
         "find-back" => format!("__hushPage.find({a},true)"),
         "find-clear" => "__hushPage.find('',false)".to_string(),
         "print" => "print()".to_string(),

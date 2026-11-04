@@ -48,6 +48,16 @@ body.small .shot{aspect-ratio:16/7}body.noprev .shot{display:none}
 #menu.on{display:block}#menu button{display:block;width:100%;padding:7px 10px;border-radius:6px;text-align:left}#menu button:hover{background:var(--bg)}
 .hint{color:var(--mute);font-size:11px;padding:2px 12px 10px;flex:none}body.h .hint{display:none}
 @media (prefers-reduced-motion:reduce){.t{transition:none}}
+/* Cleanup: softer current-tab highlight, calmer placeholders, a clear split badge. */
+body:not(.legacy) .t.on{border-color:color-mix(in srgb,var(--ink) 38%,var(--line));box-shadow:0 0 0 3px color-mix(in srgb,var(--ink) 7%,transparent)}
+body:not(.legacy) .t:not(.on):hover{border-color:color-mix(in srgb,var(--ink) 18%,var(--line));transform:none}
+body:not(.legacy) .shot{font:600 22px/1 ui-sans-serif,system-ui,"Segoe UI",sans-serif;color:color-mix(in srgb,var(--mute) 80%,transparent);
+  background-color:color-mix(in srgb,var(--ink) 4%,var(--bg))}
+.t.split .shot::after{content:"Split"!important;font:650 10.5px/1 system-ui!important;padding:4px 7px!important;border-radius:999px!important;
+  background:color-mix(in srgb,var(--card) 88%,transparent)!important;color:var(--ink)!important;border:1px solid var(--line)!important}
+.meta b{font-weight:550}
+#list{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--ink) 22%,transparent) transparent}
+.hint{line-height:1.45}
 /* Legacy tabs: classic browser tabs across the top — folder-style tabs that shrink to fit, + at the end. */
 body.legacy{flex-direction:row;align-items:flex-end;box-shadow:none;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--bg) 82%,var(--ink) 18%)}
 body.legacy header{order:2;flex-direction:row;padding:0 6px 5px;align-self:flex-end}body.legacy #ws,body.legacy .sp,body.legacy .hint{display:none}

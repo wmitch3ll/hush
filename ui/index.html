@@ -107,6 +107,10 @@ kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:
 #toast.on{opacity:1}
 .ai-av{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;font:700 12px/22px system-ui;font-style:normal;color:#fff;background:linear-gradient(135deg,#6d5efc,#22b8cf)}
 #dockv{height:100%}
+.keys{max-width:720px;margin:0 auto;padding:6px 4px 30px}.keys-h{display:flex;gap:12px;align-items:center}.keys-h h2{margin:0;flex:none}.keys-h .txt{flex:1;margin:0}
+.keys-tip{color:var(--mute);margin:8px 0 6px;font-size:13.5px}.keys section{margin-top:18px}.keys h3{margin:0 0 6px;font-size:13px;color:var(--mute);font-weight:650}
+.keys-r{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:8px 10px;border-radius:10px}.keys-r:hover{background:var(--card)}
+.keys-k{display:inline-flex;gap:4px;color:var(--mute);font-size:12.5px;white-space:nowrap}.keys-k kbd{min-width:22px;text-align:center}
 </style><link rel=stylesheet href="hush.css">
 
 <div id=tabsbar>
@@ -131,12 +135,12 @@ kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:
   <span id=lctl aria-label="Read aloud controls"><button id=l-prev title="Previous paragraph" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M6 5v14M18 6l-9 6 9 6z"/></svg></button><button id=l-pp title="Pause" aria-label="Pause"><svg viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></svg></button><button id=l-next title="Next paragraph" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M18 5v14M6 6l9 6-9 6z"/></svg></button><b id=l-rate title="Speed">1×</b><button id=l-stop title="Stop reading" aria-label="Stop"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>
   <span id=np><span id=np-t title="Go to this tab"></span><button id=np-pp title="Pause / play" aria-label="Pause or play"></button><button id=np-mini title="Mini player" aria-label="Mini player"><svg viewBox="0 0 24 24"><rect x=3 y=5 width=18 height=14 rx=2 /><rect x=12 y=11 width=7 height=6 rx=1 /></svg></button><button id=np-x title="Stop" aria-label="Stop"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span><span id=tog></span><button id=mnote title="Friends’ notes on this page" aria-label="Notes on this page">📌 <b></b></button>
   <button id=echob title="Echo — private-first social (Ctrl+Shift+E)" aria-label="Echo"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 8-8M8 12a4 4 0 0 1 4-4M20 12a8 8 0 0 1-8 8M16 12a4 4 0 0 1-4 4"/><circle cx=12 cy=12 r=1.5 /></svg><b id=echocnt class=badge></b></button>
-  <button id=aib title="AI assistant (Ctrl+Shift+Space)" aria-label="AI assistant"><i class=ai-av>A</i></button>
+  <button id=aib title="AI assistant (Ctrl+Shift+A)" aria-label="AI assistant"><i class=ai-av>A</i></button>
   <button id=msgb title="Murmur — private messages through Tor (Ctrl+Shift+M)" aria-label="Murmur messages"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg><b id=msgcnt class=badge></b></button>
   <button id=newid title="New identity: fresh Tor circuits, then reload" aria-label="New Tor identity"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/><circle cx=12 cy=12 r=2 /></svg></button>
   <button id=onion title="Open this page in a Tor tab (Ctrl+Shift+O)" aria-label="Tor"><svg viewBox="0 0 24 24"><circle cx=12 cy=13 r=8 /><path d="M12 5c-3 2-4 5-4 8s1 6 4 8M12 5c3 2 4 5 4 8s-1 6-4 8M12 5v-2"/></svg></button>
   <button id=listen title="Listen to this page (Ctrl+Shift+R)" aria-label="Listen to page" disabled><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM16 8a5 5 0 0 1 0 8M19 5a9 9 0 0 1 0 14"/></svg></button>
-  <button id=boostb title="Boosts — restyle this site (Ctrl+Shift+A)" aria-label="Boosts" disabled><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx=16 cy=7 r=2 /><circle cx=10 cy=17 r=2 /></svg></button>
+  <button id=boostb title="Boosts — restyle this site" aria-label="Boosts" disabled><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx=16 cy=7 r=2 /><circle cx=10 cy=17 r=2 /></svg></button>
   <button id=snap title="Screenshot the whole page (Ctrl+Shift+S)" aria-label="Screenshot" disabled><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx=12 cy=13 r=3.5 /></svg></button>
   <button id=read title="Reader view (Ctrl+E)" aria-label="Reader view" disabled><svg viewBox="0 0 24 24"><path d="M4 5h6a2 2 0 0 1 2 2v12a2 2 0 0 0-2-2H4zM20 5h-6a2 2 0 0 0-2 2v12a2 2 0 0 1 2-2h6z"/></svg></button>
   <button id=pick title="Block an element" aria-label="Block an element" disabled><svg viewBox="0 0 24 24"><circle cx=6 cy=6 r=3 /><circle cx=6 cy=18 r=3 /><path d="M8.1 8.1L20 20M8.1 15.9L20 4"/></svg></button>
@@ -150,13 +154,14 @@ kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:
   <div id=home></div><div id=bms></div>
   <div id=panel class=panel hidden></div>
 </div>
-<aside id=dock aria-label="Hush Hub"><div id=dockh><button data-hub=ai title="AI assistant (Ctrl+Shift+Space)"><i class=ai-av style="width:20px;height:20px;font-size:11px;line-height:20px">A</i></button><button data-hub=murmur title="Murmur — messages (Ctrl+Shift+M)"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg><b class=badge id=dmc></b></button><button data-hub=echo title="Echo — social (Ctrl+Shift+E)"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 8-8M8 12a4 4 0 0 1 4-4M20 12a8 8 0 0 1-8 8M16 12a4 4 0 0 1-4 4"/><circle cx=12 cy=12 r=1.5 /></svg><b class=badge id=dec></b></button><button data-hub=notes title="Notes to self"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4"/></svg></button><button data-hub=downloads title="Downloads (Ctrl+J)"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></button><button data-hub=reading title="Reading list"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg></button><span style="flex:1"></span><button data-hub=pop title="Open full size"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-8 8M10 20H4v-6"/></svg></button><button data-hub=close title="Close the dock (Ctrl+Shift+H)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><div id=dockb></div><i id=dockr title="Drag to resize"></i></aside>
+<aside id=dock aria-label="Hush Hub"><div id=dockh><button data-hub=ai title="AI assistant (Ctrl+Shift+A)"><i class=ai-av style="width:20px;height:20px;font-size:11px;line-height:20px">A</i></button><button data-hub=murmur title="Murmur — messages (Ctrl+Shift+M)"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg><b class=badge id=dmc></b></button><button data-hub=echo title="Echo — social (Ctrl+Shift+E)"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 8-8M8 12a4 4 0 0 1 4-4M20 12a8 8 0 0 1-8 8M16 12a4 4 0 0 1-4 4"/><circle cx=12 cy=12 r=1.5 /></svg><b class=badge id=dec></b></button><button data-hub=notes title="Notes to self"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4"/></svg></button><button data-hub=downloads title="Downloads (Ctrl+J)"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></button><button data-hub=reading title="Reading list"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg></button><span style="flex:1"></span><button data-hub=pop title="Open full size"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-8 8M10 20H4v-6"/></svg></button><button data-hub=close title="Close the dock (Ctrl+Shift+H)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><div id=dockb></div><i id=dockr title="Drag to resize"></i></aside>
 <div id=toast role=status></div>
 <script src="qr.js"></script>
 <script src="extras.js"></script>
 <script src="guide.js"></script>
 <script src="coach.js"></script>
 <link rel="stylesheet" href="apps.css">
+<link rel="stylesheet" href="desk.css">
 <script src="vendor/nostr.js"></script>
 <script src="messenger.js"></script>
 <script src="echo.js"></script>
@@ -312,7 +317,7 @@ function startTour(){touring=true;closePanel(true);sync();const u0=(tab(cur)||{}
     {title:'Private tabs & panic',text:'Ctrl+Shift+N opens a private tab that keeps nothing. Right-click any tab › Self-destruct to have it close and wipe itself later. Ctrl+Shift+X is the panic button: every private and Tor tab closes, Murmur and Echo lock, and Tor gets a new identity.',place:'center'},
     {title:'Commands: the fast way',text:'Ctrl+K finds anything — tabs, bookmarks, friends, settings and actions like “split layout”, “scene”, “reader”, “sleep timer” or “assistant”.',doText:'Press Ctrl+K',place:'center',until:()=>panel==='pal'},
     // 4. Apps
-    {sel:'#aib',title:'Your AI assistant',text:'One click (or Ctrl+Shift+Space) opens it beside the page: summarize what you’re reading, ask about it, or ask anything. Name it whatever you like. Run it free on Groq (fast and smart) or fully private on this computer.',before:()=>closePanel(true)},
+    {sel:'#aib',title:'Your AI assistant',text:'One click (or Ctrl+Shift+A) opens it beside the page: summarize what you’re reading, ask about it, or ask anything. Name it whatever you like. Run it free on Groq (fast and smart) or fully private on this computer.',before:()=>closePanel(true)},
     {sel:'#msgb',title:'Murmur — private messages',text:'Chat, send photos and call other Hush users. End-to-end encrypted, always through Tor, no phone number. Add friends by QR code or a one-time invite; watch videos together in sync.'},
     {sel:'#echob',title:'Echo — your private social network',text:'Post to close friends or circles you choose, or go public. Your feed is tuned on your computer, not by someone else’s algorithm.'},
     {sel:'#gear',title:'Settings & the guide',text:'Make Hush yours: looks, Legacy tabs, security level, split layout. At the bottom, Settings › Help has the full guide to every feature and this walkthrough.'},
@@ -425,46 +430,48 @@ $('#findq').addEventListener('keydown',e=>{if(e.key=='Escape'){e.preventDefault(
 $('#findp').onclick=()=>{const q=$('#findq').value;if(q)inv('page_action',{action:'find-back',arg:q})};$('#findx').onclick=()=>findMode(false);
 
 // ---------- shortcuts (chrome focused: keydown; page focused: native 'shortcut' event from Rust) ----------
+// ---------- Keyboard shortcuts: ONE table drives the keys, the shortcuts sheet (Ctrl+/) and the hints in Ctrl+K ----------
+// Standard browser keys stay where every browser has them; Hush's own features are Ctrl+Shift + their first letter.
+const curT=()=>tab(cur);
+const KEYS=[
+  ['Tabs','t','New tab',()=>newTab(false)],['Tabs','shift+n','New private tab',()=>newTab(true)],['Tabs','w','Close tab',()=>cur&&closeTab(cur)],
+  ['Tabs','shift+t','Reopen closed tab',()=>{const c=closedStack.pop();if(c)openTab(c.url,{ws:wsList().includes(c.ws)?c.ws:curWs()});else toast('No recently closed tabs')}],
+  ['Tabs','tab','Next tab',()=>cycle(1)],['Tabs','shift+tab','Previous tab',()=>cycle(-1)],
+  ['Tabs','1','Go to tab by number (1–8)',null],['Tabs','9','Last tab',null],
+  ['Tabs','\\','Split screen with the last tab',()=>{const o=inWs().filter(t=>t.id!=cur).at(-1);if(split)toggleSplit(split);else if(o)toggleSplit(o.id)}],
+  ['Tabs','m','Mute / unmute tab',()=>{const t=curT();if(t){t.muted=!t.muted;inv('set_muted',{tab:t.id,muted:t.muted});toast(t.muted?'Tab muted':'Tab unmuted');railState()}}],
+  ['Tabs','b','Show / hide the tab bar',()=>{if(tabsPinned()){toast('The tab bar is always shown — change it in Settings');return}revealed?reveal(false):peek()}],
+  ['Page','l','Address bar',()=>{closePanel();$('#bar').focus()}],['Page','k','Command bar — find anything',()=>panel=='pal'?closePanel():openPanel('pal')],
+  ['Page','f','Find in page',()=>{if(curT())findMode(true)}],['Page','g','Find next',()=>{if(!curT())return;if(findOn&&$('#findq').value)inv('page_action',{action:'find',arg:$('#findq').value});else findMode(true)}],
+  ['Page','shift+g','Find previous',()=>{if(!curT())return;if(findOn&&$('#findq').value)inv('page_action',{action:'find-prev',arg:$('#findq').value}).catch(()=>inv('page_action',{action:'find',arg:$('#findq').value}));else findMode(true)}],
+  ['Page','e','Reader view',()=>{if(curT())inv('page_action',{action:'reader'})}],['Page','p','Print / save as PDF',()=>{if(curT())inv('page_action',{action:'print'})}],
+  ['Page','+','Zoom in',null],['Page','-','Zoom out',null],['Page','0','Reset zoom',null],['Page','d','Bookmark this page',()=>$('#star').click()],
+  ['Page','f11','Full screen',()=>inv('toggle_fullscreen')],
+  ['Hush','shift+a','AI assistant',()=>toggleDock('ai')],['Hush','shift+m','Murmur — messages',()=>toggleDock('murmur')],['Hush','shift+e','Echo — social',()=>toggleDock('echo')],
+  ['Hush','shift+h','Hub — show / hide the side panel',()=>dockTab?closeDock():openDock('murmur')],['Hush','shift+o','Open this page in Tor (onion)',()=>torTab()],
+  ['Hush','shift+s','Screenshot the whole page',()=>{if(curT())snapshot(true)}],['Hush','shift+r','Read the page aloud',()=>{if(curT())listenToggle()}],
+  ['Hush','shift+x','Panic — close private & Tor tabs, lock messages',()=>panic()],
+  ['Open','h','History',()=>panel=='history'?closePanel():openPanel('history')],['Open','j','Downloads',()=>$('#dls').click()],
+  ['Open','shift+b','Bookmarks',()=>panel=='bookmarks'?closePanel():openPanel('bookmarks')],['Open',',','Settings',()=>$('#gear').click()],
+  ['Open','/','Keyboard shortcuts',()=>panel=='keys'?closePanel():openPanel('keys')],
+];
+const keyLabel=k=>k=='f11'?'F11':['Ctrl',...k.split('+').map(x=>x=='shift'?'Shift':x=='tab'?'Tab':x=='\\'?'\\':x.length==1?x.toUpperCase():x)].join('+');
+const keyFor=label=>{const e=KEYS.find(x=>x[2]==label);return e?keyLabel(e[1]):''};
 function shortcut(k){
-  if(k=='t')newTab(false); else if(k=='shift+n')newTab(true); else if(k=='l'){closePanel();$('#bar').focus()} else if(k=='w'){cur&&closeTab(cur)}
-  else if(k=='d')$('#star').click(); else if(k=='j')$('#dls').click(); else if(k==',')$('#gear').click();
-  else if(k=='k')panel=='pal'?closePanel():openPanel('pal'); else if(k=='h')panel=='history'?closePanel():openPanel('history');
-  else if(k=='f'){if(tab(cur))findMode(true)} else if(k=='e'){if(tab(cur))inv('page_action',{action:'reader'})}
-  else if(k=='p'){if(tab(cur))inv('page_action',{action:'print'})}
-  else if(/^[1-9]$/.test(k)){const w=inWs();const t=k=='9'?w.at(-1):w[+k-1];if(t){select(t.id);peek()}}
-  else if(k=='+'||k=='-'||k=='0'){const t=tab(cur);if(!t)return;t.zoom=k=='0'?1:Math.round(Math.min(3,Math.max(.3,(t.zoom||1)+(k=='+'?.1:-.1)))*10)/10;
-    inv('set_zoom',{factor:t.zoom});toast('Zoom '+Math.round(t.zoom*100)+'%')}
-  else if(k=='shift+t'){const c=closedStack.pop();if(c)openTab(c.url,{ws:wsList().includes(c.ws)?c.ws:curWs()});else toast('No recently closed tabs')}
-  else if(k=='m'){const t=tab(cur);if(t){t.muted=!t.muted;inv('set_muted',{tab:t.id,muted:t.muted});toast(t.muted?'Tab muted':'Tab unmuted');railState()}}
-  else if(k=='g'){if(!tab(cur))return;if(findOn&&$('#findq').value)inv('page_action',{action:'find',arg:$('#findq').value});else findMode(true)}
-  else if(k=='f11')inv('toggle_fullscreen');
-  else if(k=='shift+o')torTab();
-  else if(k=='shift+m')toggleDock('murmur');
-  else if(k=='shift+space')toggleDock('ai');
-  else if(k=='shift+e')toggleDock('echo');
-  else if(k=='shift+h')dockTab?closeDock():openDock('murmur');
-  else if(k=='shift+x')panic();
-  else if(k=='shift+s'){if(tab(cur))snapshot(true)} else if(k=='shift+r'){if(tab(cur))listenToggle()} else if(k=='shift+a'){if(tab(cur))panel=='boost'?closePanel():openPanel('boost')}
-  else if(k=='shift+b')panel=='bookmarks'?closePanel():openPanel('bookmarks');
-  else if(k=='\\'){const o=inWs().filter(t=>t.id!=cur).at(-1);if(split)toggleSplit(split);else if(o)toggleSplit(o.id)}
-  else if(k=='tab')cycle(1); else if(k=='shift+tab')cycle(-1);
-  else if(k=='b'){if(tabsPinned()){toast('Tab bar is pinned — change it in Settings');return}revealed?reveal(false):peek()}
+  if(k=='shift+space')k='shift+a';   // old key for the assistant still works
+  if(/^[1-9]$/.test(k)){const w=inWs();const t=k=='9'?w.at(-1):w[+k-1];if(t){select(t.id);peek()}return}
+  if(k=='+'||k=='-'||k=='0'){const t=curT();if(!t)return;t.zoom=k=='0'?1:Math.round(Math.min(3,Math.max(.3,(t.zoom||1)+(k=='+'?.1:-.1)))*10)/10;
+    inv('set_zoom',{factor:t.zoom});toast('Zoom '+Math.round(t.zoom*100)+'%');return}
+  const e=KEYS.find(x=>x[1]==k);if(e&&e[3])e[3]();
 }
 addEventListener('keydown',e=>{const m=e.ctrlKey||e.metaKey,k=e.key.toLowerCase();
-  if(m&&e.key=='Tab'){e.preventDefault();shortcut(e.shiftKey?'shift+tab':'tab')}
-  else if(m&&e.shiftKey&&k=='n'){e.preventDefault();shortcut('shift+n')}
-  else if(m&&e.shiftKey&&k=='t'){e.preventDefault();shortcut('shift+t')}
-  else if(m&&e.shiftKey&&['b','s','r','a','o','m','e','h'].includes(k)){e.preventDefault();shortcut('shift+'+k)}
-  else if(m&&/^[0-9]$/.test(e.key)){e.preventDefault();shortcut(e.key)}
-  else if(m&&(e.key=='='||e.key=='+')){e.preventDefault();shortcut('+')}else if(m&&e.key=='-'){e.preventDefault();shortcut('-')}
-  else if(m&&(k=='m'||k=='g')){e.preventDefault();shortcut(k)}
-  else if(e.key=='F11'){e.preventDefault();shortcut('f11')}
-  else if(m&&['t','l','w','d','j','b',',','k','h','f','e','p','\\'].includes(k)){e.preventDefault();shortcut(k)}
-  else if(m&&k=='r'){e.preventDefault();cur&&inv('nav',{action:'reload'})}
-  else if(e.key=='Escape'&&peeking)peekClose();
-  else if(e.key=='Escape'&&panel)closePanel();
-  else if(e.altKey&&e.key=='ArrowLeft')inv('nav',{action:'back'});
-  else if(e.altKey&&e.key=='ArrowRight')inv('nav',{action:'fwd'});});
+  if(e.key=='F11'){e.preventDefault();shortcut('f11');return}
+  if(e.key=='Escape'){if(peeking)peekClose();else if(panel)closePanel();return}
+  if(e.altKey&&!m){if(e.key=='ArrowLeft')inv('nav',{action:'back'});else if(e.key=='ArrowRight')inv('nav',{action:'fwd'});return}
+  if(!m)return;
+  if(k=='r'){e.preventDefault();cur&&inv('nav',{action:'reload'});return}
+  const base=e.key=='Tab'?'tab':e.key=='='?'+':e.code=='Space'?'space':e.code=='Slash'?'/':k, name=(e.shiftKey&&base!='+'?'shift+':'')+base;
+  if(/^[0-9]$/.test(base)||base=='+'||base=='-'||KEYS.some(x=>x[1]==name)||name=='shift+space'){e.preventDefault();shortcut(/^[0-9+-]$/.test(base)?base:name)}});
 T.event.listen('shortcut',({payload:p})=>shortcut(p.key));
 
 // ---------- events from Rust ----------
@@ -501,6 +508,13 @@ const RENDER={ai:()=>HX.assistant($('#panel'),{pageText:()=>inv('page_text')}),b
   archive:()=>{const p=$('#panel');p.innerHTML=`<h2>Archived tabs ${closeBtn}</h2><div id=arx></div>`;HX.archivePanel($('#arx'),u=>openTab(u));wire(p)},
   diag:()=>{const p=$('#panel');p.innerHTML=`<h2>Diagnostics ${closeBtn}</h2><p style="color:var(--mute);margin:-8px 0 12px">Recent internal events. A screenshot of this helps fix problems.</p><pre style="white-space:pre-wrap;font:12px ui-monospace,monospace;user-select:text">${esc(DIAG.join('\n')||'Nothing yet — open the tab bar or load a page, then come back.')}</pre>`;wire(p)},
   hub:()=>{},
+  keys:()=>{const p=$('#panel'),groups=[...new Set(KEYS.map(x=>x[0]))];
+    p.innerHTML=`<div class=keys><div class=keys-h><h2>Keyboard shortcuts</h2><input class=txt id=keys-q placeholder="Search shortcuts" autocomplete=off>${closeBtn}</div>
+      <p class=keys-tip>Standard browser keys work as usual. Hush’s own features are <kbd>Ctrl</kbd>+<kbd>Shift</kbd> + their first letter.</p>
+      <div id=keys-l>${groups.map(g=>`<section data-g><h3>${g}</h3>${KEYS.filter(x=>x[0]==g).map(x=>`<div class=keys-r data-t="${esc((x[2]+' '+keyLabel(x[1])).toLowerCase())}"><span>${esc(x[2])}</span><span class=keys-k>${keyLabel(x[1]).split('+').map(c=>`<kbd>${esc(c)}</kbd>`).join('')}</span></div>`).join('')}</section>`).join('')}
+      <section data-g><h3>Mouse</h3>${[['Back / forward','Alt+←  Alt+→'],['Split with a tab','Shift-click it'],['Close a tab','Middle-click'],['Peek at a link','Shift-click it']].map(([a,b])=>`<div class=keys-r data-t="${esc((a+' '+b).toLowerCase())}"><span>${a}</span><span class=keys-k>${esc(b)}</span></div>`).join('')}</section></div></div>`;
+    wire(p);const q=$('#keys-q');q.oninput=()=>{const v=q.value.trim().toLowerCase();p.querySelectorAll('.keys-r').forEach(r=>r.style.display=!v||r.dataset.t.includes(v)?'':'none');
+      p.querySelectorAll('section[data-g]').forEach(sc=>sc.style.display=[...sc.querySelectorAll('.keys-r')].some(r=>r.style.display!='none')?'':'none')};setTimeout(()=>q.focus(),40)},
   report:()=>{const p=$('#panel');p.innerHTML='<div id=reportx></div>';HX.reportForm($('#reportx'),{close:()=>closePanel(),site:()=>{const x=tab(cur);return x&&/^https?:/.test(x.url)&&!x.priv?hostOf(x.url):null},
     info:()=>({Hush:'build '+(window.__hushBuild||'?')+' (Windows)',Screen:innerWidth+'×'+innerHeight+' @'+devicePixelRatio+'x',Tor:tabs.some(t=>t.tor)?'Tor tab open':'off','Split screen':split?(2+splitMore.length)+' tabs, '+(pref('split_mode')||'grid'):'off',Tabs:tabs.length,'Legacy tabs':legacyTabs()?'on':'off'}),
     send:async t=>{const dev=HM.api.parseId(HX.devId());if(!dev){toast('Reporting isn’t set up in this build yet');return false}
@@ -623,7 +637,7 @@ $('#dockr').onpointerdown=e=>{e.preventDefault();const x0=e.clientX,w0=+pref('do
   const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up);setPref('dock_w',state.settings.ui.dock_w)};addEventListener('pointermove',mv);addEventListener('pointerup',up)};
 $('#msgb').onclick=()=>toggleDock('murmur');
 $('#aib').onclick=()=>toggleDock('ai');
-const aiBtn=()=>{try{const n=HX.aiName(),i=(n.trim()[0]||'A').toUpperCase();document.querySelectorAll('.ai-av').forEach(e=>e.textContent=i);$('#aib').title=n+' — AI assistant (Ctrl+Shift+Space)'}catch(e){}};addEventListener('hush-ai-name',aiBtn);setTimeout(aiBtn,0);setTimeout(()=>HM.boot(),1500);
+const aiBtn=()=>{try{const n=HX.aiName(),i=(n.trim()[0]||'A').toUpperCase();document.querySelectorAll('.ai-av').forEach(e=>e.textContent=i);$('#aib').title=n+' — AI assistant (Ctrl+Shift+A)'}catch(e){}};addEventListener('hush-ai-name',aiBtn);setTimeout(aiBtn,0);setTimeout(()=>HM.boot(),1500);
 const EC=HushEcho({M:HM.api,toast,mobile:false,page:()=>{const t=tab(cur);return t&&/^https?:/.test(t.url)&&!t.priv?{url:t.url}:null},open:u=>{closePanel();openTab(u)},close:()=>{closePanel();closeDock()},openMurmur:pk=>{closePanel(true);closeDock();openDock('murmur');if(pk)setTimeout(()=>HM.api.openChat(pk),300)},
   badge:n=>{for(const id of ['#echocnt','#dec']){$(id).textContent=n>99?'99+':n;$(id).style.display=n?'grid':'none'}}});
 $('#echob').onclick=()=>toggleDock('echo');setTimeout(()=>{EC.boot();setInterval(noteDraw,4000)},3000);setTimeout(()=>HX.ai.start(),6000);
@@ -660,8 +674,13 @@ document.addEventListener('click',e=>{if(e.target.id=='s-arc')ACTIONS()[0][2]()}
 // Sleep timer: pause whatever is playing in this tab after a while.
 let sleepT=null;function sleepTimer(){const t=tab(cur);if(!t)return toast('Open a video first');const m=prompt('Pause the video in how many minutes? (0 = cancel)',sleepT?'0':'30');if(m==null)return;clearTimeout(sleepT);sleepT=null;
   const n=+m;if(!(n>0))return toast('Sleep timer off');const id=t.id;sleepT=setTimeout(()=>{inv('page_action',{action:'media-pause',tab:id}).catch(()=>{});sleepT=null;toast('😴 Sleep timer: paused')},n*60000);toast('😴 Pausing in '+n+' min')}
-const ACTIONS=()=>[
-  [`Ask ${HX.aiName()}`,'Your AI assistant · Ctrl+Shift+Space',()=>{closePanel();openDock('ai')}],[`${HX.aiName()}: summarize this page`,'Your AI assistant',()=>{closePanel();window.__aiRun='sum';closeDock();openDock('ai')}],
+// Every shortcut is also a command-bar action (with its keys shown) — unless an action already lists that key.
+// A note that's a keyboard shortcut ("Ctrl+Shift+S", or "… · Ctrl+K") shows as key chips.
+const noteHTML=n=>{n=String(n||'');const m=n.match(/^(.*?)(?:\s·\s)?((?:Ctrl|Alt|Shift|F\d+)(?:\+[^\s+]+)*)$/);
+  if(!m)return `<small>${esc(n)}</small>`;return `<small class=k>${m[1]?`<span style="margin-right:6px">${esc(m[1])}</span>`:''}${m[2].split('+').map(c=>`<kbd>${esc(c)}</kbd>`).join('')}</small>`};
+const withKeys=base=>[...KEYS.filter(x=>x[3]&&!base.some(a=>String(a[1]).includes(keyLabel(x[1])))).map(x=>[x[2],keyLabel(x[1]),()=>{closePanel(true);x[3]()}]),...base];
+const ACTIONS=()=>withKeys([
+  [`Ask ${HX.aiName()}`,'Your AI assistant · Ctrl+Shift+A',()=>{closePanel();openDock('ai')}],[`${HX.aiName()}: summarize this page`,'Your AI assistant',()=>{closePanel();window.__aiRun='sum';closeDock();openDock('ai')}],
   ['Sleep timer for this video','',()=>{closePanel();sleepTimer()}],
   ['Split layout: '+(pref('split_mode')=='spot'?'Spotlight → Grid':'Grid → Spotlight'),'Spotlight: the tab you click gets the big spot',async()=>{closePanel();await setPref('split_mode',pref('split_mode')=='spot'?'grid':'spot');splitModeSync()}],
   ['Keep screen awake in split view: '+(pref('split_awake')!='false'?'on':'off'),'While a split is open',async()=>{closePanel();await setPref('split_awake',pref('split_awake')!='false'?'false':'true');splitModeSync()}],
@@ -682,7 +701,7 @@ const ACTIONS=()=>[
   ['History','Ctrl+H',()=>openPanel('history')],['Downloads','Ctrl+J',()=>openPanel('downloads')],['Settings','Ctrl+,',()=>openPanel('settings')],
   ['New workspace…','',()=>openPanel('ws')],['Close tab','Ctrl+W',()=>{closePanel();cur&&closeTab(cur)}],['Clear browsing data','',()=>{closePanel();$('#s-wipe')?.click()||wipe()}],
   ...wsList().filter(w=>w!=curWs()).map(w=>['Switch to workspace: '+w,'',()=>{closePanel();switchWs(w)}]),
-];
+]);
 let palSel=0,palItems=[];
 function renderPalette(){
   const p=$('#panel');p.innerHTML=`<input id=palq placeholder="Type a command, tab, or site…" autocomplete=off spellcheck=false><div class=res id=palr></div>`;
@@ -692,14 +711,14 @@ function renderPalette(){
   fillPalette('');
 }
 async function fillPalette(q){const lq=q.toLowerCase().trim(),m=s=>!lq||s.toLowerCase().includes(lq);
-  let items=ACTIONS().filter(a=>m(a[0])).map(a=>({kind:'run',title:a[0],note:a[1],icon:'›',run:a[2]}));
+  let items=ACTIONS().filter(a=>m(a[0])).map(a=>({kind:'run',title:a[0],note:a[1],icon:'',run:a[2]}));
   if(lq)try{HM.api.chatList().filter(c=>m(c.name)).slice(0,5).forEach(c=>items.push({kind:'run',title:c.name,note:'Murmur chat',icon:'💬',run:()=>{closePanel();openDock('murmur');setTimeout(()=>HM.api.openChat(c.key),300)}}))}catch(e){}
   tabs.filter(t=>m(t.url)).forEach(t=>items.push({kind:'tab',id:t.id,title:hostOf(t.url)||'New tab',note:(t.ws!=curWs()?t.ws+' · ':'')+'Tab',icon:'⇥'}));
   if(lq){try{(await inv('suggest',{q:lq})).forEach(x=>items.push({kind:'url',url:x.url,title:x.title||hostOf(x.url),note:x.kind=='bookmark'?'Bookmark':'History',icon:x.kind=='bookmark'?'★':'↺'}))}catch(e){}
     items.push({kind:'go',url:q,title:(/^\S+\.\S+$/.test(q)?'Go to ':'Search for ')+q,icon:'→'})}
   if(($('#palq')?.value||'').toLowerCase().trim()!==lq)return;palItems=items.slice(0,14);paintPalette()}
 function paintPalette(){const r=$('#palr');if(!r)return;
-  r.innerHTML=palItems.map((x,i)=>`<button data-i=${i} class="${i==palSel?'sel':''}"><i>${esc(x.icon)}</i><span>${esc(x.title)}</span><small>${esc(x.note||'')}</small></button>`).join('');
+  r.innerHTML=palItems.map((x,i)=>`<button data-i=${i} class="${i==palSel?'sel':''}"><i>${esc(x.icon)}</i><span>${esc(x.title)}</span>${noteHTML(x.note)}</button>`).join('');
   r.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>runItem(palItems[b.dataset.i]))}
 
 function renderWs(){const p=$('#panel');
@@ -872,12 +891,8 @@ function renderSettings(){
   ${row('Import','Paste an export below, then press Import',`<button class=btn id=s-import>Import</button>`)}
   <textarea class=txt id=s-json rows=3 style="width:100%;font:12px ui-monospace,monospace" placeholder='{"settings":…}'></textarea>
   <h3>Shortcuts & gestures</h3>
-  <div class=row style="display:block;line-height:2.1"><kbd>Ctrl</kbd>+<kbd>K</kbd> command bar · <kbd>Ctrl</kbd>+<kbd>T</kbd> new tab · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd> private tab · <kbd>Ctrl</kbd>+<kbd>W</kbd> close ·
-   <kbd>Ctrl</kbd>+<kbd>Tab</kbd> next tab · <kbd>Ctrl</kbd>+<kbd>L</kbd> address · <kbd>Ctrl</kbd>+<kbd>F</kbd> find · <kbd>Ctrl</kbd>+<kbd>E</kbd> reader ·
-   <kbd>Ctrl</kbd>+<kbd>1</kbd>…<kbd>9</kbd> jump to tab · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> reopen closed tab · <kbd>Ctrl</kbd>+<kbd>=</kbd>/<kbd>−</kbd>/<kbd>0</kbd> zoom ·
-   <kbd>Ctrl</kbd>+<kbd>M</kbd> mute tab · <kbd>Ctrl</kbd>+<kbd>G</kbd> find next · <kbd>Ctrl</kbd>+<kbd>P</kbd> print / PDF · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> bookmarks · <kbd>F11</kbd> full screen ·
-   <kbd>Ctrl</kbd>+<kbd>\\</kbd> split view · <kbd>Ctrl</kbd>+<kbd>B</kbd> show/hide tabs · <kbd>Ctrl</kbd>+<kbd>D</kbd> bookmark · <kbd>Ctrl</kbd>+<kbd>H</kbd> history · <kbd>Ctrl</kbd>+<kbd>J</kbd> downloads · <kbd>Ctrl</kbd>+<kbd>,</kbd> settings<br>
-   Point at the screen edge to slide the tab bar in · drag tabs to reorder · shift-click a tab to split · middle-click to close · right-click a tab for mute, duplicate, move to workspace</div>
+  ${row('Keyboard shortcuts','Standard browser keys, plus Ctrl+Shift + a letter for Hush’s own features (A assistant, M Murmur, E Echo, O Tor, S screenshot, R read aloud, X panic)','<button class=btn id=s-keys>Show all · Ctrl+/</button>')}
+  ${row('Mouse & tab bar','Point at the screen edge to slide the tab bar in · drag tabs to reorder · Shift-click a tab to split · middle-click to close · right-click a tab for more','')}
   <h3>Help</h3>${row('📘 Hush guide & tutorial','Every feature, what it’s good for, and how to use it — step by step','<button class=btn id=s-guide>Open</button>')}
   ${row('Report a problem','Goes straight to the developer — encrypted, through Tor','<button class=btn id=s-report>Report</button>')}
   ${row('Welcome walkthrough','Hands-on: try each main feature yourself (2 minutes)','<button class=btn id=s-tour>Replay</button>')}`;
@@ -890,7 +905,7 @@ function renderSettings(){
   $('#s-tori').onclick=()=>openPanel('torinfo');HX.settingsSearch(p,$('#s-q'),'.row');
   p.querySelectorAll('[data-tbt]').forEach(b=>b.onclick=async()=>{const h=tbHidden();h.has(b.dataset.tbt)?h.delete(b.dataset.tbt):h.add(b.dataset.tbt);await setPref('tb_hide',[...h].join(','));applyToolbar();renderSettings()});
   HX.lookPicker($('#s-look'),()=>{applyColor();renderSettings()});$('#s-gest').onclick=()=>openPanel('gest');$('#s-watch').onclick=()=>openPanel('watch');
-  $('#s-guide').onclick=()=>openPanel('guide');$('#s-report').onclick=()=>openPanel('report');$('#s-tour').onclick=()=>openPanel('tour');$('#s-ext').onclick=()=>openPanel('ext');$('#s-rl').onclick=()=>openPanel('reading');$('#s-focus').onclick=()=>openPanel('focus');$('#s-send').onclick=()=>openPanel('send');$('#s-about').onclick=()=>openPanel('about');
+  $('#s-guide').onclick=()=>openPanel('guide');$('#s-keys').onclick=()=>openPanel('keys');$('#s-report').onclick=()=>openPanel('report');$('#s-tour').onclick=()=>openPanel('tour');$('#s-ext').onclick=()=>openPanel('ext');$('#s-rl').onclick=()=>openPanel('reading');$('#s-focus').onclick=()=>openPanel('focus');$('#s-send').onclick=()=>openPanel('send');$('#s-about').onclick=()=>openPanel('about');
   $('#s-bangs').onclick=async()=>{const v=prompt('Your shortcuts, separated by | as  key=https://site.com/search?q=%s',pref('bangs'));if(v===null)return;
     const list=v.split(/\||\n/).map(x=>x.trim()).filter(x=>/^[a-z0-9]{1,12}=https:\/\/\S+$/i.test(x));await setPref('bangs',list.join('|'));renderSettings();toast(list.length+' shortcuts saved')};$('#s-ws').onclick=()=>openPanel('ws');
   $('#s-engine').onchange=async e=>{s.search=e.target.value;await inv('set_setting',{key:'search',value:s.search});renderSettings()};

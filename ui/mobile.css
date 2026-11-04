@@ -1,0 +1,14 @@
+/* Hush for Android — cleanup layer. Loaded last; only styling. */
+/* Sheet titles a touch lighter and tighter. */
+.sheet h2{font-weight:650;letter-spacing:-.015em}
+/* Menu/settings items: softer borders, pressed feedback. */
+.sheet .item{border-color:color-mix(in srgb,var(--line) 75%,transparent);transition:transform .1s,background .12s}
+.sheet .item:active:not(:disabled),.sheet .btn:active:not(:disabled){transform:scale(.985);background:color-mix(in srgb,var(--ink) 5%,var(--card))}
+/* Section labels: sentence case, not tracked caps. */
+.sheet h3{text-transform:none;letter-spacing:0;font-size:14px;font-weight:650;color:var(--ink)}
+/* Tab cards: placeholder letter in the UI font on a tinted tile; active card ring uses the accent. */
+.cards .shot{font-family:system-ui,sans-serif;font-weight:600;background:color-mix(in srgb,var(--ink) 5%,var(--card))}
+.cards .on{box-shadow:0 0 0 2px var(--acc,var(--ink))}
+/* Thin scrollbars. */
+.sheet{scrollbar-width:thin}
+@media (prefers-reduced-motion:reduce){.sheet .item{transition:none}}
