@@ -84,19 +84,60 @@ window.HUSH_GHOST = window.HUSH_GHOST || (() => {
 
     const talk = (t, ms = 2200) => { say.textContent = t; say.classList.add('on'); clearTimeout(sayT); sayT = setTimeout(() => say.classList.remove('on'), ms); };
     const note = (c = '♪') => { const n = document.createElement('span'); n.className = 'hg-note'; n.textContent = c; n.style.left = 50 + (Math.random() * 40 - 10) + '%'; n.style.top = '30px'; stage.append(n); setTimeout(() => n.remove(), 1500); };
-    const anim = (kf, o) => { try { return bodyEl.animate(kf, Object.assign({ duration: 600, easing: 'cubic-bezier(.3,1.4,.5,1)' }, o)); } catch (e) { return { finished: Promise.resolve() }; } };
-    const trick = async (name) => { if (busy) return; busy = true; bodyEl.classList.remove('hg-bob');
-      const T = {
-        hop: () => anim([{ transform: 'translateY(0)' }, { transform: 'translateY(-46px) scale(.94,1.08)' }, { transform: 'translateY(0) scale(1.08,.9)' }, { transform: 'none' }], { duration: 520 }),
-        spin: () => anim([{ transform: 'rotateY(0)' }, { transform: 'translateY(-30px) rotateY(360deg)' }, { transform: 'rotateY(720deg)' }], { duration: 760 }),
-        flip: () => anim([{ transform: 'translateY(0) rotate(0)' }, { transform: 'translateY(-70px) rotate(180deg)' }, { transform: 'translateY(0) rotate(360deg) scale(1.1,.88)' }, { transform: 'none' }], { duration: 820 }),
-        left: () => anim([{ transform: 'none' }, { transform: 'translateX(-90px) rotate(-18deg)' }, { transform: 'translateX(-90px) rotate(-360deg)' }, { transform: 'none' }], { duration: 900 }),
-        right: () => anim([{ transform: 'none' }, { transform: 'translateX(90px) rotate(18deg)' }, { transform: 'translateX(90px) rotate(360deg)' }, { transform: 'none' }], { duration: 900 }),
-        float: () => anim([{ transform: 'none' }, { transform: 'translateY(-90px) scale(.9)', offset: .4 }, { transform: 'translateY(-90px) scale(.9) rotate(6deg)', offset: .7 }, { transform: 'none' }], { duration: 1500, easing: 'ease-in-out' }),
-        squish: () => anim([{ transform: 'none' }, { transform: 'scale(1.25,.6)' }, { transform: 'scale(.9,1.12)' }, { transform: 'none' }], { duration: 560 }),
-        wiggle: () => anim([{ transform: 'rotate(0)' }, { transform: 'rotate(-9deg)' }, { transform: 'rotate(9deg)' }, { transform: 'rotate(-6deg)' }, { transform: 'none' }], { duration: 520, easing: 'ease-in-out' }),
-        dizzy: () => anim([{ transform: 'rotate(0)' }, { transform: 'rotate(-14deg) translateX(-8px)' }, { transform: 'rotate(14deg) translateX(8px)' }, { transform: 'rotate(-10deg)' }, { transform: 'rotate(8deg)' }, { transform: 'none' }], { duration: 1300, easing: 'ease-in-out' }) }[name] || (() => null);
-      try { await T().finished; } catch (e) {} bodyEl.classList.add('hg-bob'); busy = false; };
+    const anim = (kf, o) => { try { return bodyEl.animate(kf, Object.assign({ duration: 600, easing: 'cubic-bezier(.3,1.4,.5,1)', fill: 'forwards' }, o)); } catch (e) { return { finished: Promise.resolve() }; } };
+    // One frame = position (x,y), turns around the vertical axis (ry, degrees), tilt (rz), scale (s or sx/sy) and opacity (o).
+    // Every frame uses the same list of transform functions, so big spins (720, 1440…) really turn instead of collapsing.
+    const fr = f => ({ transform: `translate3d(${f.x || 0}px,${f.y || 0}px,0) perspective(700px) rotateY(${f.ry || 0}deg) rotate(${f.rz || 0}deg) scale(${f.sx != null ? f.sx : f.s != null ? f.s : 1},${f.sy != null ? f.sy : f.s != null ? f.s : 1})`, opacity: f.o != null ? f.o : 1 });
+    const play = (frames, duration, easing = 'ease-in-out') => anim(frames.map(fr), { duration, easing });
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const edge = () => { const r = bodyEl.getBoundingClientRect(); return { l: -r.right - 70, r: innerWidth - r.left + 70, u: -r.bottom - 70, d: innerHeight - r.top + 70 }; };
+    // While the ghost is off the edge of the screen the page must not grow a scrollbar.
+    let clipped = [];
+    const clipPage = on => { if (on) { for (let e = bodyEl, i = 0; e && i < 7; e = e.parentElement, i++) { clipped.push([e, e.style.overflow]); e.style.overflow = 'hidden'; } }
+      else { clipped.forEach(([e, v]) => { e.style.overflow = v; }); clipped = []; } };
+    const spinTurns = (turns, dir, h = 80) => { const n = Math.max(2, turns * 4), fs = []; for (let i = 0; i <= n; i++) { const t = i / n; fs.push({ ry: turns * 360 * t, x: dir * 46 * Math.sin(Math.PI * t), y: -h * Math.sin(Math.PI * t), s: 1 + .08 * Math.sin(Math.PI * t) }); }
+      fs.push({ ry: turns * 360, s: 1, sy: .88, sx: 1.1 }); fs.push({ ry: turns * 360 }); return play(fs, 380 + turns * 330, 'linear'); };
+    const T = {
+      hop: () => play([{}, { y: -46, sx: .94, sy: 1.08 }, { sx: 1.08, sy: .9 }, {}], 520, 'cubic-bezier(.3,1.4,.5,1)'),
+      spin: () => spinTurns(1, 0, 40),
+      flip: () => play([{}, { y: -70, rz: 180 }, { rz: 360, sy: .88, sx: 1.1 }, {}], 820),
+      float: () => play([{}, { y: -92, s: .92, at: 0 }, { y: -92, s: .92, rz: 5 }, { y: -92, s: .92, rz: -5 }, {}], 1500),
+      squish: () => play([{}, { sx: 1.25, sy: .6 }, { sx: .9, sy: 1.12 }, {}], 560),
+      wiggle: () => play([{}, { rz: -9 }, { rz: 9 }, { rz: -6 }, {}], 520),
+      dizzy: () => play([{}, { rz: -14, x: -8 }, { rz: 14, x: 8 }, { rz: -10 }, { rz: 8 }, {}], 1300),
+      // swipe left / right: a full 360 turn around the vertical axis while dashing a little sideways and back
+      side: (dir) => play([{}, { x: dir * 36, y: -16, ry: 180 }, { x: dir * 72, ry: 360 }, { x: dir * 36, ry: 360 }, { x: 0, ry: 360 }], 780, 'ease-in-out'),
+      jumpspin: (dir, turns = 2) => spinTurns(turns, dir, 96),
+      tornado: () => { const fs = []; for (let i = 0; i <= 16; i++) { const t = i / 16; fs.push({ ry: 1440 * t, y: -70 * Math.sin(Math.PI * t), rz: 10 * Math.sin(t * 20), s: 1 + .12 * Math.sin(Math.PI * t) }); } fs.push({}); return play(fs, 1900, 'linear'); },
+      dance: async () => { for (let i = 0; i < 3; i++) await play([{}, { y: -22, rz: -12 }, { rz: 12, y: -22 }, {}], 360).finished; },
+      pingpong: () => play([{}, { x: -84, ry: 360, y: -20 }, { x: 84, ry: 720, y: -20 }, { x: 0, ry: 1080 }], 1500, 'ease-in-out'),
+      launch: async () => { await play([{}, { sx: 1.3, sy: .55 }], 200, 'ease-out').finished; await spinTurns(2, 0, 150).finished; await play([{ sx: 1.2, sy: .7 }, {}], 260, 'ease-out').finished; },
+      quake: async () => { await play([{}, { y: -80, sy: 1.1 }], 280, 'ease-out').finished; await play([{ y: -80 }, { y: 0, sx: 1.35, sy: .5 }], 140, 'ease-in').finished;
+        try { stage.animate([{ transform: 'translate(0,0)' }, { transform: 'translate(-7px,3px)' }, { transform: 'translate(7px,-3px)' }, { transform: 'translate(-4px,2px)' }, { transform: 'none' }], { duration: 420 }); } catch (e) {}
+        note('✦'); note('✦'); await play([{ sx: 1.35, sy: .5 }, { sx: .92, sy: 1.1 }, {}], 360).finished; },
+      // up, up: shoots off the top of the screen, then comes zooming in big from the bottom
+      rocket: async () => { const e = edge(); clipPage(true); await play([{}, { sx: 1.15, sy: .8 }, { y: e.u, sy: 1.35, sx: .85 }], 620, 'ease-in').finished;
+        await wait(380); await play([{ y: e.d, s: 1.9, o: 1 }, { y: -36, s: 1.35 }, { y: 0, s: .94 }, {}], 780, 'cubic-bezier(.2,.9,.3,1.2)').finished; clipPage(false); },
+      // out one side of the screen, in from the other side with a spin
+      dashoff: async (dir) => { const e = edge(), out = dir > 0 ? e.r : e.l, back = dir > 0 ? e.l : e.r; clipPage(true);
+        await play([{}, { x: out * .5, ry: 180, rz: dir * 8 }, { x: out, ry: 360 }], 560, 'ease-in').finished; await wait(260);
+        await play([{ x: back, ry: 0, s: 1.5 }, { x: back * .3, ry: 540, s: 1.3 }, { x: 0, ry: 720, s: 1 }, {}], 820, 'cubic-bezier(.2,.9,.3,1.1)').finished; clipPage(false); },
+      // triple tap: vanishes… then pops up huge right in your face
+      scare: async () => { await play([{}, { s: .15, o: 0, ry: 180 }], 240, 'ease-in').finished; say.classList.remove('on'); await wait(900 + Math.random() * 700);
+        face = { mouth: 'open' }; draw(); bodyEl.style.opacity = '0';
+        const fl = document.createElement('div'); fl.className = 'hg-boo'; fl.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:radial-gradient(circle,#000a,#000e);pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;opacity:0;transition:opacity .08s';
+        const g = document.createElement('div'); g.style.cssText = 'width:min(76vw,340px);filter:drop-shadow(0 0 40px #fff6)'; g.innerHTML = bodyEl.innerHTML; const t = document.createElement('div'); t.textContent = 'BOO!'; t.style.cssText = 'font:900 54px system-ui;color:#fff;letter-spacing:6px';
+        fl.append(g, t); document.body.append(fl); requestAnimationFrame(() => fl.style.opacity = '1'); try { navigator.vibrate && navigator.vibrate([40, 30, 60]); } catch (e) {}
+        try { g.animate([{ transform: 'scale(.1)' }, { transform: 'scale(1.12)' }, { transform: 'scale(1)' }], { duration: 220, easing: 'cubic-bezier(.2,1.6,.4,1)', fill: 'forwards' }); } catch (e) {}
+        await wait(260); try { g.animate([{ transform: 'rotate(0)' }, { transform: 'rotate(-4deg)' }, { transform: 'rotate(4deg)' }, { transform: 'rotate(-3deg)' }, { transform: 'none' }], { duration: 520 }); } catch (e) {}
+        await wait(620); fl.style.transition = 'opacity .3s'; fl.style.opacity = '0'; setTimeout(() => fl.remove(), 350); face = {}; draw(); bodyEl.style.opacity = '';
+        talk('Hehe, gotcha!'); await play([{ s: .3, o: 0 }, { s: 1.08, o: 1 }, {}], 480, 'cubic-bezier(.3,1.3,.5,1)').finished; } };
+    let pending = null, busyName = '';
+    const trick = async (name, ...args) => { if (busy) return; busy = true; busyName = name; bodyEl.classList.remove('hg-bob');
+      try { const r = (T[name] || T.hop)(...args); if (r && r.finished) await r.finished; else await r; } catch (e) {}
+      try { bodyEl.getAnimations().forEach(x => x.cancel()); } catch (e) {} clipPage(false); stage.style.zIndex = ''; document.querySelectorAll('.hg-boo').forEach(x => x.remove());
+      bodyEl.classList.add('hg-bob'); busy = false;
+      if (pending) { const p = pending; pending = null; if (Date.now() - p.t < 2500) setTimeout(() => gesture(p.k), 40); } };
 
     // ----- drawing -----
     const mood = () => !S.alive ? 'dead' : sick() ? 'sick' : S.sleeping ? 'sleep' : pet && S.hatched && Math.min(S.hunger, S.fun) < 30 ? 'sad' : 'ok';
@@ -156,19 +197,44 @@ window.HUSH_GHOST = window.HUSH_GHOST || (() => {
     const n2 = () => 240;
     bodyEl.addEventListener('pointerup', up); bodyEl.addEventListener('pointercancel', up);
     const talkIdle = () => pick(night ? ['Yaaawn…', 'Shhh… it’s late.'] : ['Boo!', 'Hush.', 'Psst… nobody can see us.', 'Ads? Not on my watch.', 'Tor feels cozy today.', 'I only float. I don’t track.']);
+    // Gestures can be chained: each one remembers the one before it (within ~1.8 s) and some pairs do something special.
+    let hist = [];
+    const dirv = k => k === 'left' ? -1 : k === 'right' ? 1 : 0;
+    function gesture(k) {
+      if (pet && !S.alive) return; if (pet && !S.hatched) { trick('wiggle'); return; } if (pet && wake()) { save(); refresh(); return; }
+      if (busy) { pending = { k, t: Date.now() }; return; }
+      const now = Date.now(); hist = hist.filter(h => now - h.t < 1800); const prev = hist.length ? hist[hist.length - 1].k : null; hist.push({ k, t: now });
+      const side = x => x === 'left' || x === 'right';
+      let c = null;
+      if (hist.length >= 4) { hist = []; c = ['tornado', 'Tornado time!']; }
+      else if (prev === 'up' && k === 'up') c = ['rocket', 'Houston, we have a ghost!'];
+      else if (prev === 'down' && k === 'down') c = ['quake', 'Ground pound!'];
+      else if (prev === 'down' && k === 'up') c = ['launch', 'Launch!'];
+      else if ((prev === 'up' || prev === 'tap') && side(k)) c = ['jumpspin', 'Double spin!', dirv(k), 2];
+      else if (prev === 'tap' && k === 'up') c = ['jumpspin', 'Triple spin!', 0, 3];
+      else if (side(prev) && side(k)) c = prev === k ? ['dashoff', 'See you on the other side!', dirv(k)] : ['pingpong', 'Ping pong!'];
+      else if (side(prev) && k === 'tap') c = ['dashoff', 'Peekaboo!', dirv(prev)];
+      if (c) { if (c[0] !== 'tornado') hist = hist.slice(-1).filter(() => false); talk(c[1]); note(); trick(c[0], c[2], c[3]); }
+      else if (k === 'up') { talk('Up, up and away!'); trick('float'); }
+      else if (k === 'down') { talk('Squish!'); trick('squish'); }
+      else if (side(k)) { talk('Wheee!'); trick('side', dirv(k)); }
+      else { look = { x: (Math.random() - .5) * 2, y: -.4 }; aim(); talk(pet && sick() ? 'I don’t feel so good…' : talkIdle()); note(); trick('hop'); }
+      if (pet) { S.fun = clamp(S.fun + (c ? 4 : 2)); save(); meters(); } }
     function tap(n) {
       if (pet && !S.alive) return;
-      if (pet && !S.hatched) { S.taps += n; trick("wiggle"); if (S.taps >= 5) { S.hatched = 1; S.born = Date.now(); S.last = Date.now(); S.since = 0; talk('Hello, world!', 2600); note('✦'); save(); setTimeout(refresh, 700); } else talk(['Tap tap…', 'Something is moving!', 'Almost…'][Math.min(2, S.taps - 1)] || 'Tap tap…'); save(); return; }
+      if (pet && !S.hatched) { S.taps += n; trick('wiggle'); if (S.taps >= 5) { S.hatched = 1; S.born = Date.now(); S.last = Date.now(); S.since = 0; talk('Hello, world!', 2600); note('✦'); save(); setTimeout(refresh, 700); } else talk(['Tap tap…', 'Something is moving!', 'Almost…'][Math.min(2, S.taps - 1)] || 'Tap tap…'); save(); return; }
       if (pet && wake()) { save(); refresh(); return; }
-      if (n >= 6) { face = { shades: true }; draw(); talk('Too cool.'); trick('dizzy'); setTimeout(() => { face = {}; draw(); }, 5000); return; }
-      if (n === 5) { talk('Wheee!'); return trick('flip'); }
-      if (n >= 2) { talk('Ooh, a spin!'); return trick('spin'); }
-      look = { x: (Math.random() - .5) * 2, y: -.4 }; aim(); talk(pet && sick() ? 'I don’t feel so good…' : talkIdle()); note(); trick('hop'); if (pet) { S.fun = clamp(S.fun + 1.5); save(); meters(); } }
-    function swipe(dir) {
-      if (pet && !S.alive) return; if (pet && !S.hatched) return trick('wiggle'); if (pet && wake()) { save(); refresh(); return; }
-      ({ up: () => { talk('Up, up and away!'); trick('float'); }, down: () => { talk('Squish!'); trick('squish'); },
-        left: () => { talk('Zoom!'); trick('left'); }, right: () => { talk('Zoom!'); trick('right'); } })[dir]();
+      if (n === 1) return gesture('tap');
+      if (busy) { pending = null; return; }
+      hist = [{ k: 'tap', t: Date.now() }];
+      if (n >= 7) { face = { shades: true }; draw(); talk('Too cool.'); trick('dizzy'); setTimeout(() => { face = {}; draw(); }, 5000); }
+      else if (n === 6) { talk('Tornado time!'); trick('tornado'); }
+      else if (n === 5) { talk('Wheee!'); trick('flip'); }
+      else if (n === 4) { talk('Dance party!'); trick('dance'); }
+      else if (n === 3) { talk('Boo?'); trick('scare'); }
+      else { talk('Ooh, a spin!'); trick('spin'); }
       if (pet) { S.fun = clamp(S.fun + 3); save(); meters(); } }
+    function swipe(dir) { gesture(dir); }
     function hold() { if (pet && (!S.alive || !S.hatched)) return;
       if (!pet) { S.sleeping = !S.sleeping; face = {}; root.classList.toggle('sleep', S.sleeping); bodyEl.innerHTML = body({ closed: S.sleeping }); talk(S.sleeping ? 'Zzz…' : 'I’m awake!'); aim(); if (!S.sleeping) draw(); return; }
       face = { mouth: 'big' }; draw(); talk('Hehe, that tickles!'); note('♥'); S.fun = clamp(S.fun + 4); save(); meters(); trick('wiggle'); setTimeout(() => { face = {}; draw(); }, 1200); }
