@@ -61,9 +61,9 @@ window.HushX = function (A) {
     el.innerHTML = `<div class="hx-home ${bg && !priv ? 'walled' : ''}" style="${bg && !priv ? 'background:' + esc(bg) + ';background-size:cover;background-position:center' : ''}">
       ${clock ? '<div class=hx-time><div class=hx-clock></div><div class=hx-date></div></div>' : ''}
       <div class=hx-brand>${opts.top || ''}</div>
-      ${gm !== 'off' && !priv ? '<div class=hx-ghost></div>' : ''}
       <div class="hx-grid ${editing ? 'hx-edit' : ''}">${bms.slice(0, 24).map(b => { const ic = opts.icon && opts.icon(b.url);
         return `<div class=hx-tile draggable=${editing} data-u="${esc(b.url)}" title="${esc(b.title || host(b.url))}"><i style="${favStyle(b.url)}">${esc((host(b.url) || '?')[0].toUpperCase())}</i><span>${esc(b.title || host(b.url))}</span><b class=hx-x data-rm="${esc(b.url)}">✕</b></div>` }).join('')}</div>
+      ${gm !== 'off' && !priv ? '<div class=hx-ghost></div>' : ''}
       ${editing ? `<form class=hx-add><input name=u placeholder="Add a site — example.com" autocomplete=off><button class=hx-b>Add</button></form>` : ''}
       ${notes ? `<textarea class=hx-notes placeholder="Quick notes — saved on this device">${esc(LS.get('notes', ''))}</textarea>` : ''}
       ${customizing ? customizer() : ''}

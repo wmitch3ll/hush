@@ -131,6 +131,13 @@ window.HUSH_GHOST = window.HUSH_GHOST || (() => {
       jumpspin: (dir, turns = 2) => spinTurns(turns, dir, 96),
       tornado: () => { const fs = []; for (let i = 0; i <= 16; i++) { const t = i / 16; fs.push({ ry: 1440 * t, y: -70 * Math.sin(Math.PI * t), rz: 10 * Math.sin(t * 20), s: 1 + .12 * Math.sin(Math.PI * t) }); } fs.push({}); return play(fs, 1900, 'linear'); },
       dance: async () => { for (let i = 0; i < 3; i++) await play([{}, { y: -22, rz: -12 }, { rz: 12, y: -22 }, {}], 360).finished; },
+      backflip: () => play([{}, { y: -60, rz: -180, sy: 1.1 }, { y: -20, rz: -360 }, { sx: 1.15, sy: .8, rz: -360 }, {}], 900),
+      moonwalk: (dir = 1) => play([{}, { x: -dir * 50, rz: -dir * 6 }, { x: -dir * 90, rz: dir * 6, y: -6 }, { x: -dir * 50, rz: -dir * 6 }, {}], 1400, 'linear'),
+      shiver: () => play([{}, { x: -3 }, { x: 3 }, { x: -3 }, { x: 3 }, { x: -2 }, { x: 2 }, {}], 600, 'linear'),
+      pulse: () => play([{}, { s: 1.18 }, { s: .94 }, { s: 1.1 }, {}], 700),
+      sneeze: () => play([{}, { sy: 1.15, sx: .9, y: -6 }, { sy: 1.15, sx: .9, y: -8 }, { sx: 1.3, sy: .7, x: 12 }, { x: -6, rz: -6 }, {}], 900),
+      bounce3: async () => { for (const h of [60, 36, 16]) await play([{}, { y: -h, sx: .96, sy: 1.06 }, { sx: 1.1, sy: .88 }, {}], 300 + h * 3, 'ease-out').finished; },
+      peek: async () => { clipPage(true); const e = edge(); await play([{}, { x: e.l, rz: -20 }], 420, 'ease-in').finished; await wait(500); await play([{ x: e.l }, { x: e.l + 90, rz: 12 }, { x: e.l + 90 }], 360).finished; await wait(350); await play([{ x: e.l + 90 }, { x: 0, y: -24, rz: 0 }, {}], 560).finished; clipPage(false); },
       pingpong: () => play([{}, { x: -84, ry: 360, y: -20 }, { x: 84, ry: 720, y: -20 }, { x: 0, ry: 1080 }], 1500, 'ease-in-out'),
       launch: async () => { await play([{}, { sx: 1.3, sy: .55 }], 200, 'ease-out').finished; await spinTurns(2, 0, 150).finished; await play([{ sx: 1.2, sy: .7 }, {}], 260, 'ease-out').finished; },
       quake: async () => { await play([{}, { y: -80, sy: 1.1 }], 280, 'ease-out').finished; await play([{ y: -80 }, { y: 0, sx: 1.35, sy: .5 }], 140, 'ease-in').finished;
@@ -301,7 +308,7 @@ window.HUSH_GHOST = window.HUSH_GHOST || (() => {
     const idle = () => { if (busy || down) return; if (pet && S.alive && !S.hatched) { if (Math.random() < .5) { trick('wiggle'); if (Math.random() < .4) talk('peep…', 1200); } return; } if (pet && !S.alive) return; if (S.sleeping) return;
       if (pet && stg() === 'baby' && Math.random() < .3) { talk('Oopsie!', 1400); return trick('tumble'); }
       if (pet && stg() === 'elder' && Math.random() < .25) { talk('Back in my day, we had no ads…', 2800); return; }
-      const r = Math.random(); if (r < .3) { look = { x: Math.random() * 2 - 1, y: Math.random() * 2 - 1 }; aim(); } else if (r < .5) { note(); } else if (r < .65) trick('wiggle'); else if (r < .8) talk(pet && sick() ? 'Hello? I need you…' : talkIdle()); else if (r < .9) trick('hop'); };
+      const r = Math.random(); if (r < .3) { look = { x: Math.random() * 2 - 1, y: Math.random() * 2 - 1 }; aim(); } else if (r < .5) { note(); } else if (r < .65) trick('wiggle'); else if (r < .8) talk(pet && sick() ? 'Hello? I need you…' : talkIdle()); else if (r < .88) trick('hop'); else trick(pick(['backflip', 'moonwalk', 'shiver', 'pulse', 'sneeze', 'bounce3', 'peek', 'dance'])); };
     timers.push(setInterval(idle, 7000));
     if (pet) timers.push(setInterval(() => { advance(); save(); checkEvolve(); meters(); messes(); if (!S.alive) { draw(); acts(); } else if (S.sleeping !== root.classList.contains('sleep')) draw(); }, 15000));
 

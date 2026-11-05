@@ -149,7 +149,7 @@ window.HushMsg = function (A) {
     const x = hex(new Uint8Array(await crypto.subtle.digest('SHA-256', enc))); const got = []; let err = '';
     for (const h of hosts()) { if (got.length >= 2) break;
       try { const t = N.finalizeEvent({ kind: 24242, created_at: now(), content: 'Upload', tags: [['t', 'upload'], ['x', x], ['expiration', String(now() + 900)]] }, N.generateSecretKey());
-        const res = await A.invRaw('blob_put', enc, { 'x-hush-server': h, 'x-hush-auth': btoa(unescape(encodeURIComponent(JSON.stringify(t)))) });
+        const res = await Promise.race([A.invRaw('blob_put', enc, { 'x-hush-server': h, 'x-hush-auth': btoa(unescape(encodeURIComponent(JSON.stringify(t)))) }), new Promise((_, rj) => setTimeout(() => rj(new Error('no answer from ' + h.replace(/^https:\/\//, '') + ' after 45 s (Tor may still be connecting)')), 45000))]);
         got.push(res && /^https:\/\//.test(res.url) ? res.url : h.replace(/\/$/, '') + '/' + x); } catch (e) { err = String(e); } }
     if (!got.length) throw new Error(err || 'no host accepted the file');
     await putFile(x.slice(0, 32), blob);
@@ -158,6 +158,10 @@ window.HushMsg = function (A) {
   async function mediaUrl(meta) {      // download (through Tor) + verify + decrypt, cached in IndexedDB
     if (!meta || !/^[0-9a-f]{64}$/.test(meta.x || '')) return null;
     const id = meta.x.slice(0, 32); const u0 = await fileUrl(id); if (u0) return u0;
+    // Small profile photos travel inside the profile itself (no download, so they show up instantly). Checked against the hash.
+    if (typeof meta.i === 'string' && meta.i.length < 48000 && /^[A-Za-z0-9+/=]+$/.test(meta.i)) {
+      try { const bin = atob(meta.i), buf = new Uint8Array(bin.length); for (let k = 0; k < bin.length; k++) buf[k] = bin.charCodeAt(k);
+        if (buf[0] === 0xFF && buf[1] === 0xD8 && hex(new Uint8Array(await crypto.subtle.digest('SHA-256', buf))) === meta.x) { await putFile(id, new Blob([buf], { type: 'image/jpeg' })); return fileUrl(id); } } catch {} return null; }
     for (const u of [meta.url, ...(meta.alt || [])].filter(z => /^https:\/\//.test(z || ''))) {
       try { const buf = new Uint8Array(await A.inv('blob_get', { url: u }));
         if (hex(new Uint8Array(await crypto.subtle.digest('SHA-256', buf))) !== meta.x) continue;
@@ -475,15 +479,37 @@ window.HushMsg = function (A) {
     g.fillStyle = '#888'; g.font = '24px system-ui'; g.fillText('Scan with Hush to message me privately', W / 2, 960);
     return new Promise(r => c.toBlob(r, 'image/png'));
   }
+  // Read a Hush Card (or any QR code) out of a picture: a saved/received card image or a screenshot. Nothing leaves the device.
+  async function decodeQR(file) {
+    let bmp; try { bmp = await createImageBitmap(file); } catch { bmp = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('Not an image')); im.src = URL.createObjectURL(file); }); }
+    const W = bmp.width, H = bmp.height; const det = 'BarcodeDetector' in window ? new BarcodeDetector({ formats: ['qr_code'] }) : null;
+    if (det) { try { const r = await det.detect(bmp); if (r[0]) return r[0].rawValue; } catch {} }
+    const jq = N.jsQR; if (!jq) return null;
+    // Try the whole picture at a few sizes, then just the lower part (where a Hush Card keeps its code), light-on-dark too.
+    const tries = [[0, 0, 1, 1, 1000], [0, 0, 1, 1, 1600], [0, .42, 1, .58, 1000], [0, 0, 1, 1, 600], [0, .3, 1, .7, 1400]];
+    for (const [fx, fy, fw, fh, max] of tries) { const sw = Math.round(W * fw), sh = Math.round(H * fh), k = Math.min(1, max / Math.max(sw, sh)), cw = Math.max(40, Math.round(sw * k)), ch = Math.max(40, Math.round(sh * k));
+      const c = document.createElement('canvas'); c.width = cw; c.height = ch; const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(bmp, Math.round(W * fx), Math.round(H * fy), sw, sh, 0, 0, cw, ch);
+      const r = jq(g.getImageData(0, 0, cw, ch).data, cw, ch, { inversionAttempts: 'attemptBoth' }); if (r && r.data) return r.data; await new Promise(z => setTimeout(z, 0)); }
+    return null;
+  }
+  function pickCardPicture() {
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.style.display = 'none'; document.body.append(inp);
+    inp.onchange = async () => { const f = inp.files[0]; inp.remove(); if (!f) return; A.toast('Reading the card…');
+      try { const txt = await decodeQR(f); const pk = txt && parseId(txt); if (!pk) return A.toast('No Hush Card found in that picture — try the original image');
+        if (pk === me) return A.toast('That’s your own card');
+        if (!confirm('Add this person?\n\nID: ' + npub(pk).slice(0, 16) + '…' + npub(pk).slice(-6) + '\n\nThis came from a picture, so it isn’t checked in person. Only add it if you got the card from them directly.')) return;
+        addContact(pk, null, inviteOf(txt), false); A.toast('Added — say hi'); openChat(pk); } catch (e) { A.toast('Couldn’t read that picture'); } };
+    inp.click(); setTimeout(() => { if (inp.isConnected && !inp.files.length) inp.remove(); }, 120000);
+  }
   // In-app scanner: BarcodeDetector where available (Android), jsQR otherwise (Windows).
   async function scan(custom) {
     let st; try { st = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); } catch { return A.toast('Hush needs the camera to scan — allow it and try again'); }
     const v = document.createElement('div'); v.className = 'hm-view';
-    v.innerHTML = `<div class=hm-scan><video playsinline muted autoplay></video><i></i></div><p style="color:#fff;margin:14px">${custom ? 'Point at the link code on your other device' : 'Point at a Hush Card or Murmur QR code'}</p><button class="hm-btn ghost" style="color:#fff;border-color:#fff6" data-x>Cancel</button>`;
+    v.innerHTML = `<div class=hm-scan><video playsinline muted autoplay></video><i></i></div><p style="color:#fff;margin:14px">${custom ? 'Point at the link code on your other device' : 'Point at a Hush Card or Murmur QR code'}</p><button class="hm-btn ghost" style="color:#fff;border-color:#fff6" data-x>Cancel</button>${custom ? '' : '<button class="hm-btn ghost" style="color:#fff;border-color:#fff6;margin-top:8px" data-p>Use a picture</button>'}`;
     document.body.append(v); const vid = v.querySelector('video'); vid.srcObject = st;
     const det = 'BarcodeDetector' in window ? new BarcodeDetector({ formats: ['qr_code'] }) : null, cv = document.createElement('canvas'), g = cv.getContext('2d', { willReadFrequently: true });
     let on = true; const stop = () => { on = false; st.getTracks().forEach(t => t.stop()); v.remove(); };
-    v.querySelector('[data-x]').onclick = stop;
+    v.querySelector('[data-x]').onclick = stop; const pb = v.querySelector('[data-p]'); if (pb) pb.onclick = () => { stop(); pickCardPicture(); };
     const found = txt => { if (custom) { if (!custom(txt)) return false; stop(); return true; } const pk = parseId(txt); if (!pk) return false; stop(); if (pk === me) { A.toast('That’s your own card'); return true; }
       addContact(pk, null, inviteOf(txt), true); A.toast('Added and verified in person ✓ — say hi '); openChat(pk); return true; };
     const tick = async () => { if (!on) return;
@@ -1035,13 +1061,13 @@ window.HushMsg = function (A) {
   function drawAdd() {
     view.el.innerHTML = `<div class="hm hm-mur">${head('New chat', '', `<button class=hm-ib data-go=list aria-label=Back>${I.back}</button>`)}<div class=hm-body>
       <button class="hm-row" data-go=group style="margin-top:6px">${avatar('a,b', 44)}<div class=t><b>New group</b><span>Chat with several people at once</span></div></button>
-      <div class=hm-card style="text-align:center"><h3>Scan their Hush Card</h3><p>The fastest way — point your camera at their card or QR code.</p><button class=hm-btn id=hm-scan>Scan a code</button></div>
+      <div class=hm-card style="text-align:center"><h3>Scan their Hush Card</h3><p>The fastest way — point your camera at their card or QR code.</p><button class=hm-btn id=hm-scan>Scan a code</button><div style="height:8px"></div><button class="hm-btn ghost" id=hm-pic>Use a card picture instead</button><p style="margin:8px 0 0;font-size:12px">Got their card as an image? Choose it from your photos — no camera needed.</p></div>
       <div class=hm-card><h3>Or paste their ID</h3><p>Paste their Hush ID (it starts with <b>npub</b>). They can find it under the QR button in their Murmur.</p>
       <input class=hm-in id=hm-id placeholder="npub1…" autocapitalize=off spellcheck=false><input class=hm-in id=hm-nm placeholder="Name (optional)" maxlength=40>
       <button class=hm-btn id=hm-add>Start chat</button></div>
       <div class=hm-card><h3>Or let them add you</h3><p>Show your code — they can scan it with their phone camera.</p><button class="hm-btn ghost" data-go=me>Show my Hush ID</button></div></div></div>`;
     wireCommon();
-    view.el.querySelector('#hm-scan').onclick = scan;
+    view.el.querySelector('#hm-scan').onclick = scan; view.el.querySelector('#hm-pic').onclick = pickCardPicture;
     view.el.querySelector('#hm-add').onclick = () => { const raw = view.el.querySelector('#hm-id').value, pk = parseId(raw); if (!pk) return A.toast('That isn’t a Hush ID — it should start with npub1');
       if (pk === me) return A.toast('That’s your own ID'); addContact(pk, view.el.querySelector('#hm-nm').value.trim(), inviteOf(raw)); openChat(pk); };
   }
@@ -1291,7 +1317,12 @@ window.HushMsg = function (A) {
     const fields = () => ({ name: view.el.querySelector('#hm-name').value.trim().slice(0, 40), status: view.el.querySelector('#hm-status').value.trim().slice(0, 80) });
     view.el.querySelectorAll('[data-aura]').forEach(b => b.onclick = () => { saveP({ ...fields(), aura: b.dataset.aura }); repaint(); });
     const pic = async (inp, w, h, key) => { const f = inp.files[0]; if (!f) return; A.toast('Encrypting & uploading through Tor…');
-      try { const keep = fields(); const blob = await crop(f, w, h); const meta = await uploadEncrypted(blob); saveP({ ...keep, [key]: meta }); A.toast(key === 'avatar' ? 'Photo updated' : 'Banner updated'); repaint(); } catch (e) { A.toast('Couldn’t upload: ' + String(e.message || e).slice(0, 90)); } };
+      try { const keep = fields(); let meta;
+        const inl = async blob => { const buf = new Uint8Array(await blob.arrayBuffer()), x = hex(new Uint8Array(await crypto.subtle.digest('SHA-256', buf)));
+          let bin = ''; for (let k = 0; k < buf.length; k += 8192) bin += String.fromCharCode.apply(null, buf.subarray(k, k + 8192)); await putFile(x.slice(0, 32), blob);
+          return { x, url: 'https://inline.hush.invalid/' + x, i: btoa(bin), mime: 'image/jpeg', size: buf.length }; };
+        if (key === 'avatar') { let blob = await crop(f, 192, 192); if (blob.size > 24000) blob = await crop(f, 128, 128); meta = await inl(blob); }
+        else { try { meta = await uploadEncrypted(await crop(f, w, h)); } catch (e) { A.toast('Upload failed — saving a smaller banner instead'); let blob = await crop(f, 600, 200); if (blob.size > 34000) blob = await crop(f, 420, 140); meta = await inl(blob); } } saveP({ ...keep, [key]: meta }); A.toast(key === 'avatar' ? 'Photo updated' : 'Banner updated'); repaint(); } catch (e) { A.toast('Couldn’t upload: ' + String(e.message || e).slice(0, 90)); } };
     view.el.querySelector('#hm-av').onchange = e => pic(e.target, 512, 512, 'avatar');
     view.el.querySelector('#hm-bn').onchange = e => pic(e.target, 1500, 500, 'banner');
     view.el.querySelector('#hm-card').onclick = () => hushCard();
