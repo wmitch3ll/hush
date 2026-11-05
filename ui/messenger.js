@@ -520,12 +520,17 @@ window.HushMsg = function (A) {
       setTimeout(tick, 180); };
     tick();
   }
-  function crop(file, w, h) { return new Promise((res, rej) => { const img = new Image(); img.onload = () => { const c = document.createElement('canvas'); c.width = w; c.height = h;
-    const r = Math.max(w / img.width, h / img.height), sw = w / r, sh = h / r; c.getContext('2d').drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, 0, 0, w, h);
-    URL.revokeObjectURL(img.src); c.toBlob(b => b ? res(b) : rej(new Error('image')), 'image/jpeg', 0.85); }; img.onerror = () => rej(new Error('Not an image')); img.src = URL.createObjectURL(file); }); }
-  function shrink(file, max, q) { return new Promise((res, rej) => { const img = new Image(); img.onload = () => {
-    const s = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement('canvas'); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
-    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(img.src); c.toBlob(b => b ? res(b) : rej(), 'image/jpeg', q); }; img.onerror = rej; img.src = URL.createObjectURL(file); }); }
+  // Decode a picture without a blob: URL (the app's security policy blocks those); createImageBitmap reads the file directly.
+  async function loadImg(file) {
+    try { const b = await createImageBitmap(file); return { img: b, w: b.width, h: b.height, done() { try { b.close(); } catch {} } }; } catch {}
+    const u = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error('Couldn’t read the file')); r.readAsDataURL(file); });
+    return await new Promise((res, rej) => { const im = new Image(); im.onload = () => res({ img: im, w: im.width, h: im.height, done() {} }); im.onerror = () => rej(new Error('That picture format isn’t supported — try a JPEG or PNG')); im.src = u; });
+  }
+  const toJpeg = (c, q) => new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('image')), 'image/jpeg', q));
+  async function crop(file, w, h) { const L = await loadImg(file); const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const r = Math.max(w / L.w, h / L.h), sw = w / r, sh = h / r; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.drawImage(L.img, (L.w - sw) / 2, (L.h - sh) / 2, sw, sh, 0, 0, w, h); L.done(); return toJpeg(c, 0.85); }
+  async function shrink(file, max, q) { const L = await loadImg(file); const s = Math.min(1, max / Math.max(L.w, L.h)), c = document.createElement('canvas'); c.width = Math.round(L.w * s); c.height = Math.round(L.h * s);
+    const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(L.img, 0, 0, c.width, c.height); L.done(); return toJpeg(c, q); }
   function react(key, m, emoji) {
     const mineR = (m.react || {})[emoji]?.includes('me');
     publish(key, 7, mineR ? '' : emoji, [['e', m.id], ['k', '14']]);
