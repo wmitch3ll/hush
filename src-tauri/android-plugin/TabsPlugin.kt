@@ -474,6 +474,9 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         }
         w.webChromeClient = object : WebChromeClient() {
             override fun onCreateWindow(v: WebView, d: Boolean, g: Boolean, m: android.os.Message?) = false
+            // No dated grey "play in a circle" placeholder before a video loads: plain black (pages' own posters still show).
+            override fun getDefaultVideoPoster(): android.graphics.Bitmap =
+                android.graphics.Bitmap.createBitmap(2, 2, android.graphics.Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.BLACK) }
             // Camera / microphone: ask once per site (remembered if the user says so); private tabs always deny.
             override fun onPermissionRequest(r: PermissionRequest) { act.runOnUiThread {
                 val kinds = webKinds(r); val host = r.origin.host ?: ""

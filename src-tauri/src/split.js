@@ -19,7 +19,7 @@ window.__hushSplit = window.__hushSplit || (() => {
     document.getElementById("hush-split-css")?.remove(); keep?.disconnect(); keep = null;
     document.querySelectorAll("[data-hush-split],[data-hush-split-anc]").forEach(e => { e.removeAttribute("data-hush-split"); e.removeAttribute("data-hush-split-anc"); });
     if (cur) __hushSolo(cur, false);
-    if (cur && cur.__hushCtl === false) cur.controls = false; cur = null; window.dispatchEvent(new Event("resize"));
+    if (cur && cur.tagName === "VIDEO" && cur.__hushCtl) cur.controls = true; cur = null; bar.hide(true); window.dispatchEvent(new Event("resize"));
   };
   const fill = v => {
     if (cur === v) return; unfill(); cur = v;
@@ -29,13 +29,14 @@ window.__hushSplit = window.__hushSplit || (() => {
     const tag = v.tagName.toLowerCase();
     st.textContent = "html,body{overflow:hidden!important;background:#000!important}body *{visibility:hidden!important}" +
       "[data-hush-split-anc]{visibility:visible!important;transform:none!important;filter:none!important;contain:none!important;will-change:auto!important;perspective:none!important;clip-path:none!important;mask:none!important}" +
-      tag + "[data-hush-split]{visibility:visible!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;z-index:2147483640!important;object-fit:contain!important;background:#000!important;transform:none!important;margin:0!important;border:0!important}";
+      "video[data-hush-split]::-webkit-media-controls{display:none!important}" + tag + "[data-hush-split]{visibility:visible!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;z-index:2147483640!important;object-fit:contain!important;background:#000!important;transform:none!important;margin:0!important;border:0!important}";
     (document.head || document.documentElement).append(st);
     __hushSolo(v, true);
-    // The browser's own full controls; some players remove them again, so keep them on. (A player frame has its own.)
-    if (v.tagName === "VIDEO") { v.__hushCtl = v.controls; v.controls = true;
-      keep = new MutationObserver(() => { if (on && !v.controls) v.controls = true; }); keep.observe(v, { attributes: true, attributeFilter: ["controls"] }); }
-    ring();   // the highlight ring goes above the lifted video
+    // Hush's own slim controls instead of the browser's dated ones (whose pause icon stayed on screen).
+    // Players that turn the native controls back on are switched off again. (A player frame keeps its own.)
+    if (v.tagName === "VIDEO") { v.__hushCtl = v.controls; v.controls = false;
+      keep = new MutationObserver(() => { if (on && v.controls) v.controls = false; }); keep.observe(v, { attributes: true, attributeFilter: ["controls"] }); }
+    ring();   // the highlight ring and controls go above the lifted video
   };
   // The video — or, on streaming sites that embed another site's player, the player FRAME (the video lives inside it).
   const pick = () => { const vids = [...document.querySelectorAll("video")].filter(v => area(v) > 0 || !v.paused);
@@ -48,12 +49,46 @@ window.__hushSplit = window.__hushSplit || (() => {
   const sound = () => { document.querySelectorAll("video,audio").forEach(x => { if (x.muted !== want()) x.muted = want(); }); media(); };
   // Sites (YouTube…) re-apply their own mute/volume; while split is on, Hush's choice wins.
   document.addEventListener("volumechange", e => { if (on && e.target.muted !== want()) e.target.muted = want(); }, true);
+  // Slim, modern control bar: glass pill at the bottom; shows on a tap, fades after 2.5 s while playing.
+  const ICON = { play: "M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z",
+    pause: "M7 5h3.2v14H7zM13.8 5H17v14h-3.2z", full: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" };
+  const bar = (() => { let host = null, root = null, hideT = 0, shown = false;
+    const fmt = t => { t = Math.max(0, Math.floor(t || 0)); const h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s2 = String(t % 60).padStart(2, "0"); return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + s2; };
+    const build = () => { host = document.createElement("hush-split-ctl"); host.setAttribute("popover", "manual");
+      host.style.cssText = "all:initial;position:fixed;inset:0;width:100vw;height:100vh;margin:0;padding:0;border:0;background:transparent;pointer-events:none;z-index:2147483647;overflow:visible";
+      root = host.attachShadow({ mode: "closed" });
+      root.innerHTML = '<style>:host{all:initial}.b{position:absolute;left:12px;right:12px;bottom:12px;display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:999px;background:rgba(18,18,22,.55);backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);border:1px solid rgba(255,255,255,.12);color:#fff;font:500 12px/1 system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums;opacity:0;transform:translateY(8px);transition:opacity .22s ease,transform .22s ease;pointer-events:none;box-shadow:0 8px 30px rgba(0,0,0,.35)}.on .b{opacity:1;transform:none;pointer-events:auto}button{all:unset;display:grid;place-items:center;width:32px;height:32px;border-radius:50%;cursor:pointer;flex:none}button:active{background:rgba(255,255,255,.16)}svg{width:20px;height:20px}.p{fill:#fff}.f{fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}input{flex:1;min-width:0;height:4px;appearance:none;-webkit-appearance:none;border-radius:4px;background:linear-gradient(#fff,#fff) 0/var(--v,0%) 100% no-repeat,rgba(255,255,255,.25);outline:none;margin:0}input::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.4)}input::-moz-range-thumb{width:14px;height:14px;border:0;border-radius:50%;background:#fff}.t{opacity:.85;white-space:nowrap}@media (prefers-reduced-motion:reduce){.b{transition:none}}</style>' +
+        '<div class=w><div class=b><button class=pp aria-label="Play or pause"><svg viewBox="0 0 24 24"><path class=p /></svg></button><span class=t></span><input type=range min=0 max=1000 value=0 aria-label="Seek"><button class=fs aria-label="Full screen"><svg viewBox="0 0 24 24"><path class=f d="' + ICON.full + '"/></svg></button></div></div>';
+      const $ = q => root.querySelector(q);
+      $(".pp").onclick = () => { if (!cur) return; cur.paused ? cur.play().catch(() => {}) : cur.pause(); later(); };
+      $(".fs").onclick = () => { try { cur && (cur.requestFullscreen || cur.webkitRequestFullscreen).call(cur); } catch (_) {} };
+      const sk = $("input"); sk.oninput = () => { if (cur && isFinite(cur.duration)) cur.currentTime = sk.value / 1000 * cur.duration; later(); };
+      for (const t of ["pointerdown", "click", "pointerup"]) root.addEventListener(t, e => e.stopPropagation()); };
+    const later = () => { clearTimeout(hideT); hideT = setTimeout(() => { if (cur && !cur.paused) api.hide(); }, 2500); };
+    const api = {
+      hit: e => { if (!root || !shown) return false; const r = root.querySelector(".b").getBoundingClientRect();
+        return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; },
+      sync: () => { if (!root || !cur || cur.tagName !== "VIDEO") return; const $ = q => root.querySelector(q);
+        $(".p").setAttribute("d", cur.paused ? ICON.play : ICON.pause);
+        const d = cur.duration, live = !isFinite(d), sk = $("input"); sk.style.display = live ? "none" : "";
+        if (!live && d) { const v = cur.currentTime / d * 1000; if (root.activeElement !== sk) sk.value = v; sk.style.setProperty("--v", v / 10 + "%"); }
+        $(".t").textContent = live ? "LIVE" : fmt(cur.currentTime) + " / " + fmt(d);
+        if (cur.paused && on && focus && !shown) api.show(false); },
+      raise: () => { if (!host || !on || !focus) return; try { if (host.matches(":popover-open")) host.hidePopover(); host.showPopover(); } catch (_) {} },
+      show: (auto = true) => { if (!on || !focus || !cur || cur.tagName !== "VIDEO") return; if (!host) build();
+        if (!host.isConnected) document.documentElement.append(host); if (!host.matches(":popover-open")) api.raise();
+        shown = true; root.querySelector(".w").className = "w on"; api.sync(); if (auto) later(); },
+      hide: (gone) => { shown = false; clearTimeout(hideT); if (!root) return; root.querySelector(".w").className = "w";
+        if (gone) { try { host.hidePopover(); } catch (_) {} host.remove(); } },
+      toggle: () => shown ? api.hide() : api.show() };
+    for (const t of ["play", "pause", "timeupdate", "durationchange"]) document.addEventListener(t, e => { if (e.target === cur && shown) api.sync(); }, true);
+    return api; })();
   let tick = 0;
   const ring = () => { let r = document.getElementById("hush-split-ring");
-    if (!on || !focus) { r?.remove(); return; }
+    if (!on || !focus) { r?.remove(); bar.hide(true); return; }
     if (!r) { r = document.createElement("hush-split-ring"); r.id = "hush-split-ring"; document.documentElement.append(r); }
     r.style.cssText = "all:initial;position:fixed;inset:0;z-index:2147483647;pointer-events:none;box-shadow:inset 0 0 0 3px #4da3ff;border-radius:2px;visibility:visible;margin:0;padding:0;border:0;background:transparent;width:100vw;height:100vh";
-    try { if (!r.hasAttribute("popover")) r.setAttribute("popover", "manual"); if (r.matches(":popover-open")) r.hidePopover(); r.showPopover(); } catch (_) {} };
+    try { if (!r.hasAttribute("popover")) r.setAttribute("popover", "manual"); if (r.matches(":popover-open")) r.hidePopover(); r.showPopover(); } catch (_) {} bar.raise(); };
   document.addEventListener("play", e => { if (!on) return; e.target.muted = !focus; if (e.target.tagName === "VIDEO" && cur !== e.target && (area(e.target) > 0)) fill(e.target); }, true);
   // Keep every video playing: when another half takes the sound, the phone pauses the others (audio focus).
   // A pause you didn't make yourself (no tap in this half just before) is undone; the video carries on muted.
@@ -77,11 +112,12 @@ window.__hushSplit = window.__hushSplit || (() => {
   // can't also pause/play the video (that caused the play-pause flash when switching). Later taps work normally.
   let eat = 0;
   const swallow = e => { if (Date.now() < eat) { e.preventDefault(); e.stopImmediatePropagation(); } };
+  addEventListener("pointerdown", e => { if (on && focus && cur && cur.tagName === "VIDEO" && !bar.hit(e)) bar.toggle(); }, true);
   addEventListener("pointerdown", e => { if (on && !focus && e.isTrusted) { eat = Date.now() + 700; e.preventDefault(); e.stopImmediatePropagation(); ask(); } }, true);
   for (const t of ["mousedown", "mouseup", "pointerup", "click", "dblclick", "touchstart", "touchend"]) addEventListener(t, swallow, true);
   return o => { on = !!(o && o.on); const f = !!(o && o.focus); if (o && o.sw) sw = o.sw; else if (f !== focus) sw = Date.now(); focus = f; clearInterval(tick);
     if (!on) { unfill(); ring(); sound(); return; }
     sound(); ring(); const v = pick(); if (v) fill(v);
     // Players swap their <video> element (ads, next episode): keep sound, fill and controls right.
-    tick = setInterval(() => { if (!on) return; sound(); if (!cur || !cur.isConnected) { const nv = pick(); if (nv) fill(nv); } else if (!cur.matches(":popover-open")) __hushSolo(cur, true); }, 800); };
+    tick = setInterval(() => { if (!on) return; sound(); if (!cur || !cur.isConnected) { const nv = pick(); if (nv) fill(nv); } else if (!cur.matches(":popover-open")) { __hushSolo(cur, true); ring(); } bar.sync(); }, 800); };
 })();

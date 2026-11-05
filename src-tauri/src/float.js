@@ -34,21 +34,22 @@ window.__hushFloat = window.__hushFloat || ((on) => {
   (document.head || document.documentElement).append(st);
   __hushSolo(v, true);
   const go = a => { location.href = "hush-float://" + a; };
+const FI = { play: '<svg viewBox="0 0 24 24" width="20" height="20"><path fill="#fff" d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>', pause: '<svg viewBox="0 0 24 24" width="20" height="20"><path fill="#fff" d="M7 5h3.2v14H7zM13.8 5H17v14h-3.2z"/></svg>', x: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>', open: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7"/></svg>' };
   const ui = document.createElement("hush-float"); ui.id = "hush-float";
   const sh = ui.attachShadow({ mode: "closed" });
   sh.innerHTML = `<style>:host{all:initial}.o{position:fixed;inset:0;z-index:2147483647;cursor:grab;touch-action:none}
     .b{position:absolute;display:flex;gap:4px;opacity:0;transition:opacity .15s}.o:hover .b,.o.t .b{opacity:1}
     .tl{left:6px;top:6px}.tr{right:6px;top:6px}.c{left:50%;top:50%;transform:translate(-50%,-50%)}
-    button{all:unset;cursor:pointer;width:30px;height:30px;border-radius:50%;background:#000a;color:#fff;display:grid;place-items:center;font:600 14px system-ui}
-    .c button{width:44px;height:44px;font-size:18px}.g{position:absolute;right:0;bottom:0;width:26px;height:26px;cursor:nwse-resize;touch-action:none;background:linear-gradient(135deg,transparent 55%,#fff8 55%,#fff8 62%,transparent 62%,transparent 72%,#fff8 72%,#fff8 79%,transparent 79%);opacity:0;transition:opacity .15s}.o:hover .g,.o.t .g{opacity:1}button:hover{background:#000d}</style>
-    <div class=o><div class="b tl"><button data-a=open title="Back to the tab">⤢</button></div>
-    <div class="b tr"><button data-a=close title="Close the floating video">✕</button></div>
-    <div class="b c"><button data-a=play title="Play / pause">${isVid && v.paused ? "▶" : "❚❚"}</button></div>
+    button{all:unset;cursor:pointer;width:32px;height:32px;border-radius:50%;background:rgba(18,18,22,.5);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.14);color:#fff;display:grid;place-items:center;font:600 14px system-ui}
+    .c button{width:52px;height:52px}.g{position:absolute;right:0;bottom:0;width:26px;height:26px;cursor:nwse-resize;touch-action:none;background:linear-gradient(135deg,transparent 55%,#fff8 55%,#fff8 62%,transparent 62%,transparent 72%,#fff8 72%,#fff8 79%,transparent 79%);opacity:0;transition:opacity .15s}.o:hover .g,.o.t .g{opacity:1}button:hover{background:rgba(18,18,22,.75)}button:active{transform:scale(.94)}</style>
+    <div class=o><div class="b tl"><button data-a=open title="Back to the tab">${FI.open}</button></div>
+    <div class="b tr"><button data-a=close title="Close the floating video">${FI.x}</button></div>
+    <div class="b c"><button data-a=play title="Play / pause">${isVid && v.paused ? FI.play : FI.pause}</button></div>
     <div class="g" title="Drag to resize"></div></div>`;
   document.documentElement.append(ui);
   try { ui.setAttribute("popover", "manual"); ui.style.cssText = "all:initial;position:fixed;inset:0;margin:0;padding:0;border:0;background:transparent;width:100vw;height:100vh;overflow:visible"; ui.showPopover(); } catch (_) {}
   const o = sh.querySelector(".o"), pb = sh.querySelector("[data-a=play]"), grip = sh.querySelector(".g");
-  const sync = () => { pb.textContent = v.paused ? "▶" : "❚❚"; };
+  const sync = () => { pb.innerHTML = v.paused ? FI.play : FI.pause; };
   if (isVid) { v.addEventListener("play", sync); v.addEventListener("pause", sync); }
   else { // a player frame: its own controls work (taps go through); keep only move / close / back-to-tab here
     pb.parentElement.remove(); o.style.pointerEvents = "none"; sh.querySelectorAll(".b,.g").forEach(x => x.style.pointerEvents = "auto"); }
