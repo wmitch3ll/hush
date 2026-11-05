@@ -89,6 +89,8 @@
     const switching = () => st.sw && Date.now() - st.sw < 2500;
     document.addEventListener("pause", e => { const v = e.target; if (!st.on || v.ended || (!st.keep && !switching()) || (!switching() && Date.now() - touched < 4000)) return;
       const r = n => setTimeout(() => { if (!st.on || !v.paused || v.ended || (!st.keep && !switching()) || (!switching() && Date.now() - touched < 4000)) return;
+        // If the site keeps pausing it (3 restarts within 6 s), stop fighting for a while — no stutter loop.
+        const now = Date.now(); v.__hushR = (v.__hushR || []).filter(t => now - t < 6000); if (v.__hushR.length >= 3) return; v.__hushR.push(now);
         if (forced()) v.muted = st.mute; v.play().then(() => {}, () => n < 4 && r(n + 1)); }, n ? 450 : 250); r(0); }, true);
     addEventListener("message", e => { const d = e.data; if (d && d.__hushTouch && window !== top && e.source === parent) { touched = Math.max(touched, Date.now()); relay(d); return; }
       if (d && d.__hushTap && window === top) touched = Date.now();

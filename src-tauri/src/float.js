@@ -50,7 +50,9 @@ const FI = { play: '<svg viewBox="0 0 24 24" width="20" height="20"><path fill="
   try { ui.setAttribute("popover", "manual"); ui.style.cssText = "all:initial;position:fixed;inset:0;margin:0;padding:0;border:0;background:transparent;width:100vw;height:100vh;overflow:visible"; ui.showPopover(); } catch (_) {}
   const o = sh.querySelector(".o"), pb = sh.querySelector("[data-a=play]"), grip = sh.querySelector(".g");
   const sync = () => { pb.innerHTML = v.paused ? FI.play : FI.pause; };
-  if (isVid) { v.addEventListener("play", sync); v.addEventListener("pause", sync); }
+  // Every play/pause shows the controls for a moment, so you can always see what happened.
+  let flashT = 0; const flash = () => { o.classList.add("t"); clearTimeout(flashT); flashT = setTimeout(() => { if (!s) o.classList.remove("t"); }, 1800); };
+  if (isVid) { v.addEventListener("play", () => { sync(); flash(); }); v.addEventListener("pause", () => { sync(); flash(); }); setTimeout(flash, 50); }
   else { // a player frame: its own controls work (taps go through); keep only move / close / back-to-tab here
     pb.parentElement.remove(); o.style.pointerEvents = "none"; sh.querySelectorAll(".b,.g").forEach(x => x.style.pointerEvents = "auto"); }
   sh.querySelectorAll("[data-a]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); const a = b.dataset.a;

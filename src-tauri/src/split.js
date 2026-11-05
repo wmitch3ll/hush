@@ -112,7 +112,8 @@ window.__hushSplit = window.__hushSplit || (() => {
       hide: (gone) => { shown = false; clearTimeout(hideT); if (!root) return; root.querySelector(".w").className = "w";
         if (gone) { try { host.hidePopover(); } catch (_) {} host.remove(); } },
       toggle: () => shown ? api.hide() : api.show() };
-    for (const t of ["play", "pause", "timeupdate", "durationchange"]) document.addEventListener(t, e => { if (e.target === cur && shown) api.sync(); }, true);
+    for (const t of ["play", "pause", "timeupdate", "durationchange"]) document.addEventListener(t, e => { if (e.target !== cur) return;
+      if ((t === "play" || t === "pause") && on && focus) api.show(true); else if (shown) api.sync(); }, true);
     return api; })();
   let tick = 0;
   const ring = () => { let r = document.getElementById("hush-split-ring");
@@ -133,6 +134,7 @@ window.__hushSplit = window.__hushSplit || (() => {
     const switching = () => Date.now() - sw < 2500;
     if (!on || v.tagName !== "VIDEO" || v.ended || (!switching() && (focus || Date.now() - touched < 4000))) return;
     const retry = n => setTimeout(() => { if (!on || !v.paused || v.ended || (!switching() && (focus || Date.now() - touched < 4000))) return;
+      const now = Date.now(); v.__hushR = (v.__hushR || []).filter(t => now - t < 6000); if (v.__hushR.length >= 3) return; v.__hushR.push(now);
       v.muted = !focus; v.play().then(() => {}, () => n < 4 && retry(n + 1)); }, n ? 450 : 250);
     retry(0); }, true);
   const ask = () => { try { location.href = "hush-split://focus"; } catch (_) {} };

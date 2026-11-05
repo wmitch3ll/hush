@@ -154,7 +154,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                 "play" -> t?.wv?.evaluateJavascript("(document.querySelector('video,audio')||{play(){}}).play()", null)
             }
             render(); i.resolve() } }
-    private var floatId: String? = null; private var floatX = -1; private var floatY = -1; private var floatW = 0
+    private var floatScale = 1f; private var floatId: String? = null; private var floatX = -1; private var floatY = -1; private var floatW = 0
     private var dragStart = IntArray(3); private var dragId = -1
     @Command fun floatTab(i: Invoke) { val a = i.parseArgs(FloatArgs::class.java)
         act.runOnUiThread { val t = tabs[a.id]; val w = t?.wv
@@ -176,9 +176,11 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             "close" -> { unfloat(t.id, true); emit("float", JSObject().apply { put("a", "close"); put("id", t.id) }) }
             "move", "size", "drop" -> {
                 val id = q("id").toInt(); val b = t.box ?: return
-                if (id != dragId) { dragId = id; dragStart = intArrayOf(floatX, floatY, b.width) }
-                when (u.host) { "move" -> { floatX = dragStart[0] + (q("dx") * d).toInt(); floatY = dragStart[1] + (q("dy") * d).toInt() }
-                    "size" -> floatW = dragStart[2] + (q("dw") * d).toInt() }
+                if (id != dragId) { dragId = id; dragStart = intArrayOf(floatX, floatY, (b.width * floatScale).toInt()) }
+                // The page is scaled down on screen, so its finger distances are in unscaled page pixels: scale them back.
+                val k = d * floatScale
+                when (u.host) { "move" -> { floatX = dragStart[0] + (q("dx") * k).toInt(); floatY = dragStart[1] + (q("dy") * k).toInt() }
+                    "size" -> floatW = dragStart[2] + (q("dw") * k).toInt() }
                 render()
                 if (u.host == "drop") emit("float", JSObject().apply { put("a", "moved"); put("x", floatX); put("y", floatY); put("w", floatW) }) } } }
     private var torOn = false
@@ -631,15 +633,20 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             // Grab the preview first (it needs the tab on screen), then take it off one frame later (the new tab covers it).
             if (b.tag != "leaving") { b.tag = "leaving"; snap(t) { b.tag = null; if ((t.id != active || !visible) && !(t.id == floatId && visible)) (b.parent as? ViewGroup)?.removeView(b) } } } } }
         // Floating video: that tab's view stays on top in a small, movable, resizable frame.
+        tabs.values.forEach { x -> if (x.id != floatId || !visible || x.id == active) x.box?.takeIf { it.scaleX != 1f }?.let { it.scaleX = 1f; it.scaleY = 1f } }
         floatId?.let { fid -> tabs[fid]?.let { ft -> if (visible && fid != active) ft.wv?.let { fw ->
             val fb = boxFor(ft, fw); val m = act.resources.displayMetrics
             val w = floatW.coerceIn(dp(160), m.widthPixels - dp(8)); val h = w * 9 / 16
             val maxX = m.widthPixels - w; val maxY = root.height.takeIf { it > 0 }?.let { it - h - bottomPx } ?: (m.heightPixels - h)
             floatX = if (floatX < 0) maxX - dp(12) else floatX.coerceIn(0, maxX.coerceAtLeast(0)); floatY = if (floatY < 0) maxY - dp(12) else floatY.coerceIn(topPx, maxY.coerceAtLeast(topPx))
-            val lp = FrameLayout.LayoutParams(w, h).apply { leftMargin = floatX; topMargin = floatY }
+            // The page keeps a full-width 16:9 size and is only SHRUNK ON SCREEN (scaled). Sites never see a tiny
+            // window, so players don't rebuild or pause themselves the moment the video becomes small.
+            val W0 = m.widthPixels; val H0 = W0 * 9 / 16; val sc = w.toFloat() / W0
+            val lp = FrameLayout.LayoutParams(W0, H0).apply { leftMargin = floatX; topMargin = floatY }
             if (fb.parent == null) root.addView(fb, lp) else fb.layoutParams = lp
+            fb.pivotX = 0f; fb.pivotY = 0f; fb.scaleX = sc; fb.scaleY = sc; floatScale = sc
             fb.elevation = dp(10).toFloat(); fb.clipToOutline = true
-            fb.outlineProvider = object : android.view.ViewOutlineProvider() { override fun getOutline(v: android.view.View, o: android.graphics.Outline) { o.setRoundRect(0, 0, v.width, v.height, dp(12).toFloat()) } }
+            fb.outlineProvider = object : android.view.ViewOutlineProvider() { override fun getOutline(v: android.view.View, o: android.graphics.Outline) { o.setRoundRect(0, 0, v.width, v.height, dp(12) / sc) } }
             fb.bringToFront() } } }
         val t = active?.let { tabs[it] } ?: return@runOnUiThread
         // A menu/sheet is open: the split's divider and any in-pane fullscreen video go away with the pages, and come back after.
@@ -672,8 +679,8 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                     rest.forEachIndexed { k, id -> rects[id] = intArrayOf(k * (sw + gap), bh + gap, sw, H - bh - gap) } }
             } else if (wide && n > 2) { val cw = (W - gap) / 2; val rh = (H - gap) / 2
                 L.forEachIndexed { k, id -> val last = n == 3 && k == 2; rects[id] = intArrayOf(if (last) 0 else (k % 2) * (cw + gap), (k / 2) * (rh + gap), if (last) W else cw, rh) }
-            } else if (wide) { val cw = (W * splitFrac).toInt().coerceIn(dp(160), W - dp(160)); rects[L[0]] = intArrayOf(0, 0, cw, H); rects[L[1]] = intArrayOf(cw + gap, 0, W - cw - gap, H)
-            } else if (n == 2) { val h1 = (H * splitFrac).toInt().coerceIn(dp(120), H - dp(120)); rects[L[0]] = intArrayOf(0, 0, W, h1); rects[L[1]] = intArrayOf(0, h1 + gap, W, H - h1 - gap)
+            } else if (wide) { val cw = (W * splitFrac).toInt().coerceIn(dp(260).coerceAtMost(W / 2), W - dp(260).coerceAtMost(W / 2)); rects[L[0]] = intArrayOf(0, 0, cw, H); rects[L[1]] = intArrayOf(cw + gap, 0, W - cw - gap, H)
+            } else if (n == 2) { val h1 = (H * splitFrac).toInt().coerceIn(dp(220).coerceAtMost(H / 2), H - dp(220).coerceAtMost(H / 2)); rects[L[0]] = intArrayOf(0, 0, W, h1); rects[L[1]] = intArrayOf(0, h1 + gap, W, H - h1 - gap)
             } else { val rh = (H - gap * (n - 1)) / n; L.forEachIndexed { k, id -> rects[id] = intArrayOf(0, k * (rh + gap), W, rh) } }
             ps.forEach { id -> val pt = tabs[id] ?: return@forEach; val r = rects[id] ?: return@forEach
                 if (pt.wv == null) { pt.box = null; pt.wv = make(pt).also { w -> if (pt.saved != null) w.restoreState(pt.saved!!) else w.loadUrl(pt.url) } }
@@ -689,7 +696,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                     v.setOnTouchListener { _, e -> val w2 = root.width > root.height - topPx - bottomPx
                         when (e.actionMasked) {
                             android.view.MotionEvent.ACTION_DOWN -> { p0 = if (w2) e.rawX else e.rawY; f0 = splitFrac; pill.animate().scaleX(1.4f).scaleY(1.4f).setDuration(120).start() }
-                            android.view.MotionEvent.ACTION_MOVE -> { val av = (if (w2) root.width else root.height - topPx - bottomPx).coerceAtLeast(1); splitFrac = (f0 + ((if (w2) e.rawX else e.rawY) - p0) / av).coerceIn(0.2f, 0.8f); render() }
+                            android.view.MotionEvent.ACTION_MOVE -> { val av = (if (w2) root.width else root.height - topPx - bottomPx).coerceAtLeast(1); splitFrac = (f0 + ((if (w2) e.rawX else e.rawY) - p0) / av).coerceIn(0.3f, 0.7f); render() }
                             else -> { pill.animate().scaleX(1f).scaleY(1f).setDuration(160).start()
                                 val now = System.currentTimeMillis(); val tap = Math.abs((if (w2) e.rawX else e.rawY) - p0) < dp(6)
                                 // Snap back to 50/50 near the middle, or on a double-tap.
