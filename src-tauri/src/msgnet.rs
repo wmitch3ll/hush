@@ -206,6 +206,38 @@ pub async fn groq_chat(app: AppHandle, key: String, body: Option<String>, direct
     }
 }
 
+
+// ---------- Site icons for bookmarks ----------
+// Fetched through Tor (the site never learns it came from your device) for sites you bookmarked; only the page's own
+// <link rel=icon> or /favicon.ico is read. The UI shrinks it and keeps it on the device.
+fn attr(tag: &str, name: &str) -> Option<String> {
+    let lower = tag.to_ascii_lowercase(); let mut from = 0;
+    while let Some(i) = lower[from..].find(name) { let at = from + i; from = at + name.len();
+        let before = lower[..at].chars().last().unwrap_or(' '); if !(before.is_whitespace() || before == '"' || before == '\'') { continue; }
+        let rest = tag[from..].trim_start(); let Some(rest) = rest.strip_prefix('=') else { continue }; let rest = rest.trim_start();
+        let (q, body) = match rest.chars().next() { Some(c @ ('"' | '\'')) => (Some(c), &rest[1..]), _ => (None, rest) };
+        let end = match q { Some(c) => body.find(c), None => body.find(|c: char| c.is_whitespace() || c == '>') }.unwrap_or(body.len());
+        return Some(body[..end].to_string()); }
+    None
+}
+#[tauri::command]
+pub async fn site_icon(app: AppHandle, host: String) -> Result<tauri::ipc::Response, String> {
+    if host.len() > 100 || host.is_empty() || !host.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-') || !host.contains('.') { return Err("bad host".into()); }
+    let base = url::Url::parse(&format!("https://{host}/")).map_err(|e| e.to_string())?;
+    let mut cands: Vec<String> = Vec::new();
+    if let Ok((200, body)) = https(&app, "GET", base.as_str(), &[], &[], 400_000).await {
+        let html = String::from_utf8_lossy(&body[..body.len().min(200_000)]).to_string(); let lower = html.to_ascii_lowercase(); let mut at = 0;
+        while let Some(i) = lower[at..].find("<link") { let st = at + i; let en = lower[st..].find('>').map(|e| st + e).unwrap_or(lower.len()); at = en.max(st + 5);
+            let tag = &html[st..en.min(html.len())]; let rel = attr(tag, "rel").unwrap_or_default().to_ascii_lowercase();
+            if rel.contains("icon") { if let Some(h) = attr(tag, "href") { if let Ok(u) = base.join(&h) { if u.scheme() == "https" && u.host_str().map_or(false, |x| x == host || x.ends_with(&format!(".{host}")) || host.ends_with(&format!(".{x}")) || true) { cands.push(u.to_string()); } } } } }
+    }
+    cands.push(base.join("/favicon.ico").map_err(|e| e.to_string())?.to_string());
+    for c in cands.into_iter().take(4) {
+        if let Ok((200, b)) = https(&app, "GET", &c, &[], &[], 250_000).await { if b.len() > 60 && !b.starts_with(b"<!") && !b.starts_with(b"<html") { return Ok(tauri::ipc::Response::new(b)); } }
+    }
+    Err("no icon".into())
+}
+
 // ---------- Secrets (the Murmur / Echo identity key) in the OS vault ----------
 // Windows: DPAPI (encrypted to your Windows account). Other desktops: a file only your user can read.
 // Android uses the Keystore from Kotlin (TabsPlugin.secretGet/Set), not these commands.

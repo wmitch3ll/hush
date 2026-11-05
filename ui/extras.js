@@ -687,10 +687,13 @@ window.HushX = function (A) {
     if (d.state === 'done' || d.state === 'failed' || d.state === 'cancelled') { d.t1 = now; d.speed = 0; }
     dlDrop(); if (DL.list) DL.list();
   }
+  const dlKind = (n, m) => { const e = dlExt(n), k = { pdf: 'PDF document', zip: 'ZIP archive', rar: 'RAR archive', '7z': '7-Zip archive', apk: 'Android app', exe: 'Windows program', msi: 'Windows installer', mp4: 'MP4 video', mkv: 'MKV video', webm: 'WebM video', mov: 'QuickTime video', mp3: 'MP3 audio', m4a: 'M4A audio', wav: 'WAV audio', flac: 'FLAC audio', ogg: 'Ogg audio', jpg: 'JPEG image', jpeg: 'JPEG image', png: 'PNG image', gif: 'GIF image', webp: 'WebP image', svg: 'SVG image', txt: 'Text file', csv: 'CSV spreadsheet', xlsx: 'Excel spreadsheet', xls: 'Excel spreadsheet', docx: 'Word document', doc: 'Word document', pptx: 'PowerPoint', epub: 'E-book', torrent: 'Torrent', iso: 'Disc image', json: 'JSON file', html: 'Web page' }[e];
+    return k || (m ? String(m).split(';')[0].split('/').pop().toUpperCase() + ' file' : e ? e.toUpperCase() + ' file' : 'File'); };
+  const dlWhen = t => { const d = new Date(t), n = new Date(), tm = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); return d.toDateString() === n.toDateString() ? 'Today ' + tm : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + tm; };
   const dlActive = () => DL.items.filter(d => d.state === 'active' || d.state === 'paused');
   const dlRow = (d, compact) => { const e = dlExt(d.name), pct = d.total ? Math.min(100, Math.round(d.bytes / d.total * 100)) : null, act = d.state === 'active' || d.state === 'paused';
     const meta = act ? [pct != null ? pct + '%' : 'Downloading…', d.total ? dlBytes(d.bytes) + ' of ' + dlBytes(d.total) : d.bytes ? dlBytes(d.bytes) : '', d.speed > 1024 ? dlBytes(d.speed) + '/s' : '', d.speed > 1024 && d.total ? dlTime((d.total - d.bytes) / d.speed) + ' left' : '', d.state === 'paused' ? 'Paused' : ''].filter(Boolean).join(' · ')
-      : d.state === 'done' ? [d.total ? dlBytes(d.total) : '', d.host || '', new Date(d.t1 || d.t0).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })].filter(Boolean).join(' · ')
+      : d.state === 'done' ? [dlKind(d.name, d.mime), d.total ? dlBytes(d.total) : '', dlWhen(d.t1 || d.t0), d.host || ''].filter(Boolean).join(' · ')
       : d.state === 'cancelled' ? 'Cancelled' : 'Failed' + (d.error ? ' · ' + d.error : '');
     return `<div class="dl-r ${d.state}" data-k="${esc(d.key)}"><i class=dl-c style="--c:${dlColor(e)}">${esc(e.slice(0, 4))}</i><div class=dl-t><b title="${esc(d.name)}">${esc(d.name)}</b>
       ${act ? `<div class=dl-bar><span style="width:${pct == null ? 38 : pct}%" class="${pct == null ? 'ind' : ''}"></span></div>` : ''}<small>${esc(meta)}</small></div>
@@ -712,7 +715,7 @@ window.HushX = function (A) {
   function dlList(el, o) { // full list, filter chips, remove / clear
     if (!document.getElementById('dl-css')) { const st = document.createElement('style'); st.id = 'dl-css'; st.textContent = DLCSS; document.head.append(st); }
     const draw = () => { const items = DL.items.filter(d => DL.filter === 'all' || (DL.filter === 'active' ? (d.state === 'active' || d.state === 'paused') : d.state === 'done')), act = dlActive().length, done = DL.items.filter(d => d.state === 'done').length;
-      el.innerHTML = `<div class=dl-h><div style="flex:1">${o && o.title === false ? '' : '<b>Downloads</b><br>'}<small>${act ? act + ' in progress · ' : ''}${done} finished this session</small></div>${DL.items.some(d => d.state !== 'active' && d.state !== 'paused') ? '<button data-clear style="all:unset;cursor:pointer;font:600 12.5px system-ui;color:var(--mute);padding:6px 10px;border-radius:99px">Clear</button>' : ''}</div>
+      el.innerHTML = `<div class=dl-h><div style="flex:1">${o && o.title === false ? '' : '<b>Downloads</b><br>'}<small>${DL.items.length} download${DL.items.length === 1 ? '' : 's'} this session${act ? ' · ' + act + ' in progress' : ''}</small></div>${DL.items.some(d => d.state !== 'active' && d.state !== 'paused') ? '<button data-clear style="all:unset;cursor:pointer;font:600 12.5px system-ui;color:var(--mute);padding:6px 10px;border-radius:99px">Clear</button>' : ''}</div>
         <div class=dl-seg>${[['all', 'All'], ['active', 'Active'], ['done', 'Finished']].map(([k, l]) => `<button data-f=${k} class="${DL.filter === k ? 'on' : ''}">${l}</button>`).join('')}</div>
         ${items.length ? items.map(d => dlRow(d, false)).join('') : `<div class=dl-empty><svg viewBox="0 0 24 24"><path d="M12 4v10m0 0l-4-4m4 4l4-4M5 19h14" stroke-linecap="round" stroke-linejoin="round"/></svg><br>${DL.filter === 'all' ? 'Nothing downloaded yet.<br>Files go to your Downloads folder.' : 'Nothing here.'}</div>`}
         ${o && o.footer ? `<div style="text-align:center;margin-top:10px"><button data-foot style="all:unset;cursor:pointer;color:var(--mute);font:600 13px system-ui;padding:8px 14px">${esc(o.footer)}</button></div>` : ''}`;
@@ -751,7 +754,20 @@ window.HushX = function (A) {
   }
   const fav = u => { const h = host(u); if (!h) return ''; const m = favAll(); if (m[h]) return m[h][0];
     for (const k in m) if (k.endsWith('.' + h) || h.endsWith('.' + k)) return m[k][0];   // m.youtube.com <-> youtube.com
-    return ''; };
+    favWant(h); return ''; };
+  // Missing icons are fetched one at a time through Tor (see site_icon in msgnet.rs), then every shortcut using it updates.
+  const FQ = { q: [], tried: new Set(), busy: false };
+  function favWant(h) { if (!A.inv || A.noIconFetch || FQ.tried.has(h) || /^(\d+\.){3}\d+$/.test(h) || !h.includes('.')) return; FQ.tried.add(h); FQ.q.push(h); setTimeout(favPump, 1500); }
+  async function favPump() { if (FQ.busy || !FQ.q.length) return; FQ.busy = true; const h = FQ.q.shift();
+    try { const buf = await A.inv('site_icon', { host: h }); const bytes = new Uint8Array(buf); const head = String.fromCharCode(...bytes.slice(0, 5));
+      const type = head.startsWith('<') ? 'image/svg+xml' : bytes[0] === 0x89 ? 'image/png' : bytes[0] === 0xFF ? 'image/jpeg' : head.startsWith('GIF') ? 'image/gif' : (bytes[0] === 0 && bytes[2] === 1) ? 'image/x-icon' : 'image/png';
+      const url = URL.createObjectURL(new Blob([bytes], { type })); const im = new Image();
+      await new Promise((ok, no) => { im.onload = ok; im.onerror = no; im.src = url; });
+      const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'), r = Math.min(64 / (im.naturalWidth || 64), 64 / (im.naturalHeight || 64)); const w = (im.naturalWidth || 64) * r, hh = (im.naturalHeight || 64) * r;
+      g.drawImage(im, (64 - w) / 2, (64 - hh) / 2, w, hh); URL.revokeObjectURL(url); favSet(h, c.toDataURL('image/png'));
+      document.querySelectorAll('.hx-tile[data-u]').forEach(t => { if (host(t.dataset.u) === h) { const i = t.querySelector('i'); if (i) i.style.cssText = favStyle(t.dataset.u); } });
+    } catch (e) { /* no icon, or Tor not ready: the colored tile stays */ }
+    FQ.busy = false; if (FQ.q.length) setTimeout(favPump, 800); }
   const tileBg = h => { let n = 0; for (const c of h || '?') n = (n * 31 + c.charCodeAt(0)) >>> 0; const a = n % 360; return `linear-gradient(135deg,hsl(${a} 55% 38%),hsl(${(a + 40) % 360} 60% 24%))`; };
   // style for a round/rounded icon box: the site's own icon on a soft tile, or its colored letter tile
   const favStyle = u => { const ic = fav(u); return ic ? `background:#fff center/62% no-repeat url('${ic}');color:transparent;border-color:transparent` : `background:${tileBg(host(u))};color:#fff;border-color:transparent`; };

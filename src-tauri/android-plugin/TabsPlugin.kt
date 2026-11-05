@@ -52,6 +52,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     private class Tab(val id: String, var url: String, var wv: WebView?, var saved: Bundle? = null, val priv: Boolean = false, val space: String = "") {
         var lastUsed = System.currentTimeMillis()
         @Volatile var audio = false
+        @Volatile var video = false
         var ptr: androidx.webkit.ScriptHandler? = null
         var box: SwipeRefreshLayout? = null   // pull-to-refresh container around the WebView
         /** Current page URL, readable from WebView's network thread (WebView methods like getUrl() are UI-thread only). */
@@ -242,6 +243,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     override fun load(webView: WebView) {
         super.load(webView)
         chrome = webView
+        act.window.decorView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> if (Build.VERSION.SDK_INT >= 26) pipChanged(act.isInPictureInPictureMode) }
         // Background play: when you switch to another app while a tab is playing, a media playback service keeps
         // Hush's sound going (Android would otherwise stop it). Another app playing its own audio still pauses it.
         HushPlayback.onPause = { act.runOnUiThread { svcOn = false; tabs.values.forEach { t -> t.audio = false
@@ -317,8 +319,19 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         if (show) c.show(WindowInsetsCompat.Type.systemBars()) else { c.hide(WindowInsetsCompat.Type.systemBars())
             c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE }
     }
-    private fun autoPip(on: Boolean) { if (Build.VERSION.SDK_INT >= 31) try {
-        act.setPictureInPictureParams(PictureInPictureParams.Builder().setAutoEnterEnabled(on).setAspectRatio(Rational(16, 9)).build()) } catch (e: Throwable) {} }
+    private var fsPip = false; private var vidPip = false; private var pipSet: Boolean? = null
+    private var pipOn = false; private var sTop = 0; private var sBot = 0
+    private fun applyPip() { val want = fsPip || vidPip; if (pipSet == want) return; pipSet = want
+        if (Build.VERSION.SDK_INT >= 31) try { act.setPictureInPictureParams(PictureInPictureParams.Builder().setAutoEnterEnabled(want).setAspectRatio(Rational(16, 9)).build()) } catch (e: Throwable) {} }
+    private fun autoPip(on: Boolean) { fsPip = on; applyPip() }
+    /** Leaving Hush while a video plays in the tab you're on: Android 12+ shrinks it to a small floating window over the other app. */
+    private fun armPip() { val t = active?.let { tabs[it] }; vidPip = bgPlay && t != null && t.video && t.audio && t.id !in panes(); applyPip() }
+    private fun pipChanged(on: Boolean) { if (on == pipOn) return; pipOn = on
+        val t = active?.let { tabs[it] }
+        if (on) { sTop = topPx; sBot = bottomPx; topPx = 0; bottomPx = 0; chrome?.visibility = View.GONE
+            t?.wv?.evaluateJavascript("window.__hushPipFill&&__hushPipFill(true)", null); render()
+        } else { topPx = sTop; bottomPx = sBot; chrome?.visibility = View.VISIBLE
+            tabs.values.forEach { it.wv?.evaluateJavascript("window.__hushPipFill&&__hushPipFill(false)", null) }; render(); emit("pip", JSObject().apply { put("on", false) }) } }
     @Command fun pip(i: Invoke) { act.runOnUiThread { try { if (Build.VERSION.SDK_INT >= 26)
         act.enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build()) } catch (e: Throwable) {} }; i.resolve() }
 
@@ -427,7 +440,6 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             setSupportMultipleWindows(true); javaScriptCanOpenWindowsAutomatically = false   // popups are dropped in onCreateWindow (not loaded over the page)
             safeBrowsingEnabled = true; allowFileAccess = false; allowContentAccess = false
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW; setGeolocationEnabled(!t.priv)
-            mediaPlaybackRequiresUserGesture = true
             builtInZoomControls = true; displayZoomControls = false
             if (t.priv) { cacheMode = WebSettings.LOAD_NO_CACHE; saveFormData = false }
         }
@@ -447,7 +459,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         val audioMsgs = try { WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) } catch (e: Throwable) { false }
         if (audioMsgs) try {
             WebViewCompat.addWebMessageListener(w, "hushAudio", setOf("*")) { _, msg, _, _, _ ->
-                t.audio = msg.data == "1"; emit("tabAudio", JSObject().apply { put("id", t.id); put("audio", t.audio) }); act.runOnUiThread { bgCheck() } }
+                t.audio = msg.data != "0"; t.video = msg.data == "2"; emit("tabAudio", JSObject().apply { put("id", t.id); put("audio", t.audio) }); act.runOnUiThread { bgCheck(); armPip() } }
             if (earlyScripts) WebViewCompat.addDocumentStartJavaScript(w, AUDIO_JS, setOf("*"))
             // "Where you left off": the page tells the app its scroll position and video time (top page only, never from private tabs).
             // The page's own icon (small PNG): filed under the site that really sent it (never from private tabs).
@@ -485,7 +497,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                     // split.js: you tapped this half → it gets the highlight and the sound.
                     // Any frame of this page reports "play" / "pause" after YOU tapped: the app draws a brief round icon over the page.
                     "hush-pulse" -> { val k = r.url.host ?: ""; if (k == "play" || k == "pause") pulse(t.id, k); true }
-                    "hush-split" -> { act.runOnUiThread { if (r.url.host == "swap") { if (t.id in panes()) { splitRot++; splitFrac = 1f - splitFrac; render() } } else if (splitIds.isNotEmpty() && t.id in panes() && splitFocus != t.id) { splitFocus = t.id; render(); applySplit() } }; true }
+                    "hush-split" -> { act.runOnUiThread { if (r.url.host == "swap") { if (t.id in panes()) { splitRot++; splitFrac = 1f - splitFrac; render() } } else if (splitIds.isNotEmpty() && t.id in panes() && splitFocus != t.id) { splitFocus = t.id; render(); act.window.decorView.post { applySplit() } } }; true }
                     // harden.js: a link to another site that wanted a new window → Hush opens it in a background tab.
                     // harden.js on console.groq.com: hand a freshly made Groq key to the assistant (only from Groq's own site).
                     "hush-groq" -> { val k = r.url.getQueryParameter("k") ?: ""
@@ -688,6 +700,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
 
     /** Show the active tab's view (or none while a chrome sheet is open). */
     private fun render(): Unit = act.runOnUiThread {
+        armPip()
         val root = act.findViewById<ViewGroup>(android.R.id.content)
         // Media keeps playing: a tab you chose to keep playing (or the tab you're watching while the tab list is open)
         // stays attached but moved off-screen, so the page isn't paused. Everything else is taken off screen.
@@ -914,7 +927,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         WebViewDatabase.getInstance(act).clearHttpAuthUsernamePassword(); WebViewDatabase.getInstance(act).clearFormData()
         tabs.values.forEach { it.wv?.clearCache(true); it.wv?.clearHistory(); it.wv?.clearFormData() } }; i.resolve() }
     /** Space (device px) the chrome bars take at the top and bottom; tab views sit between them. */
-    @Command fun setTopInset(i: Invoke) { val a = i.parseArgs(InsetArgs::class.java); topPx = a.px; bottomPx = a.bottom; render(); i.resolve() }
+    @Command fun setTopInset(i: Invoke) { val a = i.parseArgs(InsetArgs::class.java); if (pipOn) { sTop = a.px; sBot = a.bottom; i.resolve(); return }; topPx = a.px; bottomPx = a.bottom; render(); i.resolve() }
     /** Page preferences from Settings: text size (%) and "desktop site". Applied to every open tab. */
     @Command fun setPrefs(i: Invoke) { val a = i.parseArgs(PrefArgs::class.java)
         textZoom = a.textZoom.coerceIn(50, 200); val reload = desktop != a.desktop; desktop = a.desktop; pullRefresh = a.pullRefresh; bgPlay = a.bgPlay
@@ -1062,8 +1075,9 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             "document.addEventListener('pause',e=>{if(on&&was.includes(e.target)&&!e.target.ended)setTimeout(()=>{try{location.href='hush-bg://paused'}catch(_){}},60)},true);" +
             "window.__hushBgGuard=x=>{on=!!x;was=on?[...document.querySelectorAll('video,audio')].filter(m=>!m.paused&&!m.ended):[];return was.length>0};})()"
         private const val AUDIO_JS = "(()=>{if(window.__hushAu||typeof hushAudio==='undefined')return;window.__hushAu=1;let last=null;" +
-            "const tell=()=>{const on=[...document.querySelectorAll('video,audio')].some(m=>!m.paused&&!m.ended&&!m.muted&&m.volume>0);" +
-            "if(on!==last){last=on;try{hushAudio.postMessage(on?'1':'0')}catch(e){}}};" +
+            "const tell=()=>{const pl=[...document.querySelectorAll('video,audio')].filter(m=>!m.paused&&!m.ended&&!m.muted&&m.volume>0);" +
+            "const on=pl.length?(pl.some(m=>m.tagName==='VIDEO'&&m.videoWidth>0&&m.offsetWidth>120)?'2':'1'):'0';" +
+            "if(on!==last){last=on;try{hushAudio.postMessage(on)}catch(e){}}};" +
             "for(const e of ['play','playing','pause','ended','volumechange','emptied'])document.addEventListener(e,()=>setTimeout(tell,50),true);setInterval(tell,4000)})()"
         /** Pull-to-refresh, decided by the page itself: only when the page is at the very top AND the drag didn't start
          *  in a box that scrolls on its own (comments, chats, side lists) — those just scroll. A long, deliberate pull

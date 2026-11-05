@@ -256,7 +256,7 @@ async function switchWs(name,dir){await setPref("ws",name);const last=inWs().at(
 
 // ---------- tabs ----------
 function newTab(priv,quiet,keepPlaying){if(!keepPlaying)maybeFloat(cur);const t={id:nid++,native:null,url:"",title:"",priv:!!priv,ws:curWs(),canBack:false,canFwd:false,last:Date.now()};tabs.push(t);cur=t.id;
-  if(!quiet){show(null);render();setTimeout(()=>$("#url").focus(),80)}return t}
+  if(!quiet){show(null);render()}return t}
 let prevTab=null;
 function select(id,anim){const t=tabs.find(x=>x.id===id);if(!t)return;if(id!==cur)prevTab=cur;if(t.ws!==curWs())setPref("ws",t.ws);toolsShow(true);if(id!==cur)maybeFloat(cur);if(floating===t.native){floating=null;native("floatClose",{stop:false}).catch(()=>{})}if(bgMedia===id){bgMedia=null;native("media",{id:t.native,action:"release"}).catch(()=>{})}cur=id;t.last=Date.now();show(null);
   if(anim){const p=$("#pill");p.classList.add(anim);setTimeout(()=>p.classList.remove(anim),180)}
@@ -268,7 +268,7 @@ function syncNative(){const t=T();inv("switch_tab",{label:(!sheet||dock)&&!typin
 function startTour(){touring=true;show(null);syncNative();const u0=(T()||{}).url||"",tor0=torOn,menu=()=>{if(sheet!=="menu"){drawMenu();show("menu")}};
   const fin=()=>{touring=false;setPref("toured","1");show(null);syncNative()};
   HUSH_COACH.run([
-    {title:"Welcome to Hush 👋",text:"Hush blocks ads and trackers everywhere, has Tor built in, splits the screen for up to 4 videos, and comes with private messaging (Murmur), a private social network (Echo) and an offline assistant. This walkthrough takes about 3 minutes — you’ll try each thing yourself.",place:"center"},
+    {title:"Hi, I’m Hush!",text:"I’ll show you around — about 3 minutes, and you’ll try everything yourself. Hush blocks ads and trackers, has Tor built in, splits the screen for up to 4 videos, and includes private messaging (Murmur), Echo and an offline assistant. Ready?",place:"center"},
     // 1. Browsing
     {sel:"#url",title:"Go to a site",text:"The address bar does both: type a site (espn.com) or a search. Shortcuts search one site directly — !yt YouTube, !w Wikipedia, !a Amazon, !r Reddit. Swipe the bar left/right to switch tabs.",doText:"Tap the bar, type a site and press Go",until:()=>{const u=(T()||{}).url||"";return u!==u0&&/^https?:/.test(u)}},
     {sel:"#shield",title:"Your shield",text:"Ads, trackers, cookie banners and popups are blocked on every site. The shield shows what was stopped here and has switches just for this site.",doText:"Tap the shield",until:()=>sheet==="site"},

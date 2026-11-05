@@ -232,3 +232,10 @@
   };
   if (document.readyState === "complete") setTimeout(run, 1200); else addEventListener("load", () => setTimeout(run, 1200));
 })();
+
+// Picture-in-picture: while Hush is a small floating window, the playing video fills it.
+window.__hushPipFill = on => { try { const id = '__hushpip'; document.getElementById(id)?.remove(); document.querySelectorAll('.__hushpipv').forEach(v => v.classList.remove('__hushpipv'));
+  if (!on) return; const v = [...document.querySelectorAll('video')].filter(m => !m.paused).sort((a, b) => b.offsetWidth * b.offsetHeight - a.offsetWidth * a.offsetHeight)[0]; if (!v) return;
+  v.classList.add('__hushpipv'); const st = document.createElement('style'); st.id = id;
+  st.textContent = 'html,body{overflow:hidden!important}video.__hushpipv{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;z-index:2147483646!important;object-fit:contain!important;background:#000!important;transform:none!important}';
+  (document.head || document.documentElement).append(st); } catch (_) {} };

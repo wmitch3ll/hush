@@ -320,7 +320,7 @@ function sync(){const t=tab(cur);inv('show_content',{visible:!panel&&!touring&&!
 function startTour(){touring=true;closePanel(true);sync();const u0=(tab(cur)||{}).url||'',tor0=tabs.filter(t=>t.tor).length;
   const fin=()=>{touring=false;setPref('toured','1');closePanel(true);sync();draw()};
   HUSH_COACH.run([
-    {title:'Welcome to Hush 👋',text:'Hush blocks ads and trackers everywhere, has Tor built in, splits the window for up to 4 videos, and comes with private messaging (Murmur), a private social network (Echo) and an offline assistant. This walkthrough takes about 3 minutes — you’ll try each thing yourself.',place:'center'},
+    {title:'Hi, I’m Hush!',text:'I’ll show you around — about 3 minutes, and you’ll try everything yourself. Hush blocks ads and trackers, has Tor built in, splits the window for several videos, and includes private messaging (Murmur), Echo and an offline assistant. Ready?',place:'center'},
     // 1. Browsing
     {sel:'#bar',title:'Go to a site',text:'The address bar does both: type a site (espn.com) or a search. Shortcuts search one site directly — !yt YouTube, !w Wikipedia, !a Amazon, !r Reddit. Ctrl+L jumps here.',doText:'Click the bar, type a site and press Enter',until:()=>{const u=(tab(cur)||{}).url||'';return u!==u0&&/^https?:/.test(u)}},
     {sel:'#shield',title:'Your shield',text:'Ads, trackers, cookie banners and popups are blocked on every site — the number shows how many on this page. If a site ever breaks, click the shield to turn protection off just there.'},
