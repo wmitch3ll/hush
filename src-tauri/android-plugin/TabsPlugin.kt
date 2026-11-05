@@ -522,12 +522,6 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         }
         w.webChromeClient = object : WebChromeClient() {
             override fun onCreateWindow(v: WebView, d: Boolean, g: Boolean, m: android.os.Message?) = false
-            // The site's own icon, kept on the phone so bookmarks and shortcuts show the real logo.
-            override fun onReceivedIcon(v: WebView, icon: android.graphics.Bitmap?) {
-                try { val h = Uri.parse(v.url ?: "").host?.removePrefix("www.") ?: return; val b = icon ?: return
-                    if (tabs.values.firstOrNull { it.wv === v }?.priv == true) return
-                    val sc = android.graphics.Bitmap.createScaledBitmap(b, 64, 64, true); val o = java.io.ByteArrayOutputStream(); sc.compress(android.graphics.Bitmap.CompressFormat.PNG, 90, o)
-                    if (o.size() < 11000) emit("favicon", JSObject().apply { put("host", h); put("data", "data:image/png;base64," + android.util.Base64.encodeToString(o.toByteArray(), android.util.Base64.NO_WRAP)) }) } catch (e: Throwable) {} }
             // No dated grey "play in a circle" placeholder before a video loads: plain black (pages' own posters still show).
             override fun getDefaultVideoPoster(): android.graphics.Bitmap =
                 android.graphics.Bitmap.createBitmap(2, 2, android.graphics.Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.BLACK) }

@@ -673,7 +673,8 @@ window.HushX = function (A) {
     const ks = Object.keys(m); if (ks.length > 250) ks.sort((a, b) => m[a][1] - m[b][1]).slice(0, ks.length - 250).forEach(k => delete m[k]);
     try { localStorage.setItem(FAVK, JSON.stringify(m)); } catch {}
   }
-  const fav = u => { const h = host(u); const e = h && favAll()[h]; return e ? e[0] : ''; };
+  const fav = u => { const h = host(u); if (!h) return ''; const e = favAll()[h]; if (e) return e[0];
+    try { return (JSON.parse(localStorage.getItem('hush-icons') || '{}')[h]) || ''; } catch { return ''; } };   // Android's tab-list icon cache
   const tileBg = h => { let n = 0; for (const c of h || '?') n = (n * 31 + c.charCodeAt(0)) >>> 0; const a = n % 360; return `linear-gradient(135deg,hsl(${a} 55% 38%),hsl(${(a + 40) % 360} 60% 24%))`; };
   // style for a round/rounded icon box: the site's own icon on a soft tile, or its colored letter tile
   const favStyle = u => { const ic = fav(u); return ic ? `background:#fff center/62% no-repeat url('${ic}');color:transparent;border-color:transparent` : `background:${tileBg(host(u))};color:#fff;border-color:transparent`; };
