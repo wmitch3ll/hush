@@ -28,3 +28,28 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 .empty-art{display:block;margin:6px auto 10px;width:84px;height:84px;color:var(--mute);opacity:.8}
 /* Address bar: domain-only view with a security badge. */
 .urlbadge{display:inline-flex;align-items:center;gap:4px;font:600 11px system-ui;color:var(--mute);padding:0 6px;border-radius:99px;background:var(--card);border:1px solid var(--line);white-space:nowrap}
+
+/* ---------- Sleek pass: one modern look on every screen ---------- */
+/* Type: the platform's modern UI face (Segoe UI Variable on Windows 11, Roboto Flex/Google Sans on Android), tuned for screens. */
+:root{--font:"Segoe UI Variable Text","Segoe UI Variable","Inter","Roboto Flex","Google Sans Text",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+html,body,button,input,select,textarea{font-family:var(--font)}
+body{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;font-feature-settings:"cv11","ss01"}
+/* Rounder, softer surfaces. */
+:root{--r-m:14px;--r-l:20px;--r-xl:28px;--shadow-1:0 1px 2px rgb(0 0 0/.05),0 2px 8px rgb(0 0 0/.04);--shadow-2:0 10px 40px rgb(0 0 0/.14),0 2px 8px rgb(0 0 0/.06)}
+/* Floating surfaces get a frosted-glass finish where the system supports it. */
+@supports (backdrop-filter:blur(1px)){
+  .sheet,#panel,.hm-menu,.toast,#toast,#dock,#pal,.res{backdrop-filter:blur(24px) saturate(1.5);-webkit-backdrop-filter:blur(24px) saturate(1.5)}
+  .toast,#toast{background:color-mix(in srgb,var(--card) 82%,transparent)}}
+.toast,#toast{border-radius:999px;box-shadow:var(--shadow-2)}
+/* Controls: tactile press, no hard outlines, accent focus ring for keyboards. */
+button:active:not(:disabled){transform:scale(.97)}
+:focus-visible{outline:2px solid color-mix(in srgb,var(--acc,var(--ink)) 70%,transparent);outline-offset:2px;border-radius:inherit}
+input,textarea,select{caret-color:var(--acc,var(--ink))}
+::selection{background:color-mix(in srgb,var(--acc,#4da3ff) 28%,transparent)}
+/* Toggles: smooth knob travel. */
+input[type=checkbox]{transition:background-color var(--t) var(--ease-out),box-shadow var(--t)}
+/* Scrollbars: thin, fade into the background. */
+*{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--ink) 22%,transparent) transparent}
+/* Images and avatars: no jagged corners. */
+img{image-rendering:auto}
+@media (prefers-reduced-motion:reduce){button:active:not(:disabled){transform:none}}
