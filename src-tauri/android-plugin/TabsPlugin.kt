@@ -891,6 +891,9 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             tabs.remove(id)?.let { t -> t.box?.let { (it.parent as? ViewGroup)?.removeView(it) }; t.wv?.destroy()
                 if (t.priv) dropPrivateProfileIfUnused() }
             if (active == id) active = null
+            splitIds.remove(id); if (splitFocus == id) splitFocus = null
+            if (splitPanes.isNotEmpty() && splitIds.isEmpty()) { render(); applySplit()
+                tabs.values.forEach { t -> t.wv?.evaluateJavascript(Native.splitJs() + ";__hushSplit({on:false});", null) } }
         }
         i.resolve()
     }

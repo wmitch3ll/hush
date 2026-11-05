@@ -577,7 +577,7 @@ window.HushMsg = function (A) {
 .hm-c .hm-ib{flex:none;width:40px;height:44px;border-radius:50%;background:transparent}
 .hm-c .hm-send{flex:none;width:44px;height:44px;animation:hmpop .18s cubic-bezier(.2,1.4,.4,1)}
 @keyframes hmpop{from{transform:scale(.4);opacity:0}to{transform:none;opacity:1}}
-@media (max-width:480px){.hm-c{gap:4px;padding-left:6px;padding-right:6px}.hm-c .hm-ib{width:36px}}`;
+@media (max-width:600px){.hm-c{gap:4px;padding-left:6px;padding-right:6px}.hm-c .hm-ib{width:34px}.hm-c #hm-att,.hm-c #hm-share{display:none!important}.hm-c textarea{padding:11px 16px}}`;
   const css3 = `
 .hm{--mr:20px;--sp:14px;letter-spacing:-.005em}
 .hm-h{padding:calc(12px + env(safe-area-inset-top,0px)*0) 16px 12px;border-bottom:0;background:linear-gradient(var(--bg),color-mix(in srgb,var(--bg) 92%,transparent));position:relative;z-index:2}
@@ -839,11 +839,13 @@ window.HushMsg = function (A) {
     fi.onchange = async () => { const fs = [...fi.files].slice(0, 10), once = view.once; view.once = false; fi.value = '';
       if (fs.length === 1 && /^image\/(jpeg|png|webp)$/.test(fs[0].type)) { const ed = await editPhoto(fs[0]); if (ed) sendFile(key, ed, once ? { once: true } : {}); return; }
       fs.forEach(f => sendFile(key, f, once ? { once: true } : {})); };
-    view.el.querySelector('#hm-plus').onclick = e => menu(e.clientX, e.clientY - 120, `<button class=i data-a=poll>📊 Poll</button><button class=i data-a=once>👁 View-once photo</button>${key !== 'self' && A.media && A.page && A.page() ? '<button class=i data-a=tog>🎬 Watch this page together</button>' : ''}${A.ai && A.ai.ready() && key !== 'self' ? '<button class=i data-a=ai>✨ Suggest a reply</button>' : ''}${key !== 'self' ? `<button class=i data-a=loc>📍 ${liveLoc.active(key) ? 'Stop sharing location' : 'Share live location'}</button>` : ''}<button class=i data-a=self>✎ Notes to self</button>`, (m, done) => m.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { done();
+    view.el.querySelector('#hm-plus').onclick = e => menu(e.clientX, e.clientY - 120, `<button class=i data-a=file>📎 Photo or file</button>${A.page && A.page() ? '<button class=i data-a=page>🔗 Share this page</button>' : ''}<button class=i data-a=poll>📊 Poll</button><button class=i data-a=once>👁 View-once photo</button>${key !== 'self' && A.media && A.page && A.page() ? '<button class=i data-a=tog>🎬 Watch this page together</button>' : ''}${A.ai && A.ai.ready() && key !== 'self' ? '<button class=i data-a=ai>✨ Suggest a reply</button>' : ''}${key !== 'self' ? `<button class=i data-a=loc>📍 ${liveLoc.active(key) ? 'Stop sharing location' : 'Share live location'}</button>` : ''}<button class=i data-a=self>✎ Notes to self</button>`, (m, done) => m.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { done();
       if (b.dataset.a === 'ai') { const ta2 = view.el.querySelector('textarea'), recent = (chats()[key] || []).filter(x => x.text && !x.sys).slice(-8).map(x => (x.from === 'me' ? 'Me' : first(x.from)) + ': ' + x.text.slice(0, 300)).join('\n');
         ta2.value = '…'; A.ai.ask(`Write one short, friendly reply I could send next in this chat. Reply with only the message text.\n\n${recent}`, t => { ta2.value = t; }).then(t => { ta2.value = t; ta2.oninput && ta2.oninput(); ta2.focus(); }).catch(e => { ta2.value = ''; A.toast(e.message); }); return; }
       if (b.dataset.a === 'loc') return liveLoc.active(key) ? liveLoc.stop(key) : liveLoc.pick(key);
       if (b.dataset.a === 'tog') { const p = A.page(); if (p) { sendText(key, '🎬 Watch together: ' + p.url, null, { tog: p.url }); together.join(key, p.url, true); } return; }
+      if (b.dataset.a === 'file') { fi.accept = ''; fi.multiple = true; fi.click(); return; }
+      if (b.dataset.a === 'page') { const p = A.page(); if (p) { ta.value = (ta.value ? ta.value + ' ' : '') + p.url; ta.oninput(); ta.focus(); } return; }
       if (b.dataset.a === 'poll') pollForm(key); else if (b.dataset.a === 'once') { view.once = true; fi.accept = 'image/*'; fi.multiple = false; fi.click(); } else openChat('self'); }));
     const pb = view.el.querySelector('[data-jump]'); if (pb) pb.onclick = () => { const t = view.el.querySelector(`[data-m="${pb.dataset.jump}"]`); if (t) { t.scrollIntoView({ block: 'center', behavior: 'smooth' }); t.classList.add('hm-flash'); setTimeout(() => t.classList.remove('hm-flash'), 1200); } };
     view.el.querySelectorAll('[data-vote]').forEach(b => b.onclick = e => { e.stopPropagation(); const m = list.find(x => x.id === b.closest('[data-m]').dataset.m); if (!m) return;
