@@ -103,7 +103,7 @@ function draw(){
     return `<div class="t ${t.id==S.cur?'on':''} ${t.priv?'priv':''} ${t.tor?'tor':''} ${t.sleeping?'sleep':''} ${t.id==S.split?'split':''}" data-id="${esc(t.id)}" draggable=true role=tab aria-selected=${t.id==S.cur} title="${esc(ti)}\n${esc(t.url)}">
       ${S.legacy?`<span class=fav>${t.priv?'◌':esc((host(t.url)||'·')[0].toUpperCase())}</span>`:''}<div class=shot ${th&&!t.priv?`style="background-image:url('${th}')"`:''}>${th&&!t.priv?'':(t.priv?'◌':esc((host(t.url)||'·')[0].toUpperCase()))}</div>
       <div class=meta>${au||t.muted?`<button class=au data-mute="${esc(t.id)}" title="${t.muted?'Unmute':'Mute'} (Ctrl+M)">${t.muted?'<svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM16 9l5 6M21 9l-5 6"/></svg>':'<svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM16 8a5 5 0 0 1 0 8"/></svg>'}</button>`:''}
-        <b>${esc(ti)}</b>${t.destruct?`<i title="Self-destructs">⏲ ${esc(t.destruct)}</i>`:''}${t.sleeping?'<i>asleep</i>':''}</div>
+        <b>${esc(ti)}</b>${t.destruct?`<i title="Self-destructs">${esc(t.destruct)}</i>`:''}${t.sleeping?'<i>asleep</i>':''}</div>
       <button class=x data-x="${esc(t.id)}" aria-label="Close tab">✕</button></div>`}).join('')||'<div style="color:var(--mute);padding:20px 4px;text-align:center">No tabs in this workspace</div>';
   document.querySelectorAll('.t').forEach(el=>{const id=el.dataset.id;
     el.onclick=e=>{if(e.target.closest('[data-x],[data-mute]'))return;send(e.shiftKey?'split':'select',{id})};

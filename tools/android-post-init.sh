@@ -25,6 +25,18 @@ s=re.sub(r'\s+android:(allowBackup|fullBackupContent|dataExtractionRules)="[^"]*
 s=s.replace('<application','<application android:allowBackup="false" android:fullBackupContent="false"',1)
 open(p,'w').write(s); print("manifest ok")
 PY
+# Picture-in-picture on Android 8-11: the activity tells the plugin when the user leaves (Android 12+ does it by itself).
+python3 - "$J/MainActivity.kt" <<'PY'
+import re,sys,os
+p=sys.argv[1]
+if os.path.exists(p):
+    s=open(p).read()
+    if 'onUserLeaveHint' not in s:
+        hook="    override fun onUserLeaveHint() { super.onUserLeaveHint(); try { TabsPlugin.leaveHint?.invoke() } catch (e: Throwable) {} }\n"
+        if re.search(r'class MainActivity\s*:\s*TauriActivity\(\)\s*\{',s): s=re.sub(r'(class MainActivity\s*:\s*TauriActivity\(\)\s*\{)',r'\1\n'+hook.replace('\\','\\\\'),s,count=1)
+        else: s=re.sub(r'class MainActivity\s*:\s*TauriActivity\(\)','class MainActivity : TauriActivity() {\n'+hook.replace('\\','\\\\')+'}',s,count=1)
+        open(p,'w').write(s); print("MainActivity: PiP hook added")
+PY
 # Libraries the plugin uses: androidx.webkit (private-tab profiles), SwipeRefreshLayout (pull to refresh).
 # (Tauri's template already depends on androidx.webkit; add each library only if it's missing.)
 for dep in "androidx.webkit:webkit:1.12.1" "androidx.swiperefreshlayout:swiperefreshlayout:1.1.0" "androidx.biometric:biometric:1.1.0"; do

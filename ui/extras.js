@@ -56,10 +56,12 @@ window.HushX = function (A) {
   }
   function home(el, opts = {}) {
     const st = A.state(), bms = (st.bookmarks || []).filter(b => b.folder !== 'reading'), bg = wallStyle(), priv = !!opts.priv;
+    const gm = ['buddy', 'pet'].includes(A.pref('ghost_mode')) && window.HUSH_GHOST ? A.pref('ghost_mode') : 'off';
     const clock = A.pref('sp_clock') !== 'off', notes = A.pref('sp_notes') === 'on' && !priv;
     el.innerHTML = `<div class="hx-home ${bg && !priv ? 'walled' : ''}" style="${bg && !priv ? 'background:' + esc(bg) + ';background-size:cover;background-position:center' : ''}">
       ${clock ? '<div class=hx-time><div class=hx-clock></div><div class=hx-date></div></div>' : ''}
       <div class=hx-brand>${opts.top || ''}</div>
+      ${gm !== 'off' && !priv ? '<div class=hx-ghost></div>' : ''}
       <div class="hx-grid ${editing ? 'hx-edit' : ''}">${bms.slice(0, 24).map(b => { const ic = opts.icon && opts.icon(b.url);
         return `<div class=hx-tile draggable=${editing} data-u="${esc(b.url)}" title="${esc(b.title || host(b.url))}"><i style="${favStyle(b.url)}">${esc((host(b.url) || '?')[0].toUpperCase())}</i><span>${esc(b.title || host(b.url))}</span><b class=hx-x data-rm="${esc(b.url)}">✕</b></div>` }).join('')}</div>
       ${editing ? `<form class=hx-add><input name=u placeholder="Add a site — example.com" autocomplete=off><button class=hx-b>Add</button></form>` : ''}
@@ -93,6 +95,7 @@ window.HushX = function (A) {
         t.onpointerup = () => { t.onpointermove = t.onpointerup = null; t.classList.remove('hx-drag'); tiles.forEach(x => x.classList.remove('hx-over')); if (over && over !== t) order(t.dataset.u, over.dataset.u); }; });
     });
     if (customizing) wireCustomizer(el, redraw);
+    if (gm !== 'off' && !priv) HUSH_GHOST.mount(el.querySelector('.hx-ghost'), gm); else if (window.HUSH_GHOST) HUSH_GHOST.stop();
     if (opts.after) opts.after();
   }
   function customizer() {
@@ -101,12 +104,14 @@ window.HushX = function (A) {
       ${Object.entries(WALLS).map(([k, v]) => `<div class="hx-sw ${w === k ? 'on' : ''}" data-w="${k}" title="${k}" style="background:${v || 'var(--bg)'}"></div>`).join('')}
       <label class="hx-sw ${/^#/.test(w) ? 'on' : ''}" title="Pick a color" style="background:${/^#/.test(w) ? w : 'conic-gradient(red,yellow,lime,cyan,blue,magenta,red)'};position:relative"><input type=color data-c style="opacity:0;position:absolute;inset:0;width:100%;height:100%"></label>
       <label class=hx-b>Your photo…<input type=file accept="image/*" data-img hidden></label></div>
+      <div class=hx-lbl>Hush the ghost</div><div class=hx-seg>${[['off', 'Off'], ['buddy', 'Buddy'], ['pet', 'Pocket pet']].map(([v, l]) => `<button class="hx-b ${(A.pref('ghost_mode') || 'off') === v ? 'on' : ''}" data-gm="${v}">${l}</button>`).join('')}</div>
       <div class=hx-lbl>Show</div><div class=hx-seg>
       <button class="hx-b ${A.pref('sp_clock') !== 'off' ? 'on' : ''}" data-t=sp_clock>Clock</button><button class="hx-b ${A.pref('sp_notes') === 'on' ? 'on' : ''}" data-t=sp_notes>Quick notes</button>
       <button class="hx-b ${A.pref('sp_stats') !== 'off' ? 'on' : ''}" data-t=sp_stats>Blocked count</button></div></div>`;
   }
   function wireCustomizer(el, redraw) {
     el.querySelectorAll('[data-w]').forEach(s => s.onclick = async () => { await A.setPref('sp_bg', s.dataset.w); redraw(); });
+    el.querySelectorAll('[data-gm]').forEach(b => b.onclick = async () => { await A.setPref('ghost_mode', b.dataset.gm); redraw(); });
     const c = el.querySelector('[data-c]'); if (c) c.onchange = async () => { await A.setPref('sp_bg', c.value); redraw(); };
     el.querySelectorAll('[data-t]').forEach(b => b.onclick = async () => { const k = b.dataset.t, on = k === 'sp_notes' ? A.pref(k) === 'on' : A.pref(k) !== 'off';
       await A.setPref(k, on ? 'off' : 'on'); redraw(); });
@@ -446,7 +451,7 @@ window.HushX = function (A) {
           <li>Sign in with Google, GitHub or email. Free — no card needed.</li>
           <li>Tap <b>Create API Key</b>, name it “Hush”, and tap <b>Submit</b>.</li>
           <li>Hush spots the new key and shows <b>Use this key in Hush</b> — tap it. Done: you’ll land back here, ready to go.</li></ol>
-        <p style="margin:0;font-size:12.5px;color:var(--mute)">🔒 Hush tries Tor first so Groq can’t see your IP. Groq’s firewall often blocks Tor, and then Hush connects directly — Groq then sees your IP address. Either way Groq sees what you ask. For fully private answers, use the on-device model.</p>
+        <p style="margin:0;font-size:12.5px;color:var(--mute)">Hush tries Tor first so Groq can’t see your IP. Groq’s firewall often blocks Tor, and then Hush connects directly — Groq then sees your IP address. Either way Groq sees what you ask. For fully private answers, use the on-device model.</p>
         <button class=btn data-gopen style="background:var(--ink);color:var(--bg);padding:12px;font-size:15px;justify-self:stretch;text-align:center">Get my free key →</button>
         <details><summary style="cursor:pointer;color:var(--mute);font-size:13px">Already have a key? Paste it</summary>
         <input class=txt id=gk placeholder="gsk_…" autocomplete=off spellcheck=false style="margin:0;font-family:ui-monospace,monospace" value="${esc(groqKey())}">
@@ -467,7 +472,7 @@ window.HushX = function (A) {
         <p style="margin:0;font-size:12px;color:var(--mute)">The model is downloaded once from Hugging Face (Google’s open Gemma models) and kept on this device. ${navigator.gpu ? '' : '<b>This device can’t run it: no WebGPU support.</b>'}</p></div>`;
         el.querySelector('[data-groq]').onclick = () => { view = 'groq'; draw(); };
         el.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { if (!navigator.gpu) return A.toast('This device can’t run the assistant'); if (confirm('Download ' + AI_MODELS[b.dataset.m].name + ' (' + AI_MODELS[b.dataset.m].size + ')? Use Wi-Fi.')) { ai.enable(b.dataset.m); draw(); } }); return; }
-      if (st !== 'ready') { el.innerHTML = `<div style="padding:16px;display:grid;gap:10px">${axHead('Set up your AI assistant')}${st === 'error' ? `<p>⚠ ${esc(ai.error())}</p>${c.model !== 'lite' ? '<button class=btn data-lite>Switch to the Lite model</button>' : ''}<button class=btn data-retry>Try again</button>` : `<p>${ai.stage() === 'warm' ? 'Setting it up on your graphics chip — almost there… (first time can take 1–3 minutes; keep Hush open)' : 'Downloading… ' + Math.round(ai.progress() * 100) + '%'}</p><div style="height:6px;border-radius:3px;background:var(--line);overflow:hidden"><i style="display:block;height:100%;width:${Math.round(ai.progress() * 100)}%;background:var(--acc)"></i></div><p style="font-size:12px;color:var(--mute)">First time only — it’s kept on this device afterwards.</p>`}<button class=btn data-off>Turn off & remove</button></div>`;
+      if (st !== 'ready') { el.innerHTML = `<div style="padding:16px;display:grid;gap:10px">${axHead('Set up your AI assistant')}${st === 'error' ? `<p>${esc(ai.error())}</p>${c.model !== 'lite' ? '<button class=btn data-lite>Switch to the Lite model</button>' : ''}<button class=btn data-retry>Try again</button>` : `<p>${ai.stage() === 'warm' ? 'Setting it up on your graphics chip — almost there… (first time can take 1–3 minutes; keep Hush open)' : 'Downloading… ' + Math.round(ai.progress() * 100) + '%'}</p><div style="height:6px;border-radius:3px;background:var(--line);overflow:hidden"><i style="display:block;height:100%;width:${Math.round(ai.progress() * 100)}%;background:var(--acc)"></i></div><p style="font-size:12px;color:var(--mute)">First time only — it’s kept on this device afterwards.</p>`}<button class=btn data-off>Turn off & remove</button></div>`;
         el.querySelector('[data-retry]')?.addEventListener('click', () => { ai.disable(); ai.enable(c.model); draw(); });
         el.querySelector('[data-lite]')?.addEventListener('click', () => { ai.disable(); ai.enable('lite'); draw(); }); el.querySelector('[data-off]').onclick = () => { ai.disable(); try { caches.keys().then(k => k.forEach(n => caches.delete(n))); } catch (e) {} draw(); }; return; }
       chat(el, o); };
@@ -520,7 +525,7 @@ window.HushX = function (A) {
     const M = el.querySelector('.ax-m'), ta = el.querySelector('textarea'), send = el.querySelector('.ax-send'), cx = el.querySelector('.ax-ctx');
     let host = ''; Promise.resolve(o.pageInfo ? o.pageInfo() : null).then(p => { host = p && p.host || ''; paintCtx(); });
     const paintCtx = () => { cx.className = 'ax-ctx' + (ctx && host ? ' on' : ''); cx.style.display = host ? '' : 'none';
-      cx.innerHTML = ctx ? `📄 Using this page · ${esc(host)} <span style="opacity:.6">✕</span>` : `📄 Use this page (${esc(host)})`; };
+      cx.innerHTML = ctx ? `Using this page · ${esc(host)} <span style="opacity:.6">✕</span>` : `Use this page (${esc(host)})`; };
     cx.onclick = () => { ctx = !ctx; paintCtx(); };
     const bubble = m => m.r === 'u' ? `<div class=ax-u>${esc(m.t)}</div>`
       : `<div class=ax-a><div class=ax-av>${ini}</div><div><div class="t${m.err ? ' err' : ''}">${esc(m.t)}</div>${m.t && !m.err && !m.live ? '<div class=ax-tools><button data-copy>Copy</button></div>' : ''}</div></div>`;
@@ -578,7 +583,7 @@ window.HushX = function (A) {
       el.querySelector('[data-x]')?.addEventListener('click', () => o.close());
       el.querySelector('[data-send]').onclick = async () => {
         const t = el.querySelector('#rp-t').value.trim(); if (t.length < 5) return A.toast('Tell us a little about what happened');
-        const lines = ['🐞 Hush report — ' + (REPORT_KINDS.find(x => x[0] === kind) || [0, kind])[1], '', t];
+        const lines = ['Hush report — ' + (REPORT_KINDS.find(x => x[0] === kind) || [0, kind])[1], '', t];
         if (el.querySelector('#rp-dev')?.checked) { const i = (await Promise.resolve(o.info()).catch(() => ({}))) || {}; lines.push('', '— Device —', ...Object.entries(i).map(([k, v]) => k + ': ' + v)); }
         if (el.querySelector('#rp-site')?.checked) lines.push('', 'Site: ' + o.site());
         if (el.querySelector('#rp-err')?.checked && errLog.length) lines.push('', '— Recent errors —', ...errLog.slice(-10));
@@ -611,15 +616,15 @@ window.HushX = function (A) {
   // First-run tour: a few swipeable cards that show off what Hush can do.
   function tour(el, mobile, done) {
     const S = [
-      ['🛡', 'Private by default', 'Ads, trackers, cookie banners and fingerprinting are blocked on every site. Tap the shield for per-site settings.'],
-      mobile ? ['👆', 'Built for your thumbs', 'Swipe the address bar ← → to switch tabs, swipe it down for all tabs, hold it for commands. Two-finger swipes and the quick wheel are customizable in Settings.']
-             : ['🖱', 'Gestures & the quick wheel', 'Hold the right mouse button and draw to go back, close tabs and more. Right-click and hold for your quick wheel. Ctrl+K finds anything.'],
-      ['👀', 'Peek & floating video', mobile ? 'Hold a link to peek at it without leaving the page. Leave a playing video and it keeps going in a mini player.' : 'Shift-click a link to peek at it. Leave a playing video and it keeps going in a small player you can drag and resize.'],
-      ['🧅', 'Tor, built in', 'Hide your IP and location with one tap — the onion. No extra app, nothing to install.'],
-      ['💬', 'Murmur', 'Private messages, photos, voice and video with other Hush users — end-to-end encrypted and always through Tor. No phone number.'],
-      ['📣', 'Echo', 'Share with friends privately, or make a public profile if you want to be found. Your choice, post by post.']];
+      ['', 'Private by default', 'Ads, trackers, cookie banners and fingerprinting are blocked on every site. Tap the shield for per-site settings.'],
+      mobile ? ['', 'Built for your thumbs', 'Swipe the address bar ← → to switch tabs, swipe it down for all tabs, hold it for commands. Two-finger swipes and the quick wheel are customizable in Settings.']
+             : ['', 'Gestures & the quick wheel', 'Hold the right mouse button and draw to go back, close tabs and more. Right-click and hold for your quick wheel. Ctrl+K finds anything.'],
+      ['', 'Peek & floating video', mobile ? 'Hold a link to peek at it without leaving the page. Leave a playing video and it keeps going in a mini player.' : 'Shift-click a link to peek at it. Leave a playing video and it keeps going in a small player you can drag and resize.'],
+      ['', 'Tor, built in', 'Hide your IP and location with one tap — the onion. No extra app, nothing to install.'],
+      ['', 'Murmur', 'Private messages, photos, voice and video with other Hush users — end-to-end encrypted and always through Tor. No phone number.'],
+      ['', 'Echo', 'Share with friends privately, or make a public profile if you want to be found. Your choice, post by post.']];
     let i = 0;
-    const draw = () => { el.innerHTML = `<div class=hx-tour><div class=hx-tc>${S.map((s, k) => `<div class="hx-ts ${k === i ? 'on' : ''}"><div class=e>${s[0]}</div><h2>${s[1]}</h2><p>${s[2]}</p></div>`).join('')}</div>
+    const draw = () => { el.innerHTML = `<div class=hx-tour><div class=hx-tc>${S.map((s, k) => `<div class="hx-ts ${k === i ? 'on' : ''}"><div class=e>${k + 1}</div><h2>${s[1]}</h2><p>${s[2]}</p></div>`).join('')}</div>
       <div class=hx-dots>${S.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('')}</div>
       <div class=hx-row><button class=hx-b data-t=skip>Skip</button><span style="flex:1"></span>${i ? '<button class=hx-b data-t=back>Back</button>' : ''}<button class="hx-b on" data-t=next style="background:var(--ink);color:var(--bg)">${i === S.length - 1 ? 'Start browsing' : 'Next'}</button></div></div>`;
       el.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { const t = b.dataset.t; if (t === 'skip' || (t === 'next' && i === S.length - 1)) return done(); i += t === 'next' ? 1 : -1; draw(); });
@@ -784,7 +789,7 @@ window.HushX = function (A) {
     if (!SY.M || !SY.M.hasId()) { A.toast('Set up Murmur and link your other device first'); return false; }
     if (!/^https?:\/\//.test(url || '')) { A.toast('Only web pages can be sent'); return false; }
     SY.M.syncSend({ t: 'tab', u: url, n: String(title || '').slice(0, 120), d: syWho(), at: Date.now() });
-    A.toast('📲 Sent to your other device'); return true;
+    A.toast('Sent to your other device'); return true;
   }
   function syncInbox() { try { return JSON.parse(localStorage.getItem('hush.sync.in') || '[]'); } catch { return []; } }
   async function syncOnMsg(j, at) {
@@ -793,7 +798,7 @@ window.HushX = function (A) {
       if (!/^https?:\/\/\S{3,2000}$/.test(j.u || '')) return;
       const seen = syncInbox(); if (seen.some(x => x.u === j.u && Math.abs(x.at - j.at) < 2000)) return;
       seen.unshift({ u: j.u, n: String(j.n || '').slice(0, 120), d: String(j.d || '').slice(0, 12), at: +j.at || Date.now() }); try { localStorage.setItem('hush.sync.in', JSON.stringify(seen.slice(0, 30))); } catch {}
-      if (Date.now() - (+j.at || 0) < 6 * 3600e3) A.toast('📲 From your ' + (j.d === 'phone' ? 'phone' : 'computer') + ': ' + (j.n || new URL(j.u).hostname).slice(0, 60), ['Open', () => A.open(j.u)]);
+      if (Date.now() - (+j.at || 0) < 6 * 3600e3) A.toast('From your ' + (j.d === 'phone' ? 'phone' : 'computer') + ': ' + (j.n || new URL(j.u).hostname).slice(0, 60), ['Open', () => A.open(j.u)]);
       return;
     }
     if (j.t === 'bm' && Array.isArray(j.add || [])) {

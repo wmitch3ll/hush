@@ -178,7 +178,7 @@
         bar = document.createElement("hush-groq"); bar.id = "hush-groq"; const sh = bar.attachShadow({ mode: "closed" });
         sh.innerHTML = `<style>:host{all:initial}.b{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483647;background:#111;color:#fff;border-radius:16px;padding:14px 16px;box-shadow:0 12px 40px #0008;font:15px system-ui;display:flex;gap:12px;align-items:center;max-width:92vw}
           button{all:unset;cursor:pointer;background:#fff;color:#111;font-weight:700;padding:10px 16px;border-radius:999px;white-space:nowrap}.x{background:transparent;color:#aaa;padding:10px 6px}</style>
-          <div class=b><span>🔑 New key found</span><button data-y>Use this key in Hush</button><button class=x data-n>✕</button></div>`;
+          <div class=b><span>New key found</span><button data-y>Use this key in Hush</button><button class=x data-n>✕</button></div>`;
         sh.querySelector("[data-y]").onclick = () => { location.href = "hush-groq://key?k=" + encodeURIComponent(offered); bar.remove(); };
         sh.querySelector("[data-n]").onclick = () => bar.remove();
         document.documentElement.append(bar);

@@ -60,7 +60,7 @@ window.HUSH_COACH = (() => {
       try { s.before && s.before(); } catch (_) {}
       const doIt = !!s.until;
       const big = !s.sel; bub.className = 'hc-bub hc-in' + (big ? ' hc-bigb' : '');
-      bub.innerHTML = `${big ? MASCOT.replace('hc-m','hc-m hc-big') : MASCOT}<h3>${esc(s.title)}</h3><p>${esc(s.text)}</p>${s.doText ? `<div class=hc-do>👉 ${esc(s.doText)}</div>` : ''}
+      bub.innerHTML = `${big ? MASCOT.replace('hc-m','hc-m hc-big') : MASCOT}<h3>${esc(s.title)}</h3><p>${esc(s.text)}</p>${s.doText ? `<div class=hc-do>${esc(s.doText)}</div>` : ''}
         <div class=hc-row><button data-a=quit>${i ? 'End tour' : 'Skip tour'}</button><span class=hc-sp></span><span class=hc-n>${i + 1}/${steps.length}</span>
         ${i ? '<button data-a=back>Back</button>' : ''}${doIt ? (s.optional !== false ? '<button data-a=skip>Skip</button>' : '') : `<button class=hc-on data-a=next>${s.last ? 'Start browsing' : 'Next'}</button>`}</div>`;
       look(s);

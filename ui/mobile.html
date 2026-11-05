@@ -128,7 +128,7 @@ body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
         <button class="ib" id="finddn" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
         <button class="ib" id="findx" aria-label="Close find"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>
     </div>
-    <button id="tog" class="ib" aria-label="Watch together controls" style="display:none;font-size:18px">🎬</button><button id="mnote" class="ib" aria-label="Friends’ notes on this page" style="display:none;font-size:15px;width:auto;padding:0 6px">📌<b style="font-size:11px"></b></button>
+    <button id="tog" class="ib" aria-label="Watch together controls" style="display:none"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 19c0-3 2.5-5 6-5s6 2 6 5M15 14.5c3 0 6 1.3 6 4.5"/></svg></button><button id="mnote" class="ib" aria-label="Friends’ notes on this page" style="display:none;width:auto;padding:0 6px;gap:3px"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5"/></svg><b style="font-size:11px"></b></button>
     <button id="np" class="ib" aria-label="Now playing" style="display:none"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg></button>
     <button id="msg-btn" class="ib" aria-label="Murmur messages"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg></button>
     <button id="tabs-btn" class="ib" aria-label="Tabs"><span>1</span></button>
@@ -167,6 +167,7 @@ body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
 <script src="icons.js"></script>
 <script src="qr.js"></script>
 <script src="extras.js"></script>
+<script src="ghost.js"></script>
 <script src="guide.js"></script>
 <script src="coach.js"></script>
 <link rel="stylesheet" href="apps.css">
@@ -204,7 +205,8 @@ const WORDMARK=`<div class="wordmark">hush.</div>`;
 let state={settings:{search:"duckduckgo",ui:{}},bookmarks:[],allow_sites:[],site_dark:{},session:[]}, allow=new Set();
 // tabs: {id, native (label of the native WebView; null = not opened yet), url, title, priv, ws, canBack, canFwd}
 let tabs=[], cur=null, nid=1, sheet=null, downloads=[], typing=false, finding=false;
-const T=()=>tabs.find(t=>t.id===cur);
+let splitFocusNat=null,splitMix=false;
+const T=()=>{if(splitSet.size&&splitFocusNat){const f=tabs.find(x=>x.native===splitFocusNat);if(f&&(f.id===cur||splitSet.has(f.id)))return f}return tabs.find(t=>t.id===cur)};
 
 // ---------- preferences (stored in Rust as ui.<name>) ----------
 const DEF={toolbar:"on",video_quality:"1080",video_leave:"mini",fp:"on",fp_off:"",bg_play:"true",memory_saver:"10",bangs:"",focus_sites:"youtube.com,reddit.com,x.com,instagram.com,tiktok.com,facebook.com",focus_until:"0",color:"graphite",bar_pos:"top",theme:"system",text_zoom:"100",desktop:"false",pull_refresh:"true",force_dark:"false",history:"off",restore:"off",workspaces:"Personal",ws:"Personal"};
@@ -293,7 +295,7 @@ function startTour(){touring=true;show(null);syncNative();const u0=(T()||{}).url
     {sel:"#m-msg",title:"Murmur — private messages",text:"Chat, send photos and call other Hush users. End-to-end encrypted, always through Tor, no phone number. Add friends by QR code or a one-time invite; watch videos together in sync.",before:menu},
     {sel:"#m-echo",title:"Echo — your private social network",text:"Post to close friends or circles you choose, or go public. Your feed is tuned on your phone, not by someone else’s algorithm.",before:menu},
     {sel:"#m-set",title:"Settings & the guide",text:"Make Hush yours: looks, security level, bottom bar, background play. At the bottom, Settings › Help has the full guide to every feature and this walkthrough.",before:menu},
-    {title:"You’re set 🎉",text:"That’s the tour — the split screen is closed again so you can start fresh. Open the guide any time for more detail and examples.",place:"center",last:true,before:()=>{show(null);if(splitSet.size)splitClose()},
+    {title:"You’re set ",text:"That’s the tour — the split screen is closed again so you can start fresh. Open the guide any time for more detail and examples.",place:"center",last:true,before:()=>{show(null);if(splitSet.size)splitClose()},
      extra:b=>{const g=document.createElement("button");g.textContent="Open the guide";g.onclick=()=>{HUSH_COACH_END();openGuide()};b.querySelector(".hc-row").insertBefore(g,b.querySelector("[data-a=back]"))}}
   ],{onEnd:fin});
   window.HUSH_COACH_END=()=>{document.getElementById("hc")?.remove();fin()}}
@@ -303,7 +305,9 @@ async function closeTab(id){const t=tabs.find(x=>x.id===id);const back=t&&!t.pri
 function step(d){const w=inWs();if(w.length<2){toast(d>0?"No tab to the right":"No tab to the left");return}const i=w.findIndex(t=>t.id===cur),j=i+d;
   if(j<0||j>=w.length){toast(d>0?"Last tab":"First tab");return}vibe();select(w[j].id,d>0?"sl":"sr");toast(bare(w[j].url)||"New tab")}
 async function go(v){
-  v=v.trim();if(!v)return;const t=T();typing=false;$("#url").blur();progress(true);
+  v=v.trim();if(!v)return;const t=T();typing=false;$("#url").blur();
+  if(/^!h(ome|ush)?$/i.test(v)){$("#url").value="";newTab(!!t.priv,true);show(null);render();return}
+  progress(true);
   try{ if(t.native) await inv("navigate",{input:v}); else { t.url=v; t.native=await inv("open_tab",{input:v,private:t.priv,space:spaceOf(t.ws)}); } }
   catch(e){progress(false);return toast("Couldn’t open that page")}
   render();
@@ -401,15 +405,21 @@ $("#reload").onclick=()=>{const t=T();if(t&&t.native){progress(true);inv("nav",{
 // ---------- events from the Android plugin (window.__hushEvent) ----------
 window.__hushEvent=(name,d)=>{
   // Groq's key page handed over a new key (harden.js): connect the assistant, close that tab, open the assistant.
-  if(name==="groqKey"){toast("🔑 Checking your key through Tor…");HX.ai.connectGroq(d.key).then(()=>{const t=tabs.find(x=>x.native===d.id);if(t&&inWs().length>1)closeTab(t.id);toast("✓ "+HX.aiName()+" is ready — powered by Groq");openAssistant()}).catch(e=>toast(String(e&&e.message||e)));return}
+  if(name==="groqKey"){toast("Checking your key through Tor…");HX.ai.connectGroq(d.key).then(()=>{const t=tabs.find(x=>x.native===d.id);if(t&&inWs().length>1)closeTab(t.id);toast("✓ "+HX.aiName()+" is ready — powered by Groq");openAssistant()}).catch(e=>toast(String(e&&e.message||e)));return}
+  if(name==="splitFocus"){splitFocusNat=d.id||null;render();return}
+  if(name==="splitMenu"){const t=tabs.find(x=>x.native===d.id);if(!t)return;splitMix=!!d.mix;
+    actions(bare(t.url)||"This pane",[["Swap places",()=>native("splitSwap")],
+      [splitMix?"Mix audio from all panes: on (tap to turn off)":"Mix audio from all panes: off (tap to turn on)",()=>{splitMix=!splitMix;native("splitMix",{on:splitMix});toast(splitMix?"All panes play sound":"Only the highlighted pane has sound")}],
+      ...(d.n===2?[["Give this pane more room",()=>native("splitRatio",{id:d.id,delta:0.1,even:false})],["Give this pane less room",()=>native("splitRatio",{id:d.id,delta:-0.1,even:false})],["Even split",()=>native("splitRatio",{id:d.id,delta:0,even:true})]]:[]),
+      ["Close this pane",()=>closeTab(t.id)]])}
   if(name==="floatEnded"){if(floating===d.id)floating=null;return}if(name==="favicon"){if(typeof d.data==="string"&&d.data.startsWith("data:image/png;base64,")&&d.data.length<20000)saveIcon(d.host||"",d.data);return}if(name==="blocked"){HX.siteHit(d.host,+d.n||0);return}
-  if(name==="popupBlocked"){HX.bump("pop");toast("🚫 Blocked a popup ad — you stayed on the page");return}
+  if(name==="popupBlocked"){HX.bump("pop");toast("Blocked a popup ad — you stayed on the page");return}
   if(name==="linkTab"){const u=d.url;if(!/^https?:/.test(u))return;const keep=cur,t=newTab(false,true);t.url=u;cur=keep;inv("open_tab",{input:u,space:spaceOf(t.ws)}).then(id=>{t.native=id;inv("switch_tab",{label:T().native||"none"});render()});toast("Opened in a background tab");return}
   if(name==="tabUrl"){const t=tabs.find(x=>x.native===d.id);if(!t)return;t.url=d.url;t.title=d.title||t.title;t.canBack=d.canBack;t.canFwd=d.canFwd;
     if(d.state==="finished"&&torOn)HX.bump("tor");
-    if(d.state==="finished"&&t.id===cur){const n=HX.tabNote.get(d.url);if(n)toast("📝 "+n.slice(0,90))}
+    if(d.state==="finished"&&t.id===cur){const n=HX.tabNote.get(d.url);if(n)toast(""+n.slice(0,90))}
     if(d.state==="finished"){if(!t.priv&&d.url.startsWith("http"))inv("history_add",{url:d.url,title:t.title||bare(d.url)}).catch(()=>{});saveSession()}
-    if(d.state==="started"&&!torOn&&/^https?:/.test(d.url)&&listHas("tor_sites",bare(d.url))){setTor(true);toast("🧅 Tor mode on — you set this site to always use Tor")}
+    if(d.state==="started"&&!torOn&&/^https?:/.test(d.url)&&listHas("tor_sites",bare(d.url))){setTor(true);toast("Tor mode on — you set this site to always use Tor")}
     if(t.id===cur){progress(d.state==="started");toolsShow(true);render();requestAnimationFrame(insets)}}
   else if(name==="download"){HX.dl.event(d);if(d.state==="done")vibe();if(sheet==="downloads")drawDownloads()}
   else if(name==="tabAudio"){const t=tabs.find(x=>x.native===d.id);if(t&&t.audio!==!!d.audio){t.audio=!!d.audio;render();if(sheet==="switcher")drawSwitcher()}}
@@ -476,7 +486,7 @@ var bubbleKey=null;var splitWith=null;
 function openGuide(){$("#xs").innerHTML='<div id="guidex" style="padding:14px 10px"></div>';show("xs");
   HUSH_GUIDE.open($("#guidex"),{mobile:true,done:()=>show(null),act:a=>{const go={cmd:()=>show("cmd"),tabs:()=>{drawSwitcher();show("switcher")},site:()=>{drawSite();show("site")},
     settings:()=>{drawSettings();show("settings")},split:()=>splitMenu(),msgs:()=>openMsgs(),echo:()=>openEcho(),reading:()=>{drawReading();show("reading")},
-    gest:()=>{drawSettings();show("settings")},tor:()=>{show(null);toast("Tap the 🧅 onion in the address bar")},assistant:()=>openAssistant()}[a];
+    gest:()=>{drawSettings();show("settings")},tor:()=>{show(null);toast("Tap the onion in the address bar")},assistant:()=>openAssistant()}[a];
     try{show(null);go&&go()}catch(e){toast("Open it from the menu")}}})}
 // Split screen (2–4 tabs): tap a pane for its sound + highlight; videos fill their pane with full controls.
 const splitSet=new Set();
@@ -503,10 +513,10 @@ async function sceneOpen(sc){splitClose();if(sc.mode)await setPref("split_mode",
 function splitMenu(){const sc=scenes(),on=splitSet.size>0,spot=pref("split_mode")==="spot",aw=pref("split_awake")!=="false";
   actions("Split screen",[...(on?[["✕ Close split screen",splitClose]]:[]),
     [spot?"▦ Layout: Spotlight — switch to Grid":"▦ Layout: Grid — switch to Spotlight",async()=>{await setPref("split_mode",spot?"grid":"spot");splitMode();toast(spot?"Grid":"Spotlight — the tab you tap gets the big spot")}],
-    [aw?"☀ Keep screen awake: on":"☀ Keep screen awake: off",async()=>{await setPref("split_awake",aw?"false":"true");splitMode()}],
+    [aw?"Keep screen awake: on":"Keep screen awake: off",async()=>{await setPref("split_awake",aw?"false":"true");splitMode()}],
     ...(on?[["＋ Save as a scene",sceneSave]]:[["Add tabs: hold a tab in the tab list › Add to split screen",()=>{show("switcher")}]]),
     ...sc.map(x=>["▶ "+x.name,()=>sceneOpen(x)]),
-    ...(sc.length?[["🗑 Delete a scene",async()=>{const n=prompt("Scene name to delete:\n"+sc.map(x=>x.name).join("\n"));if(n)await setPref("scenes",JSON.stringify(sc.filter(x=>x.name!==n.trim())))}]]:[])])}
+    ...(sc.length?[["Delete a scene",async()=>{const n=prompt("Scene name to delete:\n"+sc.map(x=>x.name).join("\n"));if(n)await setPref("scenes",JSON.stringify(sc.filter(x=>x.name!==n.trim())))}]]:[])])}
 
 // ---------- Murmur banner: a message shows at the top of the app; tap opens the chat, swipe up (or wait) to dismiss ----------
 let bnT=0,bnKey=null,bnN=0;
@@ -574,7 +584,7 @@ HX.syncInit(HM);HX.dl.drop({pos:{top:"calc(env(safe-area-inset-top,0px) + 8px)"}
 function openWatch(){$("#xs").innerHTML=head("Change watch")+'<div id="wx" style="padding:0 4px 20px"></div>';wire($("#xs"));HX.watchPanel($("#wx"),u=>{newTab(false,true);go(u)});show("xs")}
 async function panic(){show(null);try{HM.api.lockNow();EC.close()}catch(e){}
   const gone=tabs.filter(t=>t.priv).map(t=>t.id);for(const id of gone)await closeTab(id).catch(()=>{});if(torOn)inv("tor_new_identity").catch(()=>{});
-  native("bubble",{show:false}).catch(()=>{});toast("🚨 Panic: private tabs closed, Murmur locked")}
+  native("bubble",{show:false}).catch(()=>{});toast("Panic: private tabs closed, Murmur locked")}
 function runAction(id){const t=T();const A={panic,back:()=>inv("nav",{action:"back"}),forward:()=>inv("nav",{action:"fwd"}),reload:()=>inv("nav",{action:"reload"}),newtab:()=>newTab(),closetab:()=>closeTab(cur),
   reopen:()=>toast("Nothing to reopen"),nexttab:()=>step(1),prevtab:()=>step(-1),top:()=>inv("page_action",{action:"scroll-top"}),bottom:()=>inv("page_action",{action:"scroll-bottom"}),find:()=>findMode(true),
   reader:()=>inv("page_action",{action:"reader"}),listen:()=>{native("listen",{action:listenSt?"stop":"start",rate:lRate});listenSt=listenSt?"":"playing"},screenshot:()=>native("screenshot").catch(e=>toast(String(e))),
@@ -595,7 +605,7 @@ function drawSwitcher(dir){const el=$("#switcher"),list=inWs();
   el.innerHTML=head("Tabs")+`<div class="chips">${wsList().map(w=>`<button data-ws="${esc(w)}" class="${w===curWs()?"on":""}">${esc(w)} · ${tabs.filter(t=>t.ws===w).length}</button>`).join("")}<button data-ws-new>＋ Workspace</button></div>
     ${tabs.length>=4?`<input class="txt" id="sw-q" placeholder="Search all tabs" autocomplete="off" autocapitalize="off" spellcheck="false" style="margin:0"><div id="sw-other"></div>`:""}
     <div class="row"><button class="btn acc" id="sw-new">＋ New tab</button><button class="btn" id="sw-priv">◌ Private tab</button></div>
-    <div class="cards" id="cards">${list.map(t=>`<div class="card ${t.id===cur?"cur":""} ${t.priv?"priv":""}" data-id="${t.id}">${t.priv?`<span class="tag">private</span>`:""}${t.destruct?`<span class="tag" style="left:auto;right:44px">⏲ ${HX.destructLabel(t)}</span>`:""}<button class="x" data-x="${t.id}" aria-label="Close tab">✕</button>${t.audio||t.muted?`<button class="snd" data-snd="${t.id}" aria-label="${t.muted?"Unmute":"Mute"} tab">${t.muted?MUT:SPK}</button>`:""}
+    <div class="cards" id="cards">${list.map(t=>`<div class="card ${t.id===cur?"cur":""} ${t.priv?"priv":""}" data-id="${t.id}">${t.priv?`<span class="tag">private</span>`:""}${t.destruct?`<span class="tag" style="left:auto;right:44px">${HX.destructLabel(t)}</span>`:""}<button class="x" data-x="${t.id}" aria-label="Close tab">✕</button>${t.audio||t.muted?`<button class="snd" data-snd="${t.id}" aria-label="${t.muted?"Unmute":"Mute"} tab">${t.muted?MUT:SPK}</button>`:""}
       <div class="shot" ${t.thumb?`style="background-image:url('${esc(t.thumb)}')"`:""}>${t.thumb?"":(t.url?esc((bare(t.url)||"?")[0].toUpperCase()):"hush.")}</div>
       <div class="meta"><b>${esc(t.title||bare(t.url)||"New tab")}</b><small>${t.url?esc(bare(t.url)):"Start page"}</small></div></div>`).join("")}</div>
     <p class="hint" style="text-align:center">Swipe a card sideways to close it · hold a card for more · hold a workspace for its own sign-ins</p>`;
@@ -606,7 +616,7 @@ function drawSwitcher(dir){const el=$("#switcher"),list=inWs();
       $("#sw-other").innerHTML=more.length?`<p class="hint" style="margin:6px 2px 2px">In other workspaces</p>`+more.map(t=>`<button class="item" data-go="${t.id}"><div>${esc(t.title||bare(t.url)||"New tab")}<small>${esc(t.ws)} · ${esc(bare(t.url))}</small></div></button>`).join(""):"";
       $("#sw-other").querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>select(+b.dataset.go))};
     sq.onkeydown=e=>{if(e.key==="Enter"){const c=[...el.querySelectorAll(".card")].find(x=>x.style.display!=="none");if(c)select(+c.dataset.id);else{const o=$("#sw-other [data-go]");if(o)o.click()}}}}
-  el.querySelectorAll("[data-ws]").forEach(b=>gesture(b,{tap:()=>switchWs(b.dataset.ws),hold:()=>{const w=b.dataset.ws;actions(w,[[sepWs(w)?"🔐 Own sign-ins: on — turn off":"🔐 Give this workspace its own sign-ins",async()=>{const l=(pref("ws_sep")||"").split("|").filter(Boolean);await setPref("ws_sep",(l.includes(w)?l.filter(x=>x!==w):[...l,w]).join("|"));toast(sepWs(w)?"New tabs in "+w+" keep their own logins":"New tabs in "+w+" share logins")}]])}}));
+  el.querySelectorAll("[data-ws]").forEach(b=>gesture(b,{tap:()=>switchWs(b.dataset.ws),hold:()=>{const w=b.dataset.ws;actions(w,[[sepWs(w)?"Own sign-ins: on — turn off":"Give this workspace its own sign-ins",async()=>{const l=(pref("ws_sep")||"").split("|").filter(Boolean);await setPref("ws_sep",(l.includes(w)?l.filter(x=>x!==w):[...l,w]).join("|"));toast(sepWs(w)?"New tabs in "+w+" keep their own logins":"New tabs in "+w+" share logins")}]])}}));
   el.querySelector("[data-ws-new]").onclick=()=>{const n=prompt("New workspace name");if(n&&n.trim()){const name=n.trim().replace(/\|/g,"").slice(0,24);
     if(!wsList().includes(name))setPref("workspaces",[...wsList(),name].join("|")).then(()=>switchWs(name))}};
   el.querySelectorAll(".card").forEach(c=>{const id=+c.dataset.id;
@@ -689,7 +699,7 @@ function drawSite(){const el=$("#site"),t=T(),h=hostOf(t.url),off=allow.has(h),s
    ${item("Always use Tor here",listHas("tor_sites",h)?"On — Tor mode turns on when you open this site":"Hide your IP from this site every time",`<button class="sw ${listHas("tor_sites",h)?"on":""}" id="st-tor"></button>`)}
    ${pref("sec_level")?item("JavaScript here",listHas("js_allow",h)?"Allowed — you trust this site":"Blocked by your security level",`<button class="sw ${listHas("js_allow",h)?"on":""}" id="st-js"></button>`):""}
    <div class="item" style="flex-direction:column;align-items:stretch;gap:8px"><div style="width:100%">Your note on this page<small>Only you see it — it’s here whenever you come back</small></div><textarea class="txt" id="st-note" rows="2" style="width:100%">${esc(HX.tabNote.get(t.url))}</textarea></div>
-   ${item("Connection",torOn?"🧅 Through Tor — the site can’t see your IP":/^https:/.test(t.url)?"🔒 Encrypted (HTTPS)":"⚠ Not encrypted")}
+   ${item("Connection",torOn?"Through Tor — the site can’t see your IP":/^https:/.test(t.url)?"Encrypted (HTTPS)":"Not encrypted")}
    ${pref("fp")!=="off"?item("Fingerprint protection",fpOff(h)?"Off on this site":"On — randomized device details",`<button class="sw ${fpOff(h)?"":"on"}" id="st-fp"></button>`):""}
    <div id="st-perms"></div>
    <div class="row"><button class="btn" id="st-read">Reader view</button><button class="btn" id="st-find">Find</button><button class="btn" id="st-copy">Copy link</button></div>
@@ -698,7 +708,7 @@ function drawSite(){const el=$("#site"),t=T(),h=hostOf(t.url),off=allow.has(h),s
   wire(el);
   $("#st-shield").onclick=async()=>{await quickShield();drawSite()};
   $("#st-note").oninput=e=>HX.tabNote.set(t.url,e.target.value);
-  $("#st-tor").onclick=async()=>{await toggleList("tor_sites",siteKey(h));drawSite();if(listHas("tor_sites",h)&&!torOn){setTor(true);toast("🧅 Tor mode on for this site")}};
+  $("#st-tor").onclick=async()=>{await toggleList("tor_sites",siteKey(h));drawSite();if(listHas("tor_sites",h)&&!torOn){setTor(true);toast("Tor mode on for this site")}};
   if($("#st-js"))$("#st-js").onclick=async()=>{await toggleList("js_allow",siteKey(h));inv("nav",{action:"reload"}).catch(()=>{});drawSite()};
   if($("#st-fp"))$("#st-fp").onclick=async()=>{const site=siteKey(h),list=pref("fp_off").split(",").filter(Boolean);
     await setPref("fp_off",(fpOff(h)?list.filter(x=>x!==site):[...list,site]).join(","));toast("Open the page in a new tab to apply");drawSite()};
@@ -725,13 +735,13 @@ function openCmd(){vibe();const el=$("#cmd");
     ["Site settings & QR",()=>{if(T()?.native){drawSite();show("site")}}],["All tabs",openSwitcher],["History",()=>{drawHistory();show("history")}],
     ["Downloads",()=>{drawDownloads();show("downloads")}],["Settings",()=>{drawSettings();show("settings")}],
     ["Audio only (hide video)",()=>{const t=T();if(!t||!t.native)return toast("Open a page with a video first");show(null);native("evalJs",{js:"window.__hushAO&&window.__hushAO(!window.__hushAOon)"}).catch(()=>{});toast("Audio only toggled — tap the screen to bring the video back")}],["Send page to my computer",()=>{const t=T();if(!t||!t.native||t.priv)return toast("Open a normal (non-private) page first");show(null);HX.syncSendTab(t.url,t.title)}],["Reading list",()=>{drawReading();show("reading")}],["Focus mode",()=>{drawFocus();show("focus")}],["Voice search",()=>{show(null);voice()}],
-    ["Save page as PDF",()=>{show(null);native("printPage")}],["Pop-out video (picture-in-picture)",()=>{show(null);native("pip")}],["About & updates",()=>{drawAbout();show("about")}],["Close tab",()=>{show(null);closeTab(cur)}],[HX.aiName()+" — AI assistant on this phone",()=>openAssistant()],["⬒ Split screen…",()=>splitMenu()],["📘 Hush guide",()=>openGuide()],["Report a problem",()=>openReport()],["Sleep timer for this video",()=>{show(null);actions("Pause the video in…",[[15,"15 min"],[30,"30 min"],[60,"1 hour"],[0,"Off"]].map(([n,l])=>[l,()=>{clearTimeout(window.__sleepT);if(!n)return toast("Sleep timer off");window.__sleepT=setTimeout(()=>{inv("page_action",{action:"media-pause"}).catch(()=>{});toast("😴 Paused")},n*60000);toast("😴 Pausing in "+l)}]))}],["Send this page to a friend",()=>{const t=T();if(!t||!/^https?:/.test(t.url))return toast("Open a page first");const l=(()=>{try{return HM.api.chatList()}catch(e){return[]}})();if(!l.length){openMsgs();return toast("Add a friend in Murmur first")}actions("Send to…",l.slice(0,20).map(c=>[c.name,()=>{HM.api.sendTo(c.key,t.url);toast("🔒 Sent privately through Tor")}]))}],["Panic: close private tabs, lock Murmur",()=>panic()],
+    ["Save page as PDF",()=>{show(null);native("printPage")}],["Pop-out video (picture-in-picture)",()=>{show(null);native("pip")}],["About & updates",()=>{drawAbout();show("about")}],["Close tab",()=>{show(null);closeTab(cur)}],[HX.aiName()+" — AI assistant on this phone",()=>openAssistant()],["⬒ Split screen…",()=>splitMenu()],["Hush guide",()=>openGuide()],["Report a problem",()=>openReport()],["Sleep timer for this video",()=>{show(null);actions("Pause the video in…",[[15,"15 min"],[30,"30 min"],[60,"1 hour"],[0,"Off"]].map(([n,l])=>[l,()=>{clearTimeout(window.__sleepT);if(!n)return toast("Sleep timer off");window.__sleepT=setTimeout(()=>{inv("page_action",{action:"media-pause"}).catch(()=>{});toast("Paused")},n*60000);toast("Pausing in "+l)}]))}],["Send this page to a friend",()=>{const t=T();if(!t||!/^https?:/.test(t.url))return toast("Open a page first");const l=(()=>{try{return HM.api.chatList()}catch(e){return[]}})();if(!l.length){openMsgs();return toast("Add a friend in Murmur first")}actions("Send to…",l.slice(0,20).map(c=>[c.name,()=>{HM.api.sendTo(c.key,t.url);toast("Sent privately through Tor")}]))}],["Panic: close private tabs, lock Murmur",()=>panic()],
     ...wsList().filter(w=>w!==curWs()).map(w=>["Workspace: "+w,()=>{show(null);switchWs(w)}])];
   el.innerHTML=head("Commands")+`<input class="txt" id="cmdq" placeholder="Type a command, tab or site" autocapitalize="off" spellcheck="false"><div class="sug" id="cmdr" style="padding:0"></div>`;
   wire(el);show("cmd");const q=$("#cmdq");setTimeout(()=>q.focus(),60);
   let items=[];const paint=async()=>{const s=q.value.trim().toLowerCase(),m=x=>!s||x.toLowerCase().includes(s);
     items=ACT.filter(a=>m(a[0])).map(a=>({title:a[0],icon:"›",run:a[1]}));
-    if(s)try{HM.api.chatList().filter(c=>m(c.name)).slice(0,5).forEach(c=>items.push({title:c.name,note:"Murmur chat",icon:"💬",run:()=>openMsgs(c.key)}))}catch(e){}
+    if(s)try{HM.api.chatList().filter(c=>m(c.name)).slice(0,5).forEach(c=>items.push({title:c.name,note:"Murmur chat",icon:"",run:()=>openMsgs(c.key)}))}catch(e){}
     tabs.filter(t=>t.url&&m(t.url+" "+t.title)).forEach(t=>items.push({title:t.title||bare(t.url),note:t.ws!==curWs()?t.ws:"Tab",icon:"⇥",run:()=>select(t.id)}));
     if(s){try{(await inv("suggest",{q:s})).forEach(x=>items.push({title:x.title||bare(x.url),note:x.kind==="bookmark"?"Bookmark":"History",icon:x.kind==="bookmark"?"★":"↺",run:()=>{show(null);go(x.url)}}))}catch(e){}
       items.push({title:"Search for “"+q.value.trim()+"”",icon:"⌕",run:()=>{show(null);go(q.value)}})}
@@ -798,7 +808,7 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
    <div class="item" style="display:block;line-height:1.9;font-size:13px">Address bar: swipe ← → switch tabs · swipe ${toPage()} all tabs · hold for commands<br>
     Tab cards: swipe sideways to close · hold to move or copy · Workspaces: swipe the chips<br>Shield: tap for site settings · hold to toggle · Links: hold for options<br>
     Tabs button: hold for new / private tab · Menu: hold to find in page · Pull down a page to refresh · Swipe a sheet’s title down to close it</div>
-   <h3>Help</h3><button class="item" id="s-guide"><div>📘 Hush guide &amp; tutorial<small>Every feature, what it’s good for, and how to use it — step by step</small></div><span style="color:var(--mute)">›</span></button>
+   <h3>Help</h3><button class="item" id="s-guide"><div>Hush guide &amp; tutorial<small>Every feature, what it’s good for, and how to use it — step by step</small></div><span style="color:var(--mute)">›</span></button>
    <button class="item" id="s-report"><div>Report a problem<small>Goes straight to the developer — encrypted, through Tor</small></div><span style="color:var(--mute)">›</span></button>
    <button class="item" id="s-tour"><div>Replay the welcome walkthrough<small>Hands-on: try each main feature yourself (2 minutes)</small></div><span style="color:var(--mute)">›</span></button>
    <p style="color:var(--mute);font-size:12px;text-align:center;margin-top:14px">Hush keeps everything on this device. No accounts, no tracking.</p>`;

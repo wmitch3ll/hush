@@ -40,9 +40,9 @@ const FI = { play: '<svg viewBox="0 0 24 24" width="20" height="20"><path fill="
   const sh = ui.attachShadow({ mode: "closed" });
   sh.innerHTML = `<style>:host{all:initial}.o{position:fixed;inset:0;z-index:2147483647;cursor:grab;touch-action:none}
     .b{position:absolute;display:flex;gap:4px;opacity:0;pointer-events:none;transition:opacity .15s}.o:hover .b,.o.t .b{opacity:1;pointer-events:auto}
-    .tl{left:6px;top:6px}.tr{right:6px;top:6px}.c{left:50%;top:50%;transform:translate(-50%,-50%)}
+    .tl{left:8px;top:8px}.tr{right:8px;top:8px}.tl,.tr{opacity:1!important;pointer-events:auto!important}.tl button,.tr button{width:54px;height:54px;background:rgba(10,10,14,.72)}.tl svg,.tr svg{width:26px;height:26px}.o{box-shadow:inset 0 0 0 3px rgba(255,255,255,.22)}.c{left:50%;top:50%;transform:translate(-50%,-50%)}
     button{all:unset;cursor:pointer;width:32px;height:32px;border-radius:50%;background:rgba(18,18,22,.5);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.14);color:#fff;display:grid;place-items:center;font:600 14px system-ui}
-    .c button{width:52px;height:52px}.g{position:absolute;right:0;bottom:0;width:26px;height:26px;cursor:nwse-resize;touch-action:none;background:linear-gradient(135deg,transparent 55%,#fff8 55%,#fff8 62%,transparent 62%,transparent 72%,#fff8 72%,#fff8 79%,transparent 79%);opacity:0;transition:opacity .15s}.o:hover .g,.o.t .g{opacity:1}button:hover{background:rgba(18,18,22,.75)}button:active{transform:scale(.94)}</style>
+    .c button{width:84px;height:84px}.c svg{width:38px;height:38px}.g{position:absolute;right:0;bottom:0;width:26px;height:26px;cursor:nwse-resize;touch-action:none;background:linear-gradient(135deg,transparent 55%,#fff8 55%,#fff8 62%,transparent 62%,transparent 72%,#fff8 72%,#fff8 79%,transparent 79%);opacity:0;transition:opacity .15s}.o:hover .g,.o.t .g{opacity:1}button:hover{background:rgba(18,18,22,.75)}button:active{transform:scale(.94)}</style>
     <div class=o><div class="b tl"><button data-a=open title="Back to the tab">${FI.open}</button></div>
     <div class="b tr"><button data-a=close title="Close the floating video">${FI.x}</button></div>
     <div class="b c"><button data-a=play title="Play / pause">${isVid && v.paused ? FI.play : FI.pause}</button></div>

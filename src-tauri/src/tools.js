@@ -92,7 +92,7 @@
   const LABELS = { back: ["Back", "‹"], forward: ["Forward", "›"], reload: ["Reload", "↻"], newtab: ["New tab", "+"], closetab: ["Close tab", "✕"], reopen: ["Reopen tab", "↺"],
     nexttab: ["Next tab", "⇥"], prevtab: ["Previous tab", "⇤"], top: ["Top", "⤒"], bottom: ["Bottom", "⤓"], find: ["Find", "⌕"], reader: ["Reader", "¶"], listen: ["Listen", "♪"],
     screenshot: ["Screenshot", "◫"], tor: ["Tor tab", "◎"], newid: ["New identity", "⟳"], bookmark: ["Bookmark", "★"], copylink: ["Copy link", "⧉"], dark: ["Dark mode", "◐"],
-    alltabs: ["All tabs", "▦"], home: ["Start page", "⌂"], private: ["Private tab", "◌"], mute: ["Mute", "🔇"], boosts: ["Boosts", "≋"], destruct: ["Self-destruct", "⏲"] };
+    alltabs: ["All tabs", "▦"], home: ["Start page", "⌂"], private: ["Private tab", "◌"], mute: ["Mute", "⊘"], boosts: ["Boosts", "≋"], destruct: ["Self-destruct", "◔"] };
   function wheel(cx, cy, mouse) {
     const ids = (cfg.wheel || []).filter(id => LABELS[id]).slice(0, 8); if (!ids.length) return;
     const host = document.createElement("hush-wheel"), sh = host.attachShadow({ mode: "closed" }), R = 86, n = ids.length;

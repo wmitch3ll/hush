@@ -243,6 +243,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     override fun load(webView: WebView) {
         super.load(webView)
         chrome = webView
+        leaveHint = { act.runOnUiThread { leaving() } }
         act.window.decorView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> if (Build.VERSION.SDK_INT >= 26) pipChanged(act.isInPictureInPictureMode) }
         // Background play: when you switch to another app while a tab is playing, a media playback service keeps
         // Hush's sound going (Android would otherwise stop it). Another app playing its own audio still pauses it.
@@ -325,13 +326,19 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         if (Build.VERSION.SDK_INT >= 31) try { act.setPictureInPictureParams(PictureInPictureParams.Builder().setAutoEnterEnabled(want).setAspectRatio(Rational(16, 9)).build()) } catch (e: Throwable) {} }
     private fun autoPip(on: Boolean) { fsPip = on; applyPip() }
     /** Leaving Hush while a video plays in the tab you're on: Android 12+ shrinks it to a small floating window over the other app. */
-    private fun armPip() { val t = active?.let { tabs[it] }; vidPip = bgPlay && t != null && t.video && t.audio && t.id !in panes(); applyPip() }
+    private var pipTab: String? = null; private var pipPrevActive: String? = null; private var pipPrevFloat: String? = null
+    private fun armPip() { val t = (floatId ?: active)?.let { tabs[it] }; vidPip = bgPlay && t != null && t.video && t.audio && t.id !in panes(); applyPip() }
     private fun pipChanged(on: Boolean) { if (on == pipOn) return; pipOn = on
-        val t = active?.let { tabs[it] }
-        if (on) { sTop = topPx; sBot = bottomPx; topPx = 0; bottomPx = 0; chrome?.visibility = View.GONE
+        if (on) { val t = (floatId ?: active)?.let { tabs[it] }
+            if (t != null && t.id != active) { pipTab = t.id; pipPrevActive = active; pipPrevFloat = floatId; floatId = null; active = t.id }
+            sTop = topPx; sBot = bottomPx; topPx = 0; bottomPx = 0; chrome?.visibility = View.GONE
             t?.wv?.evaluateJavascript("window.__hushPipFill&&__hushPipFill(true)", null); render()
-        } else { topPx = sTop; bottomPx = sBot; chrome?.visibility = View.VISIBLE
+        } else { if (pipTab != null) { active = pipPrevActive; floatId = pipPrevFloat; pipTab = null }
+            topPx = sTop; bottomPx = sBot; chrome?.visibility = View.VISIBLE
             tabs.values.forEach { it.wv?.evaluateJavascript("window.__hushPipFill&&__hushPipFill(false)", null) }; render(); emit("pip", JSObject().apply { put("on", false) }) } }
+    /** Android 8-11 have no automatic picture-in-picture: the activity reports "user is leaving" and we start it ourselves. */
+    private fun leaving() { if (Build.VERSION.SDK_INT in 26..30 && vidPip && !pipOn) try {
+        act.enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build()) } catch (e: Throwable) {} }
     @Command fun pip(i: Invoke) { act.runOnUiThread { try { if (Build.VERSION.SDK_INT >= 26)
         act.enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build()) } catch (e: Throwable) {} }; i.resolve() }
 
@@ -497,7 +504,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                     // split.js: you tapped this half → it gets the highlight and the sound.
                     // Any frame of this page reports "play" / "pause" after YOU tapped: the app draws a brief round icon over the page.
                     "hush-pulse" -> { val k = r.url.host ?: ""; if (k == "play" || k == "pause") pulse(t.id, k); true }
-                    "hush-split" -> { act.runOnUiThread { if (r.url.host == "swap") { if (t.id in panes()) { splitRot++; splitFrac = 1f - splitFrac; render() } } else if (splitIds.isNotEmpty() && t.id in panes() && splitFocus != t.id) { splitFocus = t.id; render(); act.window.decorView.post { applySplit() } } }; true }
+                    "hush-split" -> { act.runOnUiThread { if (r.url.host == "menu") { if (t.id in panes()) emit("splitMenu", JSObject().apply { put("id", t.id); put("mix", splitMix); put("n", panes().size) }) } else if (r.url.host == "swap") { if (t.id in panes()) { splitRot++; splitFrac = 1f - splitFrac; render() } } else if (splitIds.isNotEmpty() && t.id in panes() && splitFocus != t.id) { splitFocus = t.id; render(); act.window.decorView.post { applySplit() } } }; true }
                     // harden.js: a link to another site that wanted a new window → Hush opens it in a background tab.
                     // harden.js on console.groq.com: hand a freshly made Groq key to the assistant (only from Groq's own site).
                     "hush-groq" -> { val k = r.url.getQueryParameter("k") ?: ""
@@ -827,6 +834,8 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     private val paneFs = HashMap<String, Pair<FrameLayout, WebChromeClient.CustomViewCallback>>()
     private fun paneTouched(id: String) { if (splitIds.isNotEmpty() && id in panes() && splitFocus != id) { splitFocus = id; if (splitMode == "spot") render(); applySplit() } }
     /** Tabs on screen in split view: the active tab first, then up to 3 more (empty = no split). */
+    private fun target(): String? = splitFocus?.takeIf { it in panes() } ?: active
+    private var splitMix = false
     private fun panes(): List<String> = if (splitIds.isNotEmpty() && active != null && visible) (listOf(active!!) + splitIds.filter { it != active && tabs.containsKey(it) }.take(3)).takeIf { it.size > 1 } ?: emptyList() else emptyList()
     private var splitFocus: String? = null; private var splitPanes: List<String> = emptyList()
     /** Tell both halves whether split is on and which one has the focus (highlight + sound); halves that left the split go back to normal. */
@@ -840,11 +849,12 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         // Order matters: mute the other panes FIRST, then give the sound to the focused one a moment later. If the
         // new pane got its sound first, two panes would be audible at once and Android would pause one of them.
         val sw = System.currentTimeMillis()
-        panes.filter { it != splitFocus }.forEach { id -> tabs[id]?.wv?.evaluateJavascript(Native.splitJs() + ";__hushSplit({on:true,focus:false,sw:" + sw + "});", null) }
-        splitFocus?.takeIf { it in panes }?.let { f -> act.window.decorView.postDelayed({ if (splitFocus == f) tabs[f]?.wv?.evaluateJavascript(Native.splitJs() + ";__hushSplit({on:true,focus:true,sw:" + sw + "});", null) }, 240) }
+        panes.filter { it != splitFocus }.forEach { id -> tabs[id]?.wv?.evaluateJavascript(Native.splitJs() + ";__hushSplit({on:true,focus:false,mix:" + splitMix + ",sw:" + sw + "});", null) }
+        splitFocus?.takeIf { it in panes }?.let { f -> act.window.decorView.postDelayed({ if (splitFocus == f) tabs[f]?.wv?.evaluateJavascript(Native.splitJs() + ";__hushSplit({on:true,focus:true,mix:" + splitMix + ",sw:" + sw + "});", null) }, 240) }
         // Highlight ring drawn natively, so it shows over a fullscreen video too.
         if (Build.VERSION.SDK_INT >= 23) tabs.values.forEach { t -> val ring = if (t.id == splitFocus && panes.isNotEmpty()) android.graphics.drawable.GradientDrawable().apply { setStroke(dp(3), 0xFF4DA3FF.toInt()); setColor(0) } else null
             t.box?.foreground = ring; paneFs[t.id]?.first?.foreground = ring?.constantState?.newDrawable() }
+        emit("splitFocus", JSObject().apply { put("id", if (panes.isEmpty()) "" else (splitFocus ?: "")) })
         splitPanes = panes }
     /** The active tab's text, for the on-device assistant. */
     /** Paste and go: the text you last copied (read only when you ask, while Hush is on screen). */
@@ -869,6 +879,11 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     /** Android 13+ asks before an app may show notifications. */
     @Command fun notifPerm(i: Invoke) { act.runOnUiThread { try { if (Build.VERSION.SDK_INT >= 33 && act.checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED) act.requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 91) } catch (e: Throwable) {}; i.resolve() } }
     /** Split layout ("grid" or "spot" = spotlight) and keep-awake. */
+    @Command fun splitMix(i: Invoke) { val on = i.parseArgs(MixArgs::class.java).on; act.runOnUiThread { splitMix = on; applySplit(); i.resolve() } }
+    @Command fun splitRatio(i: Invoke) { val a = i.parseArgs(RatioArgs::class.java); act.runOnUiThread { val ps = panes(); val n = ps.size
+        if (n == 2) { val k = splitRot % n; val L = ps.drop(k) + ps.take(k); splitFrac = if (a.even) 0.5f else (splitFrac + (if (L[0] == a.id) a.delta else -a.delta)).coerceIn(0.3f, 0.7f); render(); act.window.decorView.postDelayed({ applySplit() }, 200) }
+        i.resolve() } }
+    @Command fun splitSwap(i: Invoke) { act.runOnUiThread { if (panes().size > 1) { splitRot++; splitFrac = 1f - splitFrac; render() }; i.resolve() } }
     @Command fun splitMode(i: Invoke) { val a = i.parseArgs(SplitModeArgs::class.java); act.runOnUiThread { splitMode = if (a.mode == "spot") "spot" else "grid"; splitAwake = a.awake; render(); applySplit(); i.resolve() } }
     @Command fun openTab(i: Invoke) {
         val id = "t" + java.util.UUID.randomUUID().toString().take(8)
@@ -921,9 +936,9 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         tabs.forEach { (id, t) -> if (id != active && id !in ps && id != floatId && id !in keep && (a.id.isEmpty() || a.id == id) && !t.priv && t.lastUsed < cutoff) t.wv?.let { w -> t.saved = Bundle().also(w::saveState); t.box?.removeAllViews(); t.box = null; w.destroy(); t.wv = null } } }
         i.resolve() }
     @Command fun navigate(i: Invoke) { val u = i.parseArgs(Args::class.java).url
-        act.runOnUiThread { active?.let { tabs[it]?.url = u; tabs[it]?.wv?.loadUrl(u) } }; i.resolve() }
+        act.runOnUiThread { target()?.let { tabs[it]?.url = u; tabs[it]?.wv?.loadUrl(u) } }; i.resolve() }
     @Command fun nav(i: Invoke) { val a = i.parseArgs(NavArgs::class.java).action
-        act.runOnUiThread { val w = active?.let { tabs[it]?.wv }
+        act.runOnUiThread { val w = target()?.let { tabs[it]?.wv }
             when (a) { "back" -> w?.goBack(); "fwd" -> w?.goForward(); else -> w?.reload() } }; i.resolve() }
     @Command fun clearData(i: Invoke) { act.runOnUiThread {
         CookieManager.getInstance().removeAllCookies(null); WebStorage.getInstance().deleteAllData()
@@ -1065,6 +1080,8 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     @InvokeArg class NavArgs { var action: String = "" }
     @InvokeArg class Args { var url: String = ""; var isPrivate: Boolean = false; var space: String = "" }
     @InvokeArg class IdArgs { var id: String = "" }
+    @InvokeArg class MixArgs { var on: Boolean = false }
+    @InvokeArg class RatioArgs { var id: String = ""; var delta: Float = 0f; var even: Boolean = false }
     @InvokeArg class SplitModeArgs { var mode: String = "grid"; var awake: Boolean = true }
 
     companion object {
@@ -1077,6 +1094,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             "window.__hushBgResume=()=>{if(on)was.forEach(m=>{if(m.paused&&!m.ended)m.play().catch(()=>{})})};" +
             "document.addEventListener('pause',e=>{if(on&&was.includes(e.target)&&!e.target.ended)setTimeout(()=>{try{location.href='hush-bg://paused'}catch(_){}},60)},true);" +
             "window.__hushBgGuard=x=>{on=!!x;was=on?[...document.querySelectorAll('video,audio')].filter(m=>!m.paused&&!m.ended):[];return was.length>0};})()"
+        @JvmStatic var leaveHint: (() -> Unit)? = null
         private const val AUDIO_JS = "(()=>{if(window.__hushAu||typeof hushAudio==='undefined')return;window.__hushAu=1;let last=null;" +
             "const tell=()=>{const pl=[...document.querySelectorAll('video,audio')].filter(m=>!m.paused&&!m.ended&&!m.muted&&m.volume>0);" +
             "const on=pl.length?(pl.some(m=>m.tagName==='VIDEO'&&m.videoWidth>0&&m.offsetWidth>120)?'2':'1'):'0';" +

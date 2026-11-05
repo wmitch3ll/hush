@@ -6,7 +6,7 @@ window.HUSH_GUIDE = (() => {
   // Each lesson: [id, title, use cases, steps (phone), steps (desktop), try-it action, tip]
   const L = (id, t, uses, m, d, act, tip) => ({ id, t, uses, m, d, act, tip });
   const CH = [
-    { e: '👋', t: 'Getting started', s: 'Tabs, search and getting around fast', l: [
+    { e: '', t: 'Getting started', s: 'Tabs, search and getting around fast', l: [
       L('bar', 'The address bar & search', ['Search or type a site in one place', 'Jump straight into a site’s own search with a shortcut'],
         ['Tap the bar at the top and type a site (espn.com) or anything you want to search.', 'Start with a shortcut to search one site directly: !yt cats searches YouTube, !w Wikipedia, !a Amazon, !r Reddit, !m maps.', 'Make your own shortcuts in Settings › Search shortcuts (for example  hf=https://hyperfeast.com/?s=%s).', 'Swipe the bar left or right to switch to the next or previous tab.'],
         ['Click the bar (or press Ctrl+L) and type a site or a search.', 'Start with a shortcut to search one site directly: !yt, !w, !a, !r, !m, !gh.', 'Add your own in Settings › Search shortcuts.', 'Only the site name shows in the bar to keep it clean; turn on the full address in Settings if you prefer.'], 'cmd'),
@@ -24,7 +24,7 @@ window.HUSH_GUIDE = (() => {
         ['The bottom row stays on screen. If you want more room while reading, turn on Settings › Hide toolbar while scrolling — it slides away as you scroll down and comes back when you scroll up.', 'You can move the address bar to the bottom too (Settings › Address bar).'],
         ['On desktop everything is in the side bar and the command bar (Ctrl+K).'], 'settings'),
     ] },
-    { e: '🛡', t: 'Privacy & security', s: 'What’s protecting you and how to tune it', l: [
+    { e: '', t: 'Privacy & security', s: 'What’s protecting you and how to tune it', l: [
       L('shield', 'Blocking & per-site settings', ['Pages load faster without ads and trackers', 'Fix a site that breaks by relaxing protection just there'],
         ['Ads, trackers, cookie banners and popups are blocked everywhere automatically.', 'Tap the shield in the address bar for this site: see what was blocked, turn blocking off for the site, allow or block JavaScript, always open it in Tor, and check its connection.', 'A site acting strange? Turn its shield off, reload, and turn it back on later.'],
         ['Blocking is on for every site. Click the shield in the bar for this site’s settings: blocking, JavaScript, always-Tor, a note, and connection info.'], 'site'),
@@ -33,7 +33,7 @@ window.HUSH_GUIDE = (() => {
         ['Settings › Security level: Standard, Safer or Safest — the same as on the phone. Allow JavaScript per site from the shield.'], 'settings',
         'Fingerprint protection is always on: sites see slightly randomized graphics and hardware details, so they can’t recognize your device across the web.'),
       L('tor', 'Tor mode', ['Hide your IP address and location', 'Open a site that’s blocked on your network', 'Visit .onion sites'],
-        ['Tap the onion (🧅) to turn Tor on — the bar changes colour while you’re on Tor.', 'Pages are a little slower because they bounce through three relays around the world.', 'Want one site to always use Tor? Open its shield › Always open in Tor.', 'In Tor every Hush user looks the same to websites (same time zone, screen size and fonts), so you blend in.'],
+        ['Tap the onion to turn Tor on — the bar changes colour while you’re on Tor.', 'Pages are a little slower because they bounce through three relays around the world.', 'Want one site to always use Tor? Open its shield › Always open in Tor.', 'In Tor every Hush user looks the same to websites (same time zone, screen size and fonts), so you blend in.'],
         ['Click the onion or open a Tor tab from the command bar. Tor tabs are private and never touch your normal sign-ins.', 'Set a site to always open in Tor from its shield.'], 'tor'),
       L('private', 'Private tabs & self-destruct', ['Look something up without it in your history', 'A tab that cleans itself up'],
         ['Menu › New private tab: nothing is saved, and its cookies are gone when you close it.', 'Hold a tab › Self-destruct: pick a time and the tab closes and wipes itself.'],
@@ -46,7 +46,7 @@ window.HUSH_GUIDE = (() => {
         ['Hush removes the invisible ad layers sites put over the player, so your tap reaches the real button.', 'Popups and surprise redirects to ad sites are blocked; a small message tells you when one was stopped.', 'Links stay in the same tab, so nothing sneaks open in the background.'],
         ['Same protection on desktop: invisible layers over the player are removed and popup ads are blocked.'], null),
     ] },
-    { e: '🎬', t: 'Watching video & split screen', s: 'Two games at once, background play and more', l: [
+    { e: '', t: 'Watching video & split screen', s: 'Two games at once, background play and more', l: [
       L('split', 'Split screen (up to 4)', ['Watch two games at once', 'A video next to a live blog or stats page', 'Compare two shops side by side'],
         ['Open the tabs you want. In the tab list, hold a second tab › Add to split screen. Add up to 4.', 'Every pane is a full site. A video fills its pane with full controls — play, seek, volume and fullscreen.', 'Tap a pane to give it the sound: it gets a blue ring, and the others keep playing muted.', 'Two tabs: drag the line between them to resize. Turn the phone sideways for side-by-side.', '⋯ › Split screen… to change layout, save a scene, or close the split.'],
         ['Shift-click a tab in the side bar to split with it; shift-click more tabs to add (up to 4).', 'Click a pane to give it the sound (blue ring); the others keep playing muted.', 'Videos fill their pane with full controls. Ctrl+K › Split layout to switch between Grid and Spotlight.'], 'split',
@@ -70,7 +70,7 @@ window.HUSH_GUIDE = (() => {
         ['In a Murmur chat, share a video and choose Watch together. Play, pause and seeking stay in sync for both of you, privately over Tor.'],
         ['Same from Murmur on desktop; the Watch Together chip appears in the bar while you’re in a session.'], 'msgs'),
     ] },
-    { e: '📖', t: 'Reading & research', s: 'Read better, remember more', l: [
+    { e: '', t: 'Reading & research', s: 'Read better, remember more', l: [
       L('peek', 'Peek', ['Check a link without losing your place'],
         ['Hold a link to peek at it in a card over the page. Open as tab if you want to keep it.'], ['Shift-click (or Alt-click) a link to peek at it.'], null),
       L('reader', 'Reader, dark mode & listen', ['Clean articles without clutter', 'Have a page read to you'],
@@ -81,13 +81,13 @@ window.HUSH_GUIDE = (() => {
         ['Ctrl+K › Ask (your assistant’s name). Name it the first time.', 'Cloud — Groq: tap Get my free key, sign in, Create API Key, then click “Use this key in Hush” when it pops up.', 'Or on this computer: fully private, downloads once, works offline. Switch any time with Change.'], 'assistant',
         'Hush tries Tor first so Groq can’t see your IP; if Groq’s firewall blocks Tor, it connects directly (then Groq sees your IP). Groq always sees what you ask — for anything sensitive, use the on-device model.'),
       L('notes', 'Reading list, notes & margin notes', ['Save articles for later', 'Remember why you opened a tab', 'See what friends said about a page'],
-        ['Save pages to your reading list and find them in Menu › Reading list.', 'Site shield › Note pins a private note to a site.', 'Margin notes: when friends left notes on the page you’re on, a 📌 chip appears — tap it to read them (shared privately through Murmur).'],
-        ['Ctrl+K › Reading list or Tab note. A 📌 chip in the bar means friends left margin notes on this page.'], 'reading'),
+        ['Save pages to your reading list and find them in Menu › Reading list.', 'Site shield › Note pins a private note to a site.', 'Margin notes: when friends left notes on the page you’re on, a chip appears — tap it to read them (shared privately through Murmur).'],
+        ['Ctrl+K › Reading list or Tab note. A chip in the bar means friends left margin notes on this page.'], 'reading'),
       L('save', 'Save, share & send', ['Keep a page as a PDF', 'Send a page to a friend privately'],
         ['Menu › Save as PDF. Commands › Send this page to a friend shares the link privately through Murmur.', 'On Windows, photos you download have their hidden location and camera details removed.'],
         ['Ctrl+P or Ctrl+K › Save as PDF. Downloaded photos have location data removed automatically.'], null),
     ] },
-    { e: '💬', t: 'Murmur — private messages', s: 'Chat, call and share without a phone number', l: [
+    { e: '', t: 'Murmur — private messages', s: 'Chat, call and share without a phone number', l: [
       L('m-start', 'Set up & add friends', ['Message people without giving out your number', 'Chats nobody else can read — not even Hush'],
         ['Open Murmur from the menu. Pick a name; your account is just a key on your device — no phone number or email.', 'Add a friend: show your QR code in person or send a one-time invite link.', 'Scanning in person verifies the friend automatically (a ✓ appears).'],
         ['Open Murmur from the side bar or Ctrl+K. Same QR codes and invite links.'], 'msgs',
@@ -102,7 +102,7 @@ window.HUSH_GUIDE = (() => {
         ['Protect a chat so it needs your lock to open. Share live location for a set time; ghost mode hides yours.', 'Back up with recovery words so you can restore Murmur on a new phone. Link your devices to use the same account on your PC.'],
         ['Same on desktop. Link devices from Murmur › Settings.'], 'msgs'),
     ] },
-    { e: '📣', t: 'Echo — your private social network', s: 'Share with the people you choose', l: [
+    { e: '', t: 'Echo — your private social network', s: 'Share with the people you choose', l: [
       L('e-post', 'Posting & audiences', ['Share with close friends only', 'A public profile if you want to be found'],
         ['Open Echo from the menu. Write a post and choose who sees it: everyone, a Circle, or Close friends.', 'Drafts save automatically. Add polls, quote other posts, and control who can reply.'],
         ['Same on desktop from the side bar or Ctrl+K › Echo.'], 'echo'),
@@ -113,7 +113,7 @@ window.HUSH_GUIDE = (() => {
         ['Tune your feed privately (it happens on your device). Follow starter packs to find people fast. Trending shows what’s popular.'],
         ['Same on desktop.'], 'echo'),
     ] },
-    { e: '🎨', t: 'Make it yours', s: 'Looks, settings and moving over', l: [
+    { e: '', t: 'Make it yours', s: 'Looks, settings and moving over', l: [
       L('look', 'Themes & looks', ['Easy on the eyes at night', 'Save battery with true black'],
         ['Settings › Look: colours, true black (great on OLED phones), text size and more.'], ['Settings › Look.'], 'settings'),
       L('find', 'Find any setting', ['Change something without hunting'],
@@ -153,7 +153,7 @@ window.HUSH_GUIDE = (() => {
       const q = el.querySelector('#hgq'); q.oninput = () => { const v = q.value.trim().toLowerCase(); const box = el.querySelector('#hgl');
         if (!v) return home();
         const hits = all.filter(l => (l.t + ' ' + l.uses.join(' ') + ' ' + (mobile ? l.m : l.d).join(' ')).toLowerCase().includes(v));
-        box.innerHTML = hits.length ? hits.map(l => `<button class=ls data-l="${l.ci}:${l.li}"><span class=ok>${done.has(l.id) ? '✓' : CH[l.ci].e}</span><span>${esc(l.t)}<br><small style="color:var(--mute)">${esc(CH[l.ci].t)}</small></span></button>`).join('') : '<p class=sub>Nothing found — try another word.</p>';
+        box.innerHTML = hits.length ? hits.map(l => `<button class=ls data-l="${l.ci}:${l.li}"><span class=ok>${done.has(l.id) ? '✓' : '•'}</span><span>${esc(l.t)}<br><small style="color:var(--mute)">${esc(CH[l.ci].t)}</small></span></button>`).join('') : '<p class=sub>Nothing found — try another word.</p>';
         box.querySelectorAll('[data-l]').forEach(b => b.onclick = () => { const [c, l] = b.dataset.l.split(':').map(Number); lesson(c, l); }); };
     };
     const chapter = ci => { const c = CH[ci];
@@ -164,7 +164,7 @@ window.HUSH_GUIDE = (() => {
       wrap(`<button class=back data-go=ch>‹ ${esc(c.t)}</button><div class=card><h2>${esc(l.t)}</h2>
         <h3>Use it to</h3><ul>${l.uses.map(u => `<li>${esc(u)}</li>`).join('')}</ul>
         <h3>How</h3><ol>${steps.map(s => `<li><span>${esc(s)}</span></li>`).join('')}</ol>
-        ${l.tip ? `<div class=tip>💡 ${esc(l.tip)}</div>` : ''}
+        ${l.tip ? `<div class=tip>${esc(l.tip)}</div>` : ''}
         <div class=row>${l.act && o.act ? '<button class=b data-go=try>Try it now</button>' : ''}<span style="flex:1"></span>${k ? '<button class=b data-go=prev>Back</button>' : ''}<button class="b on" data-go=next>${k === all.length - 1 ? 'Finish' : 'Got it — next'}</button></div></div>
         <p class=sub style="text-align:center;margin-top:10px">${k + 1} of ${all.length}</p>`);
       el.querySelector('[data-go=ch]').onclick = () => chapter(ci);

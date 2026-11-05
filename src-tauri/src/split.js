@@ -13,7 +13,7 @@ window.__hushSolo = window.__hushSolo || ((v, on) => { try {
   if (v.hasAttribute("data-hush-solo")) { try { v.hidePopover(); } catch (_) {} v.removeAttribute("popover"); v.removeAttribute("data-hush-solo"); }
   return true; } catch (_) { return false; } });
 window.__hushSplit = window.__hushSplit || (() => {
-  let on = false, focus = false, cur = null, keep = null, sw = 0;   // sw: when the sound last moved between panes
+  let on = false, focus = false, mix = false, cur = null, keep = null, sw = 0;   // sw: when the sound last moved between panes
   const area = v => v.clientWidth * v.clientHeight;
   const unfill = () => {
     document.getElementById("hush-split-css")?.remove(); keep?.disconnect(); keep = null;
@@ -46,7 +46,7 @@ window.__hushSplit = window.__hushSplit || (() => {
     const fr = [...document.querySelectorAll("iframe")].filter(f => area(f) >= innerWidth * innerHeight * 0.08 && getComputedStyle(f).visibility !== "hidden").sort((a, b) => area(b) - area(a))[0];
     return fr || null; };
   const media = () => { try { window.__hushMediaSet && window.__hushMediaSet(on ? { on, mute: !focus, keep: true, sw } : { on: false }); } catch (_) {} };
-  const want = () => on ? !focus : !!window.__hushMuted;
+  const want = () => on ? (mix ? false : !focus) : !!window.__hushMuted;
   // Smooth switching: the sound fades out (~150 ms) / in (~220 ms) instead of cutting, so moving it between panes is soft.
   const fade = (x, m) => { if (x.__hushFade) cancelAnimationFrame(x.__hushFade.raf);
     const vol = x.__hushFade ? x.__hushFade.vol : x.volume, dur = m ? 220 : 380, t0 = performance.now();
@@ -68,21 +68,23 @@ window.__hushSplit = window.__hushSplit || (() => {
     pause: "M7 5h3.2v14H7zM13.8 5H17v14h-3.2z", full: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" };
   let api_native = () => false;
   window.__hushSplitBar = v => on && focus && v === cur && !api_native();
+  const VOLON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>', VOLOFF = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9l5 6M22 9l-5 6"/></svg>';
+  let voEl = null; const setVo = on => { if (voEl) voEl.innerHTML = on ? VOLON : VOLOFF; };
   const bar = (() => { let host = null, root = null, hideT = 0, shown = false;
     const fmt = t => { t = Math.max(0, Math.floor(t || 0)); const h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s2 = String(t % 60).padStart(2, "0"); return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + s2; };
     const build = () => { host = document.createElement("hush-split-ctl"); host.setAttribute("popover", "manual");
       host.style.cssText = "all:initial;position:fixed;inset:0;width:100vw;height:100vh;margin:0;padding:0;border:0;background:transparent;pointer-events:none;z-index:2147483647;overflow:visible";
       root = host.attachShadow({ mode: "closed" });
       root.innerHTML = '<style>:host{all:initial}.vl{flex:none!important;width:58px!important;min-width:0}.b{position:absolute;left:12px;right:12px;bottom:12px;display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:999px;background:rgba(18,18,22,.55);backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);border:1px solid rgba(255,255,255,.12);color:#fff;font:500 12px/1 system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums;opacity:0;transform:translateY(8px);transition:opacity .22s ease,transform .22s ease;pointer-events:none;box-shadow:0 8px 30px rgba(0,0,0,.35)}.on .b{opacity:1;transform:none;pointer-events:auto}button{all:unset;display:grid;place-items:center;width:32px;height:32px;border-radius:50%;cursor:pointer;flex:none}button:active{background:rgba(255,255,255,.16)}svg{width:20px;height:20px}.p{fill:#fff}.f{fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}input{flex:1;min-width:0;height:4px;appearance:none;-webkit-appearance:none;border-radius:4px;background:linear-gradient(#fff,#fff) 0/var(--v,0%) 100% no-repeat,rgba(255,255,255,.25);outline:none;margin:0}input::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.4)}input::-moz-range-thumb{width:14px;height:14px;border:0;border-radius:50%;background:#fff}.t{opacity:.85;white-space:nowrap}.lv{all:unset;display:none;cursor:pointer;align-items:center;gap:6px;height:26px;padding:0 11px;border-radius:999px;background:rgba(255,255,255,.14);font:700 11px/1 system-ui,sans-serif;letter-spacing:.05em;flex:none}.lv::before{content:"";width:7px;height:7px;border-radius:50%;background:#9aa0a6}.lv.at{background:rgba(229,83,75,.92)}.lv.at::before{background:#fff}.lv.show{display:inline-flex}.sp{width:auto;padding:0 8px;border-radius:999px;font:600 12px/1 system-ui,sans-serif}.k{position:absolute;top:50%;padding:10px 16px;border-radius:999px;background:rgba(18,18,22,.55);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);color:#fff;font:600 15px/1 system-ui,sans-serif;opacity:0;transform:translateY(-50%) scale(.9);transition:opacity .18s,transform .18s}.k.on{opacity:1;transform:translateY(-50%) scale(1)}@media (prefers-reduced-motion:reduce){.b{transition:none}}</style>' +
-        '<div class=w><div class=b><button class=pp aria-label="Play or pause"><svg viewBox="0 0 24 24"><path class=p /></svg></button><span class=t></span><button class=lv aria-label="Jump to live"></button><input type=range min=0 max=1000 value=0 aria-label="Seek"><button class=vo aria-label="Mute or unmute">🔊</button><input class=vl type=range min=0 max=100 value=100 aria-label="Volume"><button class=sp aria-label="Speed">1×</button><button class=fs aria-label="Full screen"><svg viewBox="0 0 24 24"><path class=f d="' + ICON.full + '"/></svg></button></div><div class=k></div></div>';
+        '<div class=w><div class=b><button class=pp aria-label="Play or pause"><svg viewBox="0 0 24 24"><path class=p /></svg></button><span class=t></span><button class=lv aria-label="Jump to live"></button><input type=range min=0 max=1000 value=0 aria-label="Seek"><button class=vo aria-label="Mute or unmute"></button><input class=vl type=range min=0 max=100 value=100 aria-label="Volume"><button class=sp aria-label="Speed">1×</button><button class=fs aria-label="Full screen"><svg viewBox="0 0 24 24"><path class=f d="' + ICON.full + '"/></svg></button></div><div class=k></div></div>';
       const $ = q => root.querySelector(q);
       $(".pp").onclick = () => { if (!cur) return; cur.paused ? cur.play().catch(() => {}) : cur.pause(); later(); };
       const SP = [1, 1.25, 1.5, 2, 0.75]; $(".sp").onclick = () => { if (!cur) return; const i = (SP.indexOf(cur.playbackRate) + 1) % SP.length; cur.playbackRate = SP[i]; $(".sp").textContent = SP[i] + "×"; later(); };
       $(".lv").onclick = () => { if (!cur) return; const e = $(".lv").__edge; try { cur.currentTime = Math.max(0, (e || cur.currentTime) - 0.5); cur.play().catch(() => {}); } catch (_) {} later(); };
       $(".fs").onclick = () => { try { cur && (cur.requestFullscreen || cur.webkitRequestFullscreen).call(cur); } catch (_) {} };
-      const vl = $(".vl"), vo = $(".vo"); let pv = 1;
-      vl.oninput = () => { if (!cur) return; try { cur.volume = vl.value / 100; } catch (_) {} vo.textContent = vl.value > 0 ? "🔊" : "🔇"; later(); };
-      vo.onclick = () => { if (!cur) return; try { if (cur.volume > 0) { pv = cur.volume; cur.volume = 0; vl.value = 0; vo.textContent = "🔇"; } else { cur.volume = pv || 1; vl.value = Math.round(cur.volume * 100); vo.textContent = "🔊"; } } catch (_) {} later(); };
+      const vl = $(".vl"), vo = $(".vo"); voEl = vo; let pv = 1; setVo(true);
+      vl.oninput = () => { if (!cur) return; try { cur.volume = vl.value / 100; } catch (_) {} setVo(vl.value > 0); later(); };
+      vo.onclick = () => { if (!cur) return; try { if (cur.volume > 0) { pv = cur.volume; cur.volume = 0; vl.value = 0; setVo(false); } else { cur.volume = pv || 1; vl.value = Math.round(cur.volume * 100); setVo(true); } } catch (_) {} later(); };
       const sk = $("input"); sk.oninput = () => { if (cur && isFinite(cur.duration)) cur.currentTime = sk.value / 1000 * cur.duration; later(); };
       for (const t of ["pointerdown", "click", "pointerup"]) root.addEventListener(t, e => e.stopPropagation()); };
     // Hush's bar must really be on top of the lifted video. If the system won't stack it there (some phones),
@@ -103,7 +105,7 @@ window.__hushSplit = window.__hushSplit || (() => {
         const d = cur.duration, live = !isFinite(d), sk = $("input"); sk.style.display = live ? "none" : "";
         if (!live && d) { const v = cur.currentTime / d * 1000; if (root.activeElement !== sk) sk.value = v; sk.style.setProperty("--v", v / 10 + "%"); }
         $(".sp").textContent = (cur.playbackRate || 1) + "×";
-        if (!cur.__hushFade && root.activeElement !== $(".vl")) { $(".vl").value = Math.round(cur.volume * 100); $(".vo").textContent = cur.volume > 0 ? "🔊" : "🔇"; }
+        if (!cur.__hushFade && root.activeElement !== $(".vl")) { $(".vl").value = Math.round(cur.volume * 100); setVo(cur.volume > 0); }
         // Live streams only: a LIVE pill — red at the live edge, grey when you're behind; tap it to jump back to live.
         const lv = $(".lv"); lv.classList.toggle("show", live); $(".t").style.display = live ? "none" : "";
         if (live) { const sk2 = cur.seekable, edge = sk2 && sk2.length ? sk2.end(sk2.length - 1) : cur.currentTime, behind = edge - cur.currentTime > 5;
@@ -165,7 +167,7 @@ window.__hushSplit = window.__hushSplit || (() => {
   // Long-press any pane (~0.55 s, finger still): the panes swap places.
   let lp = 0, lpX = 0, lpY = 0;
   addEventListener("pointerdown", e => { if (!on || !e.isPrimary) return; clearTimeout(lp); lpX = e.clientX; lpY = e.clientY;
-    lp = setTimeout(() => { lp = 0; lastTap = 0; clearTimeout(tapT); try { navigator.vibrate && navigator.vibrate(12); } catch (_) {} try { location.href = "hush-split://swap"; } catch (_) {} }, 550); }, true);
+    lp = setTimeout(() => { lp = 0; lastTap = 0; clearTimeout(tapT); try { navigator.vibrate && navigator.vibrate(12); } catch (_) {} try { location.href = "hush-split://menu"; } catch (_) {} }, 550); }, true);
   addEventListener("pointermove", e => { if (lp && Math.hypot(e.clientX - lpX, e.clientY - lpY) > 12) { clearTimeout(lp); lp = 0; } }, true);
   for (const t of ["pointerup", "pointercancel"]) addEventListener(t, () => { clearTimeout(lp); lp = 0; }, true);
   addEventListener("contextmenu", e => { if (on) e.preventDefault(); }, true);
@@ -179,7 +181,7 @@ window.__hushSplit = window.__hushSplit || (() => {
     if (cur && !cur.isConnected) soon(); }).observe(document.documentElement, { childList: true, subtree: true });
   for (const t of ["loadstart", "loadedmetadata", "emptied", "playing"]) document.addEventListener(t, soon, true);
   document.addEventListener("toggle", e => { if (on && e.target === cur && e.newState === "closed") soon(); }, true);
-  return o => { on = !!(o && o.on); const f = !!(o && o.focus); const gained = on && f && !focus; if (o && o.sw) sw = o.sw; else if (f !== focus) sw = Date.now(); focus = f; clearInterval(tick);
+  return o => { on = !!(o && o.on); mix = !!(o && o.mix); const f = !!(o && o.focus); const gained = on && f && !focus; if (o && o.sw) sw = o.sw; else if (f !== focus) sw = Date.now(); focus = f; clearInterval(tick);
     if (!on) { unfill(); ring(); sound(); return; }
     sound(true); ring(); const v = pick(); if (v) fill(v); if (gained) bar.flash();
     tick = setInterval(upkeep, 4000); };
