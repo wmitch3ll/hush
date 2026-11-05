@@ -882,7 +882,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
       act.runOnUiThread { val w = active?.let { tabs[it]?.wv }
         if (w == null || w.width <= 0 || w.parent == null) { i.reject("no page"); return@runOnUiThread }
         val shoot: ((android.graphics.Bitmap?) -> Unit) -> Unit = if (fullPage) { cb -> wholePage(w, cb) } else { cb -> pixels(w, Int.MAX_VALUE, cb) }
-        shoot { bmp -> if (bmp == null) { i.reject("couldn't capture"); return@pixels }
+        shoot { bmp -> if (bmp == null) { i.reject("couldn't capture"); return@shoot }
             val out = java.io.ByteArrayOutputStream(); bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out); bmp.recycle()
             emit("screenshot", JSObject().apply { put("data", "data:image/png;base64," + android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)) })
             i.resolve() } } }
