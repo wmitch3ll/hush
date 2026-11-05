@@ -2,12 +2,25 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent" android:layout_height="match_parent"
     android:orientation="horizontal" android:gravity="center_vertical"
-    android:background="@drawable/hush_widget_bg" android:padding="6dp">
-    <TextView android:id="@+id/hush_widget_search" android:layout_width="0dp" android:layout_weight="1"
-        android:layout_height="match_parent" android:gravity="center_vertical" android:paddingStart="14dp"
-        android:text="hush.  Search or enter address" android:textColor="#9A9A9A" android:textSize="15sp" />
-    <TextView android:id="@+id/hush_widget_voice" android:layout_width="44dp" android:layout_height="match_parent"
-        android:gravity="center" android:text="🎙" android:textSize="18sp" android:contentDescription="Voice search" />
-    <TextView android:id="@+id/hush_widget_private" android:layout_width="44dp" android:layout_height="match_parent"
-        android:gravity="center" android:text="◌" android:textColor="#EEEEEE" android:textSize="20sp" android:contentDescription="Private tab" />
+    android:background="@drawable/hush_widget_bg" android:padding="8dp">
+    <ImageView android:id="@+id/hush_widget_logo" android:layout_width="40dp" android:layout_height="40dp"
+        android:padding="6dp" android:src="@drawable/hush_logo" android:contentDescription="Hush" />
+    <LinearLayout android:id="@+id/hush_widget_search" android:layout_width="0dp" android:layout_weight="1"
+        android:layout_height="40dp" android:layout_marginStart="4dp" android:layout_marginEnd="8dp"
+        android:gravity="center_vertical" android:orientation="horizontal"
+        android:background="@drawable/hush_pill_bg" android:paddingStart="16dp" android:paddingEnd="12dp">
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="hush" android:textColor="#F2F2F2" android:textSize="15sp" android:textStyle="bold" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="." android:textColor="#8A8A8E" android:textSize="15sp" android:textStyle="bold" />
+        <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+            android:layout_marginStart="10dp" android:text="Search privately" android:textColor="#8A8A8E"
+            android:textSize="14sp" android:maxLines="1" android:ellipsize="end" />
+    </LinearLayout>
+    <ImageView android:id="@+id/hush_widget_voice" android:layout_width="40dp" android:layout_height="40dp"
+        android:padding="10dp" android:src="@drawable/hush_ic_mic" android:background="@drawable/hush_btn_bg"
+        android:contentDescription="Voice search" />
+    <ImageView android:id="@+id/hush_widget_private" android:layout_width="40dp" android:layout_height="40dp"
+        android:layout_marginStart="6dp" android:padding="10dp" android:src="@drawable/hush_ic_mask"
+        android:background="@drawable/hush_btn_bg" android:contentDescription="Private tab" />
 </LinearLayout>

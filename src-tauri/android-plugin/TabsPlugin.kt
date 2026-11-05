@@ -154,6 +154,28 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                 "play" -> t?.wv?.evaluateJavascript("(document.querySelector('video,audio')||{play(){}}).play()", null)
             }
             render(); i.resolve() } }
+    // ---------- Where you left off (scroll position + video time per page; stays on this phone, 30 days, newest 180 pages) ----------
+    private val posPrefs by lazy { act.getSharedPreferences("hush-pos", Context.MODE_PRIVATE) }
+    private fun posSave(json: String) { try { val o = org.json.JSONObject(json); val k = o.optString("k"); if (k.isEmpty() || k.length > 400) return
+        val e = posPrefs.edit()
+        if (o.optInt("y") == 0 && o.optInt("vt") == 0) e.remove(k) else e.putString(k, System.currentTimeMillis().toString() + "|" + json)
+        val all = posPrefs.all; if (all.size > 220) all.entries.sortedBy { (it.value as? String)?.substringBefore('|')?.toLongOrNull() ?: 0L }.take(all.size - 180).forEach { e.remove(it.key) }
+        e.apply() } catch (e: Throwable) {} }
+    private fun posLoad(k: String): String? { val v = posPrefs.getString(k, null) ?: return null
+        val ts = v.substringBefore('|').toLongOrNull() ?: return null
+        return if (System.currentTimeMillis() - ts > 30L * 86400_000L) null else v.substringAfter('|') }
+    /** Privacy report: how many requests were blocked on which site (hostnames and counts only, never from private tabs). Sent to the UI in batches. */
+    private val blockPending = HashMap<String, Int>(); private var blockFlush = false
+    private fun countBlock(t: Tab) { if (t.priv) return
+        val h = try { Uri.parse(t.page)?.host?.removePrefix("www.") } catch (e: Throwable) { null } ?: return
+        synchronized(blockPending) { blockPending[h] = (blockPending[h] ?: 0) + 1; if (blockFlush) return; blockFlush = true }
+        act.window.decorView.postDelayed({ val snap = synchronized(blockPending) { blockFlush = false; HashMap(blockPending).also { blockPending.clear() } }
+            snap.forEach { (host, n) -> emit("blocked", JSObject().apply { put("host", host); put("n", n) }) } }, 4000) }
+    /** Every saved camera / microphone / location choice, for the privacy panel. */
+    @Command fun allSitePerms(i: Invoke) { val m = HashMap<String, JSObject>()
+        prefs.all.forEach { (k, v) -> val p = k.split("|"); if (p.size == 2 && v is Boolean) m.getOrPut(p[0]) { JSObject() }.put(p[1], v) }
+        val arr = org.json.JSONArray(); m.toSortedMap().forEach { (h, o) -> arr.put(JSObject().put("host", h).put("kinds", o)) }
+        i.resolve(JSObject().put("list", arr)) }
     /** Short diary of what the app did to the videos' pages (shown, hidden, floated, split) — goes into problem reports, no URLs. */
     private val natLog = ArrayDeque<String>()
     private fun nlog(m: String) { synchronized(natLog) { natLog.addLast((System.currentTimeMillis() % 100000).toString() + " " + m); while (natLog.size > 40) natLog.removeFirst() } }
@@ -426,6 +448,8 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             WebViewCompat.addWebMessageListener(w, "hushAudio", setOf("*")) { _, msg, _, _, _ ->
                 t.audio = msg.data == "1"; emit("tabAudio", JSObject().apply { put("id", t.id); put("audio", t.audio) }); act.runOnUiThread { bgCheck() } }
             if (earlyScripts) WebViewCompat.addDocumentStartJavaScript(w, AUDIO_JS, setOf("*"))
+            // "Where you left off": the page tells the app its scroll position and video time (top page only, never from private tabs).
+            WebViewCompat.addWebMessageListener(w, "hushPos", setOf("*")) { _, msg, _, main, _ -> if (main && !t.priv) msg.data?.let { posSave(it) } }
         } catch (e: Throwable) {}
         w.webViewClient = object : WebViewClient() {
             // NEVER call v.url (or any WebView method) here: this runs on a network thread and WebView throws,
@@ -437,7 +461,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                     // Focus mode: a friendly page instead of the distracting site.
                     try { if (Native.focusBlock(u)) return WebResourceResponse("text/html", "utf-8", 200, "OK", emptyMap(), FOCUS_HTML.byteInputStream()) } catch (e: Throwable) {}
                 }
-                return try { if (Native.shouldBlock(u, t.page, kindOf(r))) empty else null } catch (e: Throwable) { null }
+                return try { if (Native.shouldBlock(u, t.page, kindOf(r))) { countBlock(t); empty } else null } catch (e: Throwable) { null }
             }
             override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
                 return when (r.url.scheme) {
@@ -488,6 +512,9 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                 v.postDelayed({ if (active == t.id && visible) snap(t) }, 900)
                 try { val d = Native.darkJs(u); if (d.isNotEmpty()) v.evaluateJavascript(d, null) } catch (e: Throwable) {}
                 emitUrl(t, v, "finished")
+                // Back on a page you were on before: put the scroll position and video time back (only if you haven't moved yet).
+                if (!t.priv) v.evaluateJavascript("window.__hushKey&&__hushKey()") { r -> try { val k = org.json.JSONTokener(r).nextValue() as? String
+                    if (!k.isNullOrEmpty()) posLoad(k)?.let { j -> v.evaluateJavascript("window.__hushRestore&&__hushRestore(" + org.json.JSONObject.quote(j) + ")", null) } } catch (e: Throwable) {} }
                 if (splitIds.isNotEmpty() && t.id in panes()) applySplit()
                 barCheck(t, v)
             }

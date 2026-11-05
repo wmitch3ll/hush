@@ -507,7 +507,8 @@ T.event.listen('focus-blocked',({payload:p})=>{if(p.tab==cur){$('#load').classLi
 // Memory saver: background tabs you haven't opened for a while are closed in the background and reload when you click them.
 setInterval(async()=>{const m=+pref('memory_saver');if(!m)return;const cutoff=Date.now()-m*60000;
   for(const t of tabs)if(t.id!=cur&&t.id!=split&&!t.sleeping&&!t.awake&&!t.audio&&(t.last||Date.now())<cutoff&&t.url){t.sleeping=true;await inv('close_tab',{label:t.id}).catch(()=>{});draw()}},60000);
-T.event.listen('blocked',({payload:p})=>{counts[p.tab]=p.count;if(p.tab==cur)draw()});
+const seenBlk={};
+T.event.listen('blocked',({payload:p})=>{const prev=seenBlk[p.tab]||0,d=p.count>=prev?p.count-prev:p.count;seenBlk[p.tab]=p.count;const t=tab(p.tab);if(t&&!t.priv&&d>0)HX.siteHit(hostOf(t.url).replace(/^www\./,''),d);counts[p.tab]=p.count;if(p.tab==cur)draw()});
 T.event.listen('https-failed',({payload:p})=>{if(p.tab==cur){$('#load').classList.remove('on');toast(hostOf(p.url)+' has no secure version')}});
 T.event.listen('download',({payload:p})=>{
   if(p.state=='started'){downloads.unshift({url:p.url,name:p.name||'download',path:p.path,state:'started'});toast('Downloading '+(p.name||'file')+'…')}
@@ -516,7 +517,7 @@ T.event.listen('download',({payload:p})=>{
   draw();if(panel=='downloads')renderDownloads()});
 
 // ---------- panels ----------
-const RENDER={ai:()=>HX.assistant($('#panel'),{pageText:()=>inv('page_text')}),bookmarks:()=>renderBookmarks(),ext:()=>renderExt(),reading:()=>renderReading(),focus:()=>renderFocus(),about:()=>renderAbout(),send:()=>renderSend(),settings:()=>renderSettings(),downloads:()=>renderDownloads(),suggest:()=>renderSuggest(),pal:()=>renderPalette(),
+const RENDER={privacy:()=>{const p=$('#panel');p.innerHTML=`<h2>Privacy report ${closeBtn}</h2><div id=pvb></div>`;HX.privacyReport($('#pvb'),{});wire(p)},ai:()=>HX.assistant($('#panel'),{pageText:()=>inv('page_text')}),bookmarks:()=>renderBookmarks(),ext:()=>renderExt(),reading:()=>renderReading(),focus:()=>renderFocus(),about:()=>renderAbout(),send:()=>renderSend(),settings:()=>renderSettings(),downloads:()=>renderDownloads(),suggest:()=>renderSuggest(),pal:()=>renderPalette(),
   history:()=>renderHistory(),site:()=>renderSite(),ws:()=>renderWs(),
   boost:()=>{const p=$('#panel'),t=tab(cur),h=t?HX.host(t.url):'';if(!h){closePanel();return}p.innerHTML=`<h2>Boosts · ${esc(h)} ${closeBtn}</h2><div id=bx></div>`;
     HX.boost($('#bx'),h,()=>inv('nav',{action:'reload'}).catch(()=>{}));wire(p)},
@@ -696,6 +697,7 @@ const noteHTML=n=>{n=String(n||'');const m=n.match(/^(.*?)(?:\s·\s)?((?:Ctrl|Al
 const withKeys=base=>[...KEYS.filter(x=>x[3]&&!base.some(a=>String(a[1]).includes(keyLabel(x[1])))).map(x=>[x[2],keyLabel(x[1]),()=>{closePanel(true);x[3]()}]),...base];
 const ACTIONS=()=>withKeys([
   [`Ask ${HX.aiName()}`,'Your AI assistant · Ctrl+Shift+A',()=>{closePanel();openDock('ai')}],[`${HX.aiName()}: summarize this page`,'Your AI assistant',()=>{closePanel();window.__aiRun='sum';closeDock();openDock('ai')}],
+  ['Privacy report','What Hush blocked this week',()=>openPanel('privacy')],
   ['Sleep timer for this video','',()=>{closePanel();sleepTimer()}],
   ['Split layout: '+(pref('split_mode')=='spot'?'Spotlight → Grid':'Grid → Spotlight'),'Spotlight: the tab you click gets the big spot',async()=>{closePanel();await setPref('split_mode',pref('split_mode')=='spot'?'grid':'spot');splitModeSync()}],
   ['Keep screen awake in split view: '+(pref('split_awake')!='false'?'on':'off'),'While a split is open',async()=>{closePanel();await setPref('split_awake',pref('split_awake')!='false'?'false':'true');splitModeSync()}],
@@ -916,6 +918,7 @@ function renderSettings(){
   ${row('Import','Paste an export below, then press Import',`<button class=btn id=s-import>Import</button>`)}
   <textarea class=txt id=s-json rows=3 style="width:100%;font:12px ui-monospace,monospace" placeholder='{"settings":…}'></textarea>
   <h3>Shortcuts & gestures</h3>
+  ${row('Privacy report','What Hush blocked this week, which sites tried to track you most','<button class=btn id=s-priv>Open</button>')}
   ${row('Keyboard shortcuts','Standard browser keys, plus Ctrl+Shift + a letter for Hush’s own features (A assistant, M Murmur, E Echo, O Tor, S screenshot, R read aloud, X panic)','<button class=btn id=s-keys>Show all · Ctrl+/</button>')}
   ${row('Mouse & tab bar','Point at the screen edge to slide the tab bar in · drag tabs to reorder · Shift-click a tab to split · middle-click to close · right-click a tab for more','')}
   <h3>Help</h3>${row('📘 Hush guide & tutorial','Every feature, what it’s good for, and how to use it — step by step','<button class=btn id=s-guide>Open</button>')}
@@ -930,7 +933,7 @@ function renderSettings(){
   $('#s-tori').onclick=()=>openPanel('torinfo');HX.settingsSearch(p,$('#s-q'),'.row');
   p.querySelectorAll('[data-tbt]').forEach(b=>b.onclick=async()=>{const h=tbHidden();h.has(b.dataset.tbt)?h.delete(b.dataset.tbt):h.add(b.dataset.tbt);await setPref('tb_hide',[...h].join(','));applyToolbar();renderSettings()});
   HX.lookPicker($('#s-look'),()=>{applyColor();renderSettings()});$('#s-gest').onclick=()=>openPanel('gest');$('#s-watch').onclick=()=>openPanel('watch');
-  $('#s-guide').onclick=()=>openPanel('guide');$('#s-keys').onclick=()=>openPanel('keys');$('#s-report').onclick=()=>openPanel('report');$('#s-tour').onclick=()=>openPanel('tour');$('#s-ext').onclick=()=>openPanel('ext');$('#s-rl').onclick=()=>openPanel('reading');$('#s-focus').onclick=()=>openPanel('focus');$('#s-send').onclick=()=>openPanel('send');$('#s-about').onclick=()=>openPanel('about');
+  $('#s-guide').onclick=()=>openPanel('guide');$('#s-keys').onclick=()=>openPanel('keys');$('#s-priv').onclick=()=>openPanel('privacy');$('#s-report').onclick=()=>openPanel('report');$('#s-tour').onclick=()=>openPanel('tour');$('#s-ext').onclick=()=>openPanel('ext');$('#s-rl').onclick=()=>openPanel('reading');$('#s-focus').onclick=()=>openPanel('focus');$('#s-send').onclick=()=>openPanel('send');$('#s-about').onclick=()=>openPanel('about');
   $('#s-bangs').onclick=async()=>{const v=prompt('Your shortcuts, separated by | as  key=https://site.com/search?q=%s',pref('bangs'));if(v===null)return;
     const list=v.split(/\||\n/).map(x=>x.trim()).filter(x=>/^[a-z0-9]{1,12}=https:\/\/\S+$/i.test(x));await setPref('bangs',list.join('|'));renderSettings();toast(list.length+' shortcuts saved')};$('#s-ws').onclick=()=>openPanel('ws');
   $('#s-engine').onchange=async e=>{s.search=e.target.value;await inv('set_setting',{key:'search',value:s.search});renderSettings()};

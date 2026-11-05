@@ -628,6 +628,39 @@ window.HushX = function (A) {
       c.ontouchend = e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null; if (dx < -50 && i < S.length - 1) { i++; draw(); } else if (dx > 50 && i) { i--; draw(); } }; };
     draw();
   }
-  return { ai, aiName, aiRename, assistant, reportForm, devId: () => DEV_ID, errLog: () => errLog.slice(), settingsSearch, tour, TOR_INFO, mediaPrompt, LEAVE, SEC, bump, report, tabNote, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
+
+  // ---------- Privacy report + site permissions (one panel, desktop and phone) ----------
+  // Per-site tally of what Hush blocked this week (kept only on this device, only hostnames and counts).
+  function siteHit(host, n) { if (!host || !(n > 0)) return; try { const r = JSON.parse(localStorage.getItem('hush.sites') || '{}'); if (r.w !== weekKey()) { r.w = weekKey(); r.h = {}; } r.h = r.h || {};
+      r.h[host] = (r.h[host] || 0) + n; const ks = Object.keys(r.h); if (ks.length > 140) ks.sort((a, b) => r.h[a] - r.h[b]).slice(0, ks.length - 110).forEach(k => delete r.h[k]);
+      localStorage.setItem('hush.sites', JSON.stringify(r)); } catch (e) {} }
+  function privacyReport(el, o = {}) {
+    const wk = weekKey(); let c = {}, h = {};
+    try { const r = JSON.parse(localStorage.getItem('hush.report') || '{}'); if (r.w === wk) c = r.c || {}; } catch (e) {}
+    try { const r = JSON.parse(localStorage.getItem('hush.sites') || '{}'); if (r.w === wk) h = r.h || {}; } catch (e) {}
+    const total = Object.values(h).reduce((a, b) => a + b, 0), top = Object.entries(h).sort((a, b) => b[1] - a[1]).slice(0, 8), max = top.length ? top[0][1] : 1;
+    const f = n => n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(n);
+    const stat = (n, l) => `<div class=pv-s><b>${f(n)}</b><span>${l}</span></div>`;
+    el.innerHTML = `<style>
+      .pv{display:grid;gap:14px}.pv h3{margin:6px 2px 0;font-size:14px;font-weight:650}.pv-g{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+      .pv-s{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px}.pv-s b{display:block;font-size:26px;letter-spacing:-.02em;font-weight:650}.pv-s span{font-size:12px;color:var(--mute)}
+      .pv-hero{background:linear-gradient(135deg,color-mix(in srgb,var(--acc,#4da3ff) 18%,var(--card)),var(--card));border:1px solid var(--line);border-radius:20px;padding:18px}.pv-hero b{font-size:40px;letter-spacing:-.03em;font-weight:650;display:block;line-height:1}
+      .pv-hero span{color:var(--mute);font-size:13px}.pv-bar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;font-size:13px}.pv-bar i{grid-column:1/-1;height:6px;border-radius:6px;background:color-mix(in srgb,var(--ink) 8%,transparent);overflow:hidden}
+      .pv-bar i u{display:block;height:100%;border-radius:6px;background:var(--acc,#4da3ff)}.pv-bar em{font-style:normal;color:var(--mute)}.pv-bar span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .pv-p{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px;font-size:13px}.pv-p div{flex:1;min-width:0}.pv-p b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pv-p small{color:var(--mute)}
+      .pv-p button{all:unset;cursor:pointer;padding:6px 10px;border-radius:10px;border:1px solid var(--line);font-size:12px;font-weight:600}.pv-note{color:var(--mute);font-size:12px;margin:0 2px}</style>
+      <div class=pv>
+        <div class=pv-hero><b>${f(total)}</b><span>ads, trackers and cookie banners blocked this week</span></div>
+        <div class=pv-g>${stat(c.pop || 0, 'popup ads stopped')}${stat(c.tor || 0, 'pages through Tor')}${stat(c.meta || 0, 'photos cleaned of location data')}${stat(top.length, 'sites that tried to track you')}</div>
+        <h3>Most blocked sites</h3>
+        ${top.length ? `<div style="display:grid;gap:10px">${top.map(([k, n]) => `<div class=pv-bar><span>${esc(k)}</span><em>${f(n)}</em><i><u style="width:${Math.max(4, Math.round(n / max * 100))}%"></u></i></div>`).join('')}</div>` : '<p class=pv-note>Nothing blocked yet this week — browse a little and it fills in.</p>'}
+        <div id=pv-perms></div>
+        <p class=pv-note>Everything here stays on this device. Counts reset every week.</p></div>`;
+    if (o.perms) o.perms().then(list => { const box = el.querySelector('#pv-perms'); if (!box) return; list = list || [];
+      box.innerHTML = `<h3>Site permissions</h3>` + (list.length ? list.map(x => `<div class=pv-p><div><b>${esc(x.host)}</b><small>${Object.entries(x.kinds).map(([k, v]) => k + (v ? ' allowed' : ' blocked')).join(' · ')}</small></div><button data-h="${esc(x.host)}">Reset</button></div>`).join('') + (list.length > 1 ? `<button class=pv-all style="all:unset;cursor:pointer;color:var(--mute);font-size:12px;margin:6px 2px;text-decoration:underline">Reset all sites</button>` : '') : '<p class=pv-note>No site has been given a saved camera, microphone or location choice. Sites ask each time.</p>');
+      box.querySelectorAll('[data-h]').forEach(b => b.onclick = async () => { await o.resetPerm(b.dataset.h); privacyReport(el, o); });
+      box.querySelector('.pv-all')?.addEventListener('click', async () => { for (const x of list) await o.resetPerm(x.host); privacyReport(el, o); }); }).catch(() => {});
+  }
+  return { siteHit, privacyReport, ai, aiName, aiRename, assistant, reportForm, devId: () => DEV_ID, errLog: () => errLog.slice(), settingsSearch, tour, TOR_INFO, mediaPrompt, LEAVE, SEC, bump, report, tabNote, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
     destructSweep, destructLabel, DESTRUCT, watchAdd, watchSweep, watchPanel, watchCount, syncLink, LS };
 };

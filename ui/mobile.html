@@ -13,6 +13,8 @@ body.tor #pill{border-color:#8b5cf6;box-shadow:0 0 0 3px #8b5cf633}body.tor #tab
 body.priv{--bg:#050505;--ink:#e6e6e6;--mute:#777;--card:#161616;--line:#2b2b2b;--acc:#ddd;--glow:#ffffff14;color-scheme:dark}
 *{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Roboto,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden;overscroll-behavior:none}
+#reachveil{position:fixed;left:0;right:0;top:0;height:46vh;z-index:3;display:none;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--mute);font-size:13px;background:color-mix(in srgb,var(--bg) 88%,transparent);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+body.reach #reachveil{display:flex}body.reach #app{padding-top:46vh}
 #app{position:fixed;inset:0;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0);display:flex;flex-direction:column}
 body.bottom #app{flex-direction:column-reverse}
 button{font:inherit;color:var(--ink);background:none;border:0;cursor:pointer;padding:0}
@@ -108,6 +110,7 @@ textarea,input.txt{width:100%}
 body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
 #toast.on{opacity:1;transform:translate(-50%,0)}
 </style><link rel=stylesheet href="hush.css"></head><body>
+<div id="reachveil" role="button" aria-label="Bring the browser back up"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>Tap here to bring everything back up</div>
 <div id="app">
   <div id="top">
     <div id="pill">
@@ -140,6 +143,7 @@ body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
 <div class="sheet" id="switcher"></div>
 <div class="sheet" id="menu"></div>
 <div class="sheet" id="settings"></div>
+<div class="sheet" id="privacy"></div>
 <div class="sheet" id="downloads"></div>
 <div class="sheet" id="site"></div>
 <div class="sheet" id="history"></div>
@@ -386,6 +390,7 @@ $("#reload").onclick=()=>{const t=T();if(t&&t.native){progress(true);inv("nav",{
 window.__hushEvent=(name,d)=>{
   // Groq's key page handed over a new key (harden.js): connect the assistant, close that tab, open the assistant.
   if(name==="groqKey"){toast("🔑 Checking your key through Tor…");HX.ai.connectGroq(d.key).then(()=>{const t=tabs.find(x=>x.native===d.id);if(t&&inWs().length>1)closeTab(t.id);toast("✓ "+HX.aiName()+" is ready — powered by Groq");openAssistant()}).catch(e=>toast(String(e&&e.message||e)));return}
+  if(name==="blocked"){HX.siteHit(d.host,+d.n||0);return}
   if(name==="popupBlocked"){HX.bump("pop");toast("🚫 Blocked a popup ad — you stayed on the page");return}
   if(name==="linkTab"){const u=d.url;if(!/^https?:/.test(u))return;const keep=cur,t=newTab(false,true);t.url=u;cur=keep;inv("open_tab",{input:u,space:spaceOf(t.ws)}).then(id=>{t.native=id;inv("switch_tab",{label:T().native||"none"});render()});toast("Opened in a background tab");return}
   if(name==="tabUrl"){const t=tabs.find(x=>x.native===d.id);if(!t)return;t.url=d.url;t.title=d.title||t.title;t.canBack=d.canBack;t.canFwd=d.canFwd;
@@ -490,6 +495,15 @@ function openMsgs(chat){native("bubble",{show:false}).catch(()=>{});show("msgs")
 const EC=HushEcho({haptic:vibe,M:HM.api,toast,mobile:true,page:()=>{const t=T();return t&&t.native&&!t.priv&&/^https?:/.test(t.url)?{url:t.url}:null},open:u=>{show(null);newTab(false,true);go(u)},close:()=>{EC.close();show(null)},openMurmur:pk=>{EC.close();openMsgs(pk||null)},badge:n=>{}});
 // Problem reports: add what happened to the videos (mini player / tab / split panes) — events only, no addresses.
 const withMedia=o=>native("mediaLog").then(m=>{for(const k in m||{}){const v=String(m[k]||"").replace(/^"|"$/g,"");if(v)o["Video log ("+k+")"]=v}return o}).catch(()=>o);
+// One-handed mode: the whole browser (address bar and page) slides down so everything is within thumb reach.
+function setReach(on){document.body.classList.toggle("reach",on);setTimeout(insets,30);setTimeout(insets,260);vibe();
+  if(on&&!pref("reach_hint")){setPref("reach_hint","1");toast("Tap the top, or swipe up on the bottom bar, to bring it back")}}
+$("#reachveil").onclick=()=>setReach(false);
+(()=>{const tl=$("#tools");let y0=0,x0=0,t0=0;tl.addEventListener("touchstart",e=>{y0=e.touches[0].clientY;x0=e.touches[0].clientX;t0=Date.now()},{passive:true});
+  tl.addEventListener("touchend",e=>{const t=e.changedTouches[0],dy=t.clientY-y0,dx=Math.abs(t.clientX-x0),on=document.body.classList.contains("reach");
+    if(Date.now()-t0<600&&dx<50){if(dy>56&&!on)setReach(true);else if(dy<-56&&on)setReach(false)}},{passive:true})})();
+function drawPrivacy(){const el=$("#privacy");el.innerHTML=head("Privacy report")+'<div id="pvb"></div>';wire(el);
+  HX.privacyReport($("#pvb"),{perms:()=>native("allSitePerms").then(r=>(r&&r.list)||[]),resetPerm:h=>native("resetSitePerms",{host:h})})}
 function openEcho(){show("echos");EC.open($("#echos"))}
 // Side panel: Murmur, Echo or your Notes in the bottom half while the page stays usable above it.
 function openDock(kind){const id=kind==="echo"?"echos":"msgs";if(dock&&dock!==id){$("#"+dock).classList.remove("dock");dock=null}
@@ -542,7 +556,7 @@ function runAction(id){const t=T();const A={panic,back:()=>inv("nav",{action:"ba
   private:()=>newTab(true),mute:()=>toggleMute(t),boosts:()=>{drawMenu();$("#m-boost")?.click()},destruct:()=>{if(!t)return;actions("Self-destruct this tab",HX.DESTRUCT.map(([l,m])=>[l,()=>{t.destruct=m?Date.now()+m*60000:0;toast(m?"Closes in "+l:"Off")}]))}};
   (A[id]||(()=>{}))()}
 let dock=null;
-function show(id){if(dock&&id!==dock){$("#"+dock).classList.remove("dock");dock=null;setTimeout(insets,30)}sheet=id;try{const cp=JSON.parse(localStorage.getItem("hush.msg.prefs")||"{}").curtain!==false;native("secure",{on:cp&&(id==="msgs"||id==="echos")}).catch(()=>{})}catch(e){}["switcher","menu","settings","downloads","site","history","cmd","reading","focus","about","xs","msgs","echos"].forEach(s=>$("#"+s).classList.toggle("on",s===id));
+function show(id){if(dock&&id!==dock){$("#"+dock).classList.remove("dock");dock=null;setTimeout(insets,30)}sheet=id;try{const cp=JSON.parse(localStorage.getItem("hush.msg.prefs")||"{}").curtain!==false;native("secure",{on:cp&&(id==="msgs"||id==="echos")}).catch(()=>{})}catch(e){}["switcher","menu","settings","downloads","site","history","cmd","reading","focus","about","xs","msgs","echos","privacy"].forEach(s=>$("#"+s).classList.toggle("on",s===id));
   if(id!=="cmd"&&document.activeElement?.id==="cmdq")document.activeElement.blur();syncNative()}
 const head=title=>`<div class="grab"></div><h2>${title}<button class="btn sm" data-done>Done</button></h2>`;
 const wire=el=>{el.querySelectorAll("[data-done]").forEach(b=>b.onclick=()=>show(null));const h=el.querySelector("h2");if(h)sheetGestures(h)};
@@ -552,12 +566,19 @@ const seg=(k,opts)=>`<div class="seg">${opts.map(([v,l])=>`<button data-k="${k}"
 function openSwitcher(){drawSwitcher();show("switcher")}
 function drawSwitcher(dir){const el=$("#switcher"),list=inWs();
   el.innerHTML=head("Tabs")+`<div class="chips">${wsList().map(w=>`<button data-ws="${esc(w)}" class="${w===curWs()?"on":""}">${esc(w)} · ${tabs.filter(t=>t.ws===w).length}</button>`).join("")}<button data-ws-new>＋ Workspace</button></div>
+    ${tabs.length>=4?`<input class="txt" id="sw-q" placeholder="Search all tabs" autocomplete="off" autocapitalize="off" spellcheck="false" style="margin:0"><div id="sw-other"></div>`:""}
     <div class="row"><button class="btn acc" id="sw-new">＋ New tab</button><button class="btn" id="sw-priv">◌ Private tab</button></div>
     <div class="cards" id="cards">${list.map(t=>`<div class="card ${t.id===cur?"cur":""} ${t.priv?"priv":""}" data-id="${t.id}">${t.priv?`<span class="tag">private</span>`:""}${t.destruct?`<span class="tag" style="left:auto;right:44px">⏲ ${HX.destructLabel(t)}</span>`:""}<button class="x" data-x="${t.id}" aria-label="Close tab">✕</button>${t.audio||t.muted?`<button class="snd" data-snd="${t.id}" aria-label="${t.muted?"Unmute":"Mute"} tab">${t.muted?MUT:SPK}</button>`:""}
       <div class="shot" ${t.thumb?`style="background-image:url('${esc(t.thumb)}')"`:""}>${t.thumb?"":(t.url?esc((bare(t.url)||"?")[0].toUpperCase()):"hush.")}</div>
       <div class="meta"><b>${esc(t.title||bare(t.url)||"New tab")}</b><small>${t.url?esc(bare(t.url)):"Start page"}</small></div></div>`).join("")}</div>
     <p class="hint" style="text-align:center">Swipe a card sideways to close it · hold a card for more · hold a workspace for its own sign-ins</p>`;
   wire(el);$("#sw-new").onclick=()=>newTab();$("#sw-priv").onclick=()=>newTab(true);
+  const sq=$("#sw-q");if(sq){const hit=(t,s)=>!s||((t.title||"")+" "+(t.url||"")).toLowerCase().includes(s);
+    sq.oninput=()=>{const s=sq.value.trim().toLowerCase();el.querySelectorAll(".card").forEach(c=>{const t=tabs.find(x=>x.id===+c.dataset.id);c.style.display=t&&hit(t,s)?"":"none"});
+      const more=s?tabs.filter(t=>t.ws!==curWs()&&hit(t,s)):[];
+      $("#sw-other").innerHTML=more.length?`<p class="hint" style="margin:6px 2px 2px">In other workspaces</p>`+more.map(t=>`<button class="item" data-go="${t.id}"><div>${esc(t.title||bare(t.url)||"New tab")}<small>${esc(t.ws)} · ${esc(bare(t.url))}</small></div></button>`).join(""):"";
+      $("#sw-other").querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>select(+b.dataset.go))};
+    sq.onkeydown=e=>{if(e.key==="Enter"){const c=[...el.querySelectorAll(".card")].find(x=>x.style.display!=="none");if(c)select(+c.dataset.id);else{const o=$("#sw-other [data-go]");if(o)o.click()}}}}
   el.querySelectorAll("[data-ws]").forEach(b=>gesture(b,{tap:()=>switchWs(b.dataset.ws),hold:()=>{const w=b.dataset.ws;actions(w,[[sepWs(w)?"🔐 Own sign-ins: on — turn off":"🔐 Give this workspace its own sign-ins",async()=>{const l=(pref("ws_sep")||"").split("|").filter(Boolean);await setPref("ws_sep",(l.includes(w)?l.filter(x=>x!==w):[...l,w]).join("|"));toast(sepWs(w)?"New tabs in "+w+" keep their own logins":"New tabs in "+w+" share logins")}]])}}));
   el.querySelector("[data-ws-new]").onclick=()=>{const n=prompt("New workspace name");if(n&&n.trim()){const name=n.trim().replace(/\|/g,"").slice(0,24);
     if(!wsList().includes(name))setPref("workspaces",[...wsList(),name].join("|")).then(()=>switchWs(name))}};
@@ -590,6 +611,8 @@ function drawMenu(){const el=$("#menu"),t=T(),live=!!(t&&t.native);
    <button class="item" id="m-echo"><div>Echo<small>${EC.unread()?EC.unread()+" new · ":""}share with friends, privately</small></div></button>
    <button class="item" id="m-msg"><div>Murmur<small>${HM.unread()?HM.unread()+" unread · ":""}private chat through Tor</small></div></button>
    <button class="item" id="m-ai"><div>${esc(HX.aiName())}<small>your AI assistant, offline on this phone — summarize pages, ask anything</small></div></button>
+   <button class="item" id="m-reach"><div>One-handed mode<small>Slides everything down within thumb reach · or swipe down on the bottom bar</small></div></button>
+   <button class="item" id="m-priv"><div>Privacy report<small>What Hush blocked this week · site permissions</small></div></button>
    <button class="item" id="m-dock"><div>Side panel<small>Murmur, Echo or notes under the page — keep browsing above</small></div></button>
    <button class="item" id="m-split"><div>⬒ Split screen<small>${splitSet.size?(splitSet.size+1)+" tabs open · layout, scenes, close":"up to 4 tabs · tap one for its sound"}</small></div></button>
    <div class="item"><div>Tor mode <button class="btn sm" id="m-tori" aria-label="What is Tor?" style="padding:0 8px;min-width:0">ⓘ</button><small>${torOn?"on — every tab goes through Tor":"hide your IP and location from every site"}</small></div><button class="sw ${torOn?"on":""}" id="m-tor"></button></div>
@@ -620,7 +643,7 @@ function drawMenu(){const el=$("#menu"),t=T(),live=!!(t&&t.native);
   if($("#l-pp"))$("#l-pp").onclick=()=>{native("listen",{action:listenSt==="paused"?"resume":"pause"})};
   if($("#l-next"))$("#l-next").onclick=()=>native("listen",{action:"next"});if($("#l-prev"))$("#l-prev").onclick=()=>native("listen",{action:"prev"});
   if($("#l-rate"))$("#l-rate").onclick=()=>{const R=[1,1.25,1.5,1.75,2,0.75];lRate=R[(R.indexOf(lRate)+1)%R.length];native("listen",{action:"rate",rate:lRate});drawMenu()};
-  $("#m-tor").onclick=()=>setTor(!torOn);$("#m-tori").onclick=e=>{e.stopPropagation();torInfo()};$("#m-ai").onclick=()=>openAssistant();$("#m-split").onclick=()=>splitMenu();$("#m-dock").onclick=()=>dockPick();$("#m-msg").onclick=openMsgs;$("#m-echo").onclick=openEcho;if($("#m-newid"))$("#m-newid").onclick=async()=>{try{await inv("tor_new_identity");inv("nav",{action:"reload"}).catch(()=>{});toast("New identity")}catch(e){toast(String(e))}show(null)};
+  $("#m-tor").onclick=()=>setTor(!torOn);$("#m-tori").onclick=e=>{e.stopPropagation();torInfo()};$("#m-ai").onclick=()=>openAssistant();$("#m-split").onclick=()=>splitMenu();$("#m-dock").onclick=()=>dockPick();$("#m-priv").onclick=()=>{drawPrivacy();show("privacy")};$("#m-reach").onclick=()=>{show(null);setTimeout(()=>setReach(true),120)};$("#m-msg").onclick=openMsgs;$("#m-echo").onclick=openEcho;if($("#m-newid"))$("#m-newid").onclick=async()=>{try{await inv("tor_new_identity");inv("nav",{action:"reload"}).catch(()=>{});toast("New identity")}catch(e){toast(String(e))}show(null)};
   $("#m-arch").onclick=()=>{$("#xs").innerHTML=head("Archived tabs")+'<div id="arx" style="padding:0 4px 20px"></div>';wire($("#xs"));HX.archivePanel($("#arx"),u=>{newTab(false,true);go(u)});show("xs")};
   $("#m-rl").onclick=()=>{drawReading();show("reading")};$("#m-focus").onclick=()=>{drawFocus();show("focus")};$("#m-about").onclick=()=>{drawAbout();show("about")}}
 

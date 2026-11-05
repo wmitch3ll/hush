@@ -139,6 +139,30 @@
     // New player frames that load later get the current state too.
     if (window === top) setInterval(() => { if (st.on) relay({ __hushMedia: st }); }, 2000);
   })();
+  // Where you left off (Android app stores it): scroll position and video time of THIS page, so coming back later
+  // (or reopening a video) continues there. Top page only; nothing leaves the device.
+  if (window === top) {
+    const keyOf = () => { try { const u = new URL(location.href);
+        if (/(^|\.)youtube\.com$/.test(u.hostname)) { const v = u.searchParams.get("v"); if (v) return u.hostname + "/watch?v=" + v; }
+        u.hash = ""; for (const p of [...u.searchParams.keys()]) if (/^(utm_|fbclid$|gclid$|mc_)/i.test(p)) u.searchParams.delete(p); return u.href; } catch (_) { return location.href; } };
+    window.__hushKey = () => /^https?:/.test(location.href) ? keyOf() : "";
+    const mainVideo = () => [...document.querySelectorAll("video")].sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0];
+    const state = () => { const o = { k: keyOf(), y: 0, vt: 0 }; try {
+        if (scrollY > 600 && document.documentElement.scrollHeight > innerHeight * 2.2) o.y = Math.round(scrollY);
+        const v = mainVideo(); if (v && isFinite(v.duration) && v.duration > 150 && v.currentTime > 20 && v.currentTime < v.duration - 30) o.vt = Math.round(v.currentTime); } catch (_) {} return o; };
+    let sent = "";
+    const save = () => { try { if (!window.hushPos || !/^https?:/.test(location.href)) return; const o = state(), j = JSON.stringify(o); if (j === sent) return; sent = j; hushPos.postMessage(j); } catch (_) {} };
+    window.__hushRestore = j => { try { const o = JSON.parse(j); if (!o || o.k !== keyOf()) return;
+        if (o.y) { let n = 0; const go = () => { if (scrollY > 80) return; if (document.documentElement.scrollHeight > o.y + innerHeight * 0.5) scrollTo(0, o.y); else if (++n < 20) setTimeout(go, 300); }; setTimeout(go, 400); }
+        if (o.vt) { let n = 0; const tv = () => { const v = [...document.querySelectorAll("video")].find(x => isFinite(x.duration) && x.duration > o.vt + 30);
+            if (v && v.currentTime < 5) { try { v.currentTime = o.vt; } catch (_) {} } else if (++n < 25) setTimeout(tv, 400); }; tv(); }
+      } catch (_) {} };
+    addEventListener("pagehide", save, true);
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") save(); }, true);
+    document.addEventListener("pause", e => { if (e.target === mainVideo()) save(); }, true);
+    let st2 = 0; addEventListener("scroll", () => { clearTimeout(st2); st2 = setTimeout(save, 2000); }, { passive: true, capture: true });
+    setInterval(() => { const v = mainVideo(); if (v && !v.paused) save(); }, 15000);
+  }
   // Groq key helper: on Groq's own key page only, when a new key appears, offer to hand it straight to Hush's
   // assistant (no copy/paste). The key only ever goes to the Hush app on this device.
   if (location.hostname === "console.groq.com" && window.top === window) {
