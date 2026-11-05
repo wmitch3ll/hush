@@ -693,7 +693,7 @@ window.HushX = function (A) {
   const dlActive = () => DL.items.filter(d => d.state === 'active' || d.state === 'paused');
   const dlRow = (d, compact) => { const e = dlExt(d.name), pct = d.total ? Math.min(100, Math.round(d.bytes / d.total * 100)) : null, act = d.state === 'active' || d.state === 'paused';
     const meta = act ? [pct != null ? pct + '%' : 'Downloading…', d.total ? dlBytes(d.bytes) + ' of ' + dlBytes(d.total) : d.bytes ? dlBytes(d.bytes) : '', d.speed > 1024 ? dlBytes(d.speed) + '/s' : '', d.speed > 1024 && d.total ? dlTime((d.total - d.bytes) / d.speed) + ' left' : '', d.state === 'paused' ? 'Paused' : ''].filter(Boolean).join(' · ')
-      : d.state === 'done' ? [dlKind(d.name, d.mime), d.total ? dlBytes(d.total) : '', dlWhen(d.t1 || d.t0), d.host || ''].filter(Boolean).join(' · ')
+      : d.state === 'done' ? [dlKind(d.name, d.mime), d.total ? dlBytes(d.total) : ''].filter(Boolean).join(' · ')
       : d.state === 'cancelled' ? 'Cancelled' : 'Failed' + (d.error ? ' · ' + d.error : '');
     return `<div class="dl-r ${d.state}" data-k="${esc(d.key)}"><i class=dl-c style="--c:${dlColor(e)}">${esc(e.slice(0, 4))}</i><div class=dl-t><b title="${esc(d.name)}">${esc(d.name)}</b>
       ${act ? `<div class=dl-bar><span style="width:${pct == null ? 38 : pct}%" class="${pct == null ? 'ind' : ''}"></span></div>` : ''}<small>${esc(meta)}</small></div>
@@ -715,7 +715,7 @@ window.HushX = function (A) {
   function dlList(el, o) { // full list, filter chips, remove / clear
     if (!document.getElementById('dl-css')) { const st = document.createElement('style'); st.id = 'dl-css'; st.textContent = DLCSS; document.head.append(st); }
     const draw = () => { const items = DL.items.filter(d => DL.filter === 'all' || (DL.filter === 'active' ? (d.state === 'active' || d.state === 'paused') : d.state === 'done')), act = dlActive().length, done = DL.items.filter(d => d.state === 'done').length;
-      el.innerHTML = `<div class=dl-h><div style="flex:1">${o && o.title === false ? '' : '<b>Downloads</b><br>'}<small>${DL.items.length} download${DL.items.length === 1 ? '' : 's'} this session${act ? ' · ' + act + ' in progress' : ''}</small></div>${DL.items.some(d => d.state !== 'active' && d.state !== 'paused') ? '<button data-clear style="all:unset;cursor:pointer;font:600 12.5px system-ui;color:var(--mute);padding:6px 10px;border-radius:99px">Clear</button>' : ''}</div>
+      el.innerHTML = `<div class=dl-h><div style="flex:1">${o && o.title === false ? '' : '<b>Downloads</b><br>'}<small>${act ? act + ' in progress' : ''}</small></div>${DL.items.some(d => d.state !== 'active' && d.state !== 'paused') ? '<button data-clear style="all:unset;cursor:pointer;font:600 12.5px system-ui;color:var(--mute);padding:6px 10px;border-radius:99px">Clear</button>' : ''}</div>
         <div class=dl-seg>${[['all', 'All'], ['active', 'Active'], ['done', 'Finished']].map(([k, l]) => `<button data-f=${k} class="${DL.filter === k ? 'on' : ''}">${l}</button>`).join('')}</div>
         ${items.length ? items.map(d => dlRow(d, false)).join('') : `<div class=dl-empty><svg viewBox="0 0 24 24"><path d="M12 4v10m0 0l-4-4m4 4l4-4M5 19h14" stroke-linecap="round" stroke-linejoin="round"/></svg><br>${DL.filter === 'all' ? 'Nothing downloaded yet.<br>Files go to your Downloads folder.' : 'Nothing here.'}</div>`}
         ${o && o.footer ? `<div style="text-align:center;margin-top:10px"><button data-foot style="all:unset;cursor:pointer;color:var(--mute);font:600 13px system-ui;padding:8px 14px">${esc(o.footer)}</button></div>` : ''}`;

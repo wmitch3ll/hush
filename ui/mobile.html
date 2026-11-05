@@ -265,6 +265,9 @@ async function openNative(t){try{const r=await inv("open_tab",{input:t.url,priva
 let touring=false;
 function syncNative(){const t=T();inv("switch_tab",{label:(!sheet||dock)&&!typing&&!touring&&t&&t.native?t.native:"none"}).catch(()=>{})}
 // Hands-on welcome walkthrough (coach.js): you do each thing for real; the page itself is hidden while it runs.
+async function tourVideos(){const U1="https://m.youtube.com/watch?v=dQw4w9WgXcQ",U2="https://m.youtube.com/watch?v=jNQXAC9IVRw";
+  splitClose();await go(U1);const keep=cur,t=newTab(false,true,true);t.url=U2;cur=keep;
+  t.native=await inv("open_tab",{input:U2,space:spaceOf(t.ws)});await inv("switch_tab",{label:T().native||"none"});render()}
 function startTour(){touring=true;show(null);syncNative();const u0=(T()||{}).url||"",tor0=torOn,menu=()=>{if(sheet!=="menu"){drawMenu();show("menu")}};
   const fin=()=>{touring=false;setPref("toured","1");show(null);syncNative()};
   HUSH_COACH.run([
@@ -272,12 +275,14 @@ function startTour(){touring=true;show(null);syncNative();const u0=(T()||{}).url
     // 1. Browsing
     {sel:"#url",title:"Go to a site",text:"The address bar does both: type a site (espn.com) or a search. Shortcuts search one site directly — !yt YouTube, !w Wikipedia, !a Amazon, !r Reddit. Swipe the bar left/right to switch tabs.",doText:"Tap the bar, type a site and press Go",until:()=>{const u=(T()||{}).url||"";return u!==u0&&/^https?:/.test(u)}},
     {sel:"#shield",title:"Your shield",text:"Ads, trackers, cookie banners and popups are blocked on every site. The shield shows what was stopped here and has switches just for this site.",doText:"Tap the shield",until:()=>sheet==="site"},
-    {sel:"#site",place:"top",title:"Per-site control",text:"If a site ever breaks, turn its protection off here — only for that site. You can also allow or block JavaScript, always open it in Tor, leave yourself a note, and check its connection.",doText:"Have a look, then tap Done",until:()=>sheet!=="site"},
+    {sel:"#site",place:"bottom",title:"Per-site control",text:"If a site ever breaks, turn its protection off here — only for that site. You can also allow or block JavaScript, always open it in Tor, leave yourself a note, and check its connection. Tap Next when you’re ready.",before:()=>{if(sheet!=="site"){const b=$("#shield");b&&b.click()}}},
     // 2. Tabs
-    {sel:"#tb-new",title:"Open a second tab",text:"The + opens a new tab. You’ll need two for the next part — split screen.",doText:"Tap + and go to any site (or Skip)",before:()=>show(null),until:()=>inWs().length>1&&inWs().filter(t=>t.native).length>1},
-    {sel:"#tb-tabs",title:"Your tabs & workspaces",text:"All your tabs as cards. Swipe one away to close it. The chips at the top are workspaces — groups of tabs like Sports or Work — and you can give a workspace its own sign-ins.",doText:"Tap the tabs button",before:()=>show(null),until:()=>sheet==="switcher"},
-    {sel:"#switcher",place:"top",title:"Split screen",text:"Watch up to 4 tabs at once — two games, or a stream next to stats. Hold a tab card that isn’t the current one and choose “Add to split screen”.",doText:"Hold a tab › Add to split screen",before:()=>{if(sheet!=="switcher"){drawSwitcher();show("switcher")}},until:()=>splitSet.size>0},
-    {title:"Using split screen",text:"Tap a pane to give it the sound — it gets a blue ring and the others keep playing muted. Videos fill their pane with full controls, and fullscreen stays inside the pane. Drag the line to resize. In ⋯ › Split screen you can switch to Spotlight (the tapped pane goes big), keep the screen awake, and save the setup as a Scene to reopen in one tap.",place:"center",before:()=>show(null)},
+    {title:"Let’s try split screen",text:"Split screen shows several pages at once. I’ll open two YouTube videos for you so you can try it right now.",place:"center",before:()=>show(null),
+     extra:b=>{const g=document.createElement("button");g.textContent="Open two videos";g.className="hc-on";g.onclick=async()=>{g.disabled=true;g.textContent="Opening…";try{await tourVideos()}catch(e){}b.querySelector("[data-a=next]").click()};
+       const n=b.querySelector("[data-a=next]");n.classList.remove("hc-on");n.textContent="Skip this part";b.querySelector(".hc-row").insertBefore(g,n)}},
+    {sel:"#tb-tabs",title:"Open your tabs",text:"Both videos are open as tabs now. All your tabs show as cards here — swipe one away to close it, and the chips at the top are workspaces (groups like Sports or Work).",doText:"Tap the tabs button",before:()=>show(null),until:()=>sheet==="switcher"},
+    {sel:"#switcher",place:"top",title:"Add one to the split",text:"Press and hold the card that isn’t your current tab, then choose “Add to split screen”.",doText:"Hold a card › Add to split screen",before:()=>{if(sheet!=="switcher"){drawSwitcher();show("switcher")}},until:()=>splitSet.size>0},
+    {title:"You’re splitting!",text:"Tap a half to give it the sound — it gets a blue ring and the other keeps playing quietly. Tap the picture with the ring to play or pause, and use the little bar for volume and seeking. Drag the line to resize; hold a half to swap them. In ⋯ › Split screen: Spotlight layout, keep the screen awake, and Scenes to save the setup.",place:"bottom",before:()=>show(null)},
     // 3. Privacy
     {sel:"#tb-menu",title:"The menu",text:"Tor, private tabs, Murmur, Echo, the assistant, split screen and settings all live here.",doText:"Tap the menu button",before:()=>show(null),until:()=>sheet==="menu"},
     {sel:"#m-tor",title:"Tor in one switch",text:"Tor bounces your connection through 3 relays so sites can’t see your IP address or location. Pages load a bit slower; every Hush user on Tor looks the same to websites.",doText:"Flip the Tor switch (or Skip)",before:menu,until:()=>torOn!==tor0},
@@ -288,7 +293,7 @@ function startTour(){touring=true;show(null);syncNative();const u0=(T()||{}).url
     {sel:"#m-msg",title:"Murmur — private messages",text:"Chat, send photos and call other Hush users. End-to-end encrypted, always through Tor, no phone number. Add friends by QR code or a one-time invite; watch videos together in sync.",before:menu},
     {sel:"#m-echo",title:"Echo — your private social network",text:"Post to close friends or circles you choose, or go public. Your feed is tuned on your phone, not by someone else’s algorithm.",before:menu},
     {sel:"#m-set",title:"Settings & the guide",text:"Make Hush yours: looks, security level, bottom bar, background play. At the bottom, Settings › Help has the full guide to every feature and this walkthrough.",before:menu},
-    {title:"You’re set 🎉",text:"That’s the tour. Open the guide any time for more detail and examples.",place:"center",last:true,before:()=>show(null),
+    {title:"You’re set 🎉",text:"That’s the tour — the split screen is closed again so you can start fresh. Open the guide any time for more detail and examples.",place:"center",last:true,before:()=>{show(null);if(splitSet.size)splitClose()},
      extra:b=>{const g=document.createElement("button");g.textContent="Open the guide";g.onclick=()=>{HUSH_COACH_END();openGuide()};b.querySelector(".hc-row").insertBefore(g,b.querySelector("[data-a=back]"))}}
   ],{onEnd:fin});
   window.HUSH_COACH_END=()=>{document.getElementById("hc")?.remove();fin()}}

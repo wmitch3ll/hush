@@ -568,6 +568,16 @@ window.HushMsg = function (A) {
 .hm-tor{display:inline-flex;align-items:center;gap:4px;font:600 10.5px system-ui;color:#7c3aed;background:#7c3aed1a;border-radius:99px;padding:2px 8px}`;
 
   // Murmur v2 look: calm glass surfaces, roomy rows, soft bubbles, one accent. Pure styling on the same markup.
+  // Composer: a roomy, readable message box (it used to be squeezed to nothing between the buttons).
+  const css4 = `
+.hm-c{gap:6px;align-items:flex-end;padding:8px 10px calc(8px + env(safe-area-inset-bottom,0px))}
+.hm-c textarea{flex:1 1 auto;width:0;min-width:0;min-height:44px;box-sizing:border-box;padding:12px 18px;border-radius:24px;border:1px solid color-mix(in srgb,var(--ink) 14%,transparent);background:color-mix(in srgb,var(--ink) 7%,var(--bg));color:var(--ink);-webkit-text-fill-color:var(--ink);caret-color:var(--acc);font:16px/1.4 system-ui,-apple-system,sans-serif;max-height:140px;overflow-y:auto}
+.hm-c textarea::placeholder{color:var(--mute);-webkit-text-fill-color:var(--mute);opacity:1}
+.hm-c textarea:focus{border-color:color-mix(in srgb,var(--acc) 60%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 18%,transparent)}
+.hm-c .hm-ib{flex:none;width:40px;height:44px;border-radius:50%;background:transparent}
+.hm-c .hm-send{flex:none;width:44px;height:44px;animation:hmpop .18s cubic-bezier(.2,1.4,.4,1)}
+@keyframes hmpop{from{transform:scale(.4);opacity:0}to{transform:none;opacity:1}}
+@media (max-width:480px){.hm-c{gap:4px;padding-left:6px;padding-right:6px}.hm-c .hm-ib{width:36px}}`;
   const css3 = `
 .hm{--mr:20px;--sp:14px;letter-spacing:-.005em}
 .hm-h{padding:calc(12px + env(safe-area-inset-top,0px)*0) 16px 12px;border-bottom:0;background:linear-gradient(var(--bg),color-mix(in srgb,var(--bg) 92%,transparent));position:relative;z-index:2}
@@ -642,7 +652,7 @@ window.HushMsg = function (A) {
 .hm-rec .dot{width:10px;height:10px;border-radius:50%;background:#ef4444;animation:hmp .8s infinite alternate}.hm-rec .hint{flex:1;color:var(--mute);font-weight:500;transition:opacity .1s}.hm-rec .lockh{color:var(--mute);font-size:12px;font-weight:500}
 .hm-rec .cx{font-size:18px;padding:6px}.hm-cv{position:relative;width:min(70vw,300px);aspect-ratio:1;border-radius:50%;overflow:hidden;margin-bottom:24px;box-shadow:0 12px 50px #0006}
 .hm-cv video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}.hm-cv .ring{position:absolute;inset:0;border-radius:50%;background:conic-gradient(#ef4444 calc(var(--p,0)*360deg),transparent 0);-webkit-mask:radial-gradient(circle,transparent 66%,#000 67%);mask:radial-gradient(circle,transparent 66%,#000 67%)}`;
-  if (!document.getElementById('hm-css')) { const s = document.createElement('style'); s.id = 'hm-css'; s.textContent = css + css2 + css3; document.head.append(s); }
+  if (!document.getElementById('hm-css')) { const s = document.createElement('style'); s.id = 'hm-css'; s.textContent = css + css2 + css3 + css4; document.head.append(s); }
   const I = {
     back: '<svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>', plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
     x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>', send: '<svg viewBox="0 0 24 24"><path d="M3 20l18-8L3 4v6l12 2-12 2z"/></svg>',
@@ -820,7 +830,7 @@ window.HushMsg = function (A) {
     wireCommon();
     const sc = view.el.querySelector('#hm-scroll'); sc.scrollTop = sc.scrollHeight;
     const ta = view.el.querySelector('textarea'), go = () => { const v = ta.value; if (!v.trim()) return; ta.value = ''; ta.oninput(); const r = view.reply; view.reply = null; sendText(key, v, r); };
-    const swap = () => { const t = !!ta.value.trim(); view.el.querySelector('#hm-go').classList.toggle('hide', !t); view.el.querySelector('#hm-mic').classList.toggle('hide', t); view.el.querySelector('#hm-cam').classList.toggle('hide', t); };
+    const swap = () => { const t = !!ta.value.trim(); view.el.querySelector('#hm-go').classList.toggle('hide', !t); view.el.querySelector('#hm-mic').classList.toggle('hide', t); view.el.querySelector('#hm-cam').classList.toggle('hide', t); ['#hm-att', '#hm-share', '#hm-plus'].forEach(q => { const b = view.el.querySelector(q); if (b && q !== '#hm-plus') b.classList.toggle('hide', t); }); };
     ta.oninput = e => { ta.style.height = 'auto'; ta.style.height = Math.min(140, ta.scrollHeight) + 'px'; swap(); if (e && ta.value.trim()) sendTyping(key); };
     recorder(view.el.querySelector('#hm-mic'), 'voice', key); recorder(view.el.querySelector('#hm-cam'), 'vmsg', key);
     ta.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !A.mobile) { e.preventDefault(); go(); } };

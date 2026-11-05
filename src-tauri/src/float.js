@@ -64,6 +64,10 @@ const FI = { play: '<svg viewBox="0 0 24 24" width="20" height="20"><path fill="
   const setHold = p => { hold = { p, until: Date.now() + 900, n: 0 }; };
   const enforce = () => { if (!hold || Date.now() > hold.until || v.paused === hold.p || hold.n >= 3) return; hold.n++; if (hold.p) v.pause(); else v.play().catch(() => {}); };
   if (isVid) { v.addEventListener("play", enforce); v.addEventListener("pause", enforce); }
+  // While the mini player is up, nothing but YOU pausing should stop the video: if the page or the system pauses it, play again at once.
+  if (isVid) { let n = 0, t0 = 0; v.addEventListener("pause", () => setTimeout(() => { if (!window.__hushFloatOn || !v.paused || v.ended || !v.isConnected) return;
+    if (Date.now() - (window.__hushUserPause || 0) < 2500 || (hold && hold.p && Date.now() < hold.until + 1500)) return;
+    const now = Date.now(); if (now - t0 > 10000) { t0 = now; n = 0; } if (n++ >= 6) return; v.play().catch(() => {}); }, 40)); }
   o.addEventListener("pointerdown", () => { if (isVid && (!hold || Date.now() > hold.until)) setHold(v.paused); }, true);   // a tap on the frame itself must not toggle the video
   sh.querySelectorAll("[data-a]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); const a = b.dataset.a;
     if (a === "play") { const want = !v.paused; setHold(want); if (v.paused) v.play().catch(() => {}); else { window.__hushUserPause = Date.now(); v.pause(); } } else go(a); }));
