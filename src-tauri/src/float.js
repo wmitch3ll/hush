@@ -15,6 +15,7 @@ window.__hushFloat = window.__hushFloat || ((on) => {
   const css0 = document.getElementById("hush-float-css"); if (css0) css0.remove();
   document.querySelectorAll("[data-hush-float]").forEach(x => __hushSolo(x, false));
   document.querySelectorAll("[data-hush-float],[data-hush-float-anc]").forEach(e => { e.removeAttribute("data-hush-float"); e.removeAttribute("data-hush-float-anc"); });
+  window.__hushFloatOn = !!on;
   if (!on) { window.dispatchEvent(new Event("resize")); return; }
   const vids = [...document.querySelectorAll("video")];
   const area = x => x.clientWidth * x.clientHeight;
@@ -47,6 +48,8 @@ const FI = { play: '<svg viewBox="0 0 24 24" width="20" height="20"><path fill="
     <div class="b c"><button data-a=play title="Play / pause">${isVid && v.paused ? FI.play : FI.pause}</button></div>
     <div class="g" title="Drag to resize"></div></div>`;
   document.documentElement.append(ui);
+  // Taps on the mini player's own frame and buttons never reach the site underneath (its player would react to them too, ¼ s later).
+  for (const t of ["click", "dblclick", "mousedown", "mouseup", "touchstart", "touchend", "touchmove", "pointerdown", "pointerup", "contextmenu"]) ui.addEventListener(t, e => e.stopPropagation());
   try { ui.setAttribute("popover", "manual"); ui.style.cssText = "all:initial;position:fixed;inset:0;margin:0;padding:0;border:0;background:transparent;width:100vw;height:100vh;overflow:visible"; ui.showPopover(); } catch (_) {}
   const o = sh.querySelector(".o"), pb = sh.querySelector("[data-a=play]"), grip = sh.querySelector(".g");
   const sync = () => { pb.innerHTML = v.paused ? FI.play : FI.pause; };
@@ -63,7 +66,7 @@ const FI = { play: '<svg viewBox="0 0 24 24" width="20" height="20"><path fill="
   if (isVid) { v.addEventListener("play", enforce); v.addEventListener("pause", enforce); }
   o.addEventListener("pointerdown", () => { if (isVid && (!hold || Date.now() > hold.until)) setHold(v.paused); }, true);   // a tap on the frame itself must not toggle the video
   sh.querySelectorAll("[data-a]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); const a = b.dataset.a;
-    if (a === "play") { const want = !v.paused; setHold(want); if (v.paused) v.play().catch(() => {}); else v.pause(); } else go(a); }));
+    if (a === "play") { const want = !v.paused; setHold(want); if (v.paused) v.play().catch(() => {}); else { window.__hushUserPause = Date.now(); v.pause(); } } else go(a); }));
   // Drag anywhere to move it; drag the corner grip to resize. Updates are sent ~25×/s while you drag.
   let s = null, last = 0, mode = "", id = 0;
   const send = (a, force) => { const t = performance.now(); if (!force && t - last < 40) return; last = t; go(a); };

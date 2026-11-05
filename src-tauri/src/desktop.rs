@@ -458,7 +458,8 @@ fn on_download(app: &AppHandle, tab: &str, ev: DownloadEvent<'_>) -> bool {
             let path = match (success, path) { (true, Some(p)) => Some(add_ext(&p)), (_, p) => p };
             if let (true, Some(p)) = (success, &path) { crate::strip_photo_meta(p); app.state::<AppState>().downloads.lock().push(p.clone()); }
             let _ = app.emit_to("chrome", "download", serde_json::json!({ "tab": tab, "url": url.as_str(),
-                "path": path.as_ref().map(|p| p.to_string_lossy().to_string()), "state": if success { "done" } else { "failed" } }));
+                "path": path.as_ref().map(|p| p.to_string_lossy().to_string()), "name": path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()),
+                "size": path.as_ref().and_then(|p| std::fs::metadata(p).ok()).map(|m| m.len()), "state": if success { "done" } else { "failed" } }));
             true
         }
         #[allow(unreachable_patterns)]

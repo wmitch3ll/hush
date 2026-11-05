@@ -368,7 +368,7 @@ function draw(){
   const off=allow.has(h);$('#shield').classList.toggle('off',off);$('#shield').disabled=!h||!!panel;
   $('#shield').title=(off?'Shield off':'Shield on')+(h?' for '+h:'')+' — click for site settings';
   const n=counts[cur]||0;$('#cnt').textContent=n>99?'99+':n;$('#cnt').style.display=n&&live&&state.settings.counter!==false?'grid':'none';
-  const a=downloads.filter(d=>d.state=='started').length;$('#dlcnt').textContent=a;$('#dlcnt').style.display=a?'grid':'none';
+  let a=0;try{a=HX.dl.active()}catch(e){}$('#dlcnt').textContent=a;$('#dlcnt').style.display=a?'grid':'none';
   if($('#home').style.display!='none')loadStats();
   railState();
 }
@@ -512,11 +512,7 @@ setInterval(async()=>{const m=+pref('memory_saver');if(!m)return;const cutoff=Da
 const seenBlk={};
 T.event.listen('blocked',({payload:p})=>{const prev=seenBlk[p.tab]||0,d=p.count>=prev?p.count-prev:p.count;seenBlk[p.tab]=p.count;const t=tab(p.tab);if(t&&!t.priv&&d>0)HX.siteHit(hostOf(t.url).replace(/^www\./,''),d);counts[p.tab]=p.count;if(p.tab==cur)draw()});
 T.event.listen('https-failed',({payload:p})=>{if(p.tab==cur){$('#load').classList.remove('on');toast(hostOf(p.url)+' has no secure version')}});
-T.event.listen('download',({payload:p})=>{
-  if(p.state=='started'){downloads.unshift({url:p.url,name:p.name||'download',path:p.path,state:'started'});toast('Downloading '+(p.name||'file')+'…')}
-  else{const d=downloads.find(d=>d.url==p.url&&d.state=='started');if(d){d.state=p.state;if(p.path)d.path=p.path}
-    toast(p.state=='done'?'Downloaded '+(d?.name||'file')+' · Ctrl+J':'Download failed')}
-  draw();if(panel=='downloads')renderDownloads()});
+T.event.listen('download',({payload:p})=>{HX.dl.event(p);draw()});
 
 // ---------- panels ----------
 const RENDER={privacy:()=>{const p=$('#panel');p.innerHTML=`<h2>Privacy report ${closeBtn}</h2><div id=pvb></div>`;HX.privacyReport($('#pvb'),{});wire(p)},ai:()=>HX.assistant($('#panel'),{pageText:()=>inv('page_text')}),bookmarks:()=>renderBookmarks(),ext:()=>renderExt(),reading:()=>renderReading(),focus:()=>renderFocus(),about:()=>renderAbout(),send:()=>renderSend(),settings:()=>renderSettings(),downloads:()=>renderDownloads(),suggest:()=>renderSuggest(),pal:()=>renderPalette(),
@@ -551,7 +547,7 @@ const RENDER={privacy:()=>{const p=$('#panel');p.innerHTML=`<h2>Privacy report $
   watch:()=>{const p=$('#panel');p.innerHTML=`<h2>Change watch ${closeBtn}</h2><div id=wx></div>`;HX.watchPanel($('#wx'),u=>openTab(u));wire(p)},
   shot:()=>{$('#panel').innerHTML='<p style="color:var(--mute);padding:40px;text-align:center">Screenshot editor</p>'}};
 // ---------- start page, Listen, Peek, screenshots, auto-archive (shared code in extras.js) ----------
-const HX=HushX({inv,pref,setPref,toast,open:u=>openTab(u),state:()=>state,reload:()=>loadState(),mobile:false,act:id=>runAction(id),
+const HX=HushX({dlOpen:d=>inv('download_open',{path:d.path}).catch(e=>toast(String(e))),dlShow:d=>inv('download_reveal',{path:d.path}).catch(e=>toast(String(e))),inv,pref,setPref,toast,open:u=>openTab(u),state:()=>state,reload:()=>loadState(),mobile:false,act:id=>runAction(id),
   watchPick:()=>{if(!tab(cur))return toast('Open the page you want to watch first');closePanel();inv('start_picker',{mode:'watch'});toast('Click the price or text to watch')},
   zap:()=>{closePanel();inv('start_picker');toast('Click an element to remove it from this site · Esc to cancel')}});
 function renderHome(){const el=$('#home');HX.home(el,{top:`<h1 class="wordmark">hush.</h1>${pref('sp_stats')!='off'?'<div class=stats id=stats></div>':''}`,
@@ -601,7 +597,7 @@ function runAction(id){const t=tab(cur);const A={panic,back:()=>inv('nav',{actio
 T.event.listen('gesture',({payload:p})=>{if(p.tab&&p.tab!=cur)return;HX.gesture(p)});
 T.event.listen('watch-pick',({payload:p})=>{if(!p.url)return;HX.watchAdd({url:p.url,sel:p.sel,text:p.text});toast('Watching “'+(p.text||'').slice(0,40)+'” — Settings › Change watch');openPanel('watch')});
 setInterval(()=>{HX.destructSweep(tabs,id=>closeTab(id,true));railState()},20000);
-HX.syncInit(HM);setInterval(()=>HX.watchSweep(),5*60000);setTimeout(()=>HX.watchSweep(),20000);
+HX.syncInit(HM);HX.dl.drop({pos:{top:'calc(var(--bar-h,46px) + 10px)',right:'16px'},suppress:()=>panel=='downloads',onAll:()=>openPanel('downloads')});setInterval(()=>HX.watchSweep(),5*60000);setTimeout(()=>HX.watchSweep(),20000);
 // ---------- Floating video: leave a tab that's playing and it keeps playing in a small player you can drag and resize ----------
 let floating=null;
 // Diagnostics (Ctrl+K → Diagnostics): recent internal events, to help track down problems.
@@ -684,13 +680,7 @@ const closeBtn='<button class=btn data-close>Done</button>';
 function wire(root){root.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>closePanel())}
 
 function renderDownloads(){
-  const p=$('#panel');
-  p.innerHTML=`<h2>Downloads ${closeBtn}</h2>`+(downloads.length?downloads.map((d,i)=>`<div class="row dl"><div><b>${esc(d.name)}</b>
-    <small>${esc(hostOf(d.url))} · <span class=state>${d.state=='started'?'Downloading…':d.state=='done'?'Done':'Failed'}</span></small></div>
-    <div class=acts>${d.state=='done'?`<button class=btn data-open=${i}>Open</button><button class=btn data-show=${i}>Show in folder</button>`:''}</div></div>`).join('')
-    :'<div class=empty>Nothing downloaded yet this session.<br>Files are saved to your Downloads folder.</div>');
-  p.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>inv('download_open',{path:downloads[b.dataset.open].path}).catch(e=>toast(String(e))));
-  p.querySelectorAll('[data-show]').forEach(b=>b.onclick=()=>inv('download_reveal',{path:downloads[b.dataset.show].path}).catch(e=>toast(String(e))));
+  const p=$('#panel');p.innerHTML=`<h2>Downloads ${closeBtn}</h2><div id=dlbox></div>`;HX.dl.list($('#dlbox'),{title:false});
   wire(p);
 }
 

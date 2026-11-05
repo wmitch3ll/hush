@@ -662,6 +662,83 @@ window.HushX = function (A) {
   }
 
 
+  // ---------------- Downloads: a live drop-down (like other browsers) and a clear, detailed list ----------------
+  // Kept for this session only. Android reports progress; Windows reports start/finish (the bar then just moves).
+  const DL = { items: [], filter: 'all', hover: false, hideT: 0, dismissed: false, box: null, o: null };
+  const dlBytes = n => { n = +n || 0; if (n < 1024) return n + ' B'; const u = ['KB', 'MB', 'GB', 'TB']; let i = -1; do { n /= 1024; i++; } while (n >= 1024 && i < 3); return (n >= 100 ? n.toFixed(0) : n.toFixed(1)) + ' ' + u[i]; };
+  const dlTime = s => { s = Math.max(0, Math.round(s)); return s < 60 ? s + ' s' : s < 3600 ? Math.round(s / 60) + ' min' : (s / 3600).toFixed(1) + ' h'; };
+  const DLT = [[/^(pdf)$/, '#ef4444'], [/^(zip|rar|7z|tar|gz|xz|iso)$/, '#f59e0b'], [/^(png|jpe?g|gif|webp|avif|svg|heic|bmp)$/, '#22c55e'], [/^(mp4|mkv|mov|webm|avi|m4v)$/, '#a855f7'],
+    [/^(mp3|m4a|flac|wav|ogg|opus|aac)$/, '#ec4899'], [/^(apk|exe|msi|dmg|deb|appx|msix)$/, '#3b82f6'], [/^(docx?|xlsx?|pptx?|txt|csv|rtf|odt|epub)$/, '#0ea5e9']];
+  const dlExt = n => ((String(n || '').match(/\.([A-Za-z0-9]{1,5})$/) || [])[1] || 'file').toLowerCase();
+  const dlColor = e => (DLT.find(([r]) => r.test(e)) || [0, '#71717a'])[1];
+  const dlRisky = n => /^(exe|msi|bat|cmd|com|scr|ps1|vbs|js|jse|wsf|hta|lnk|reg|dll|jar|appx|msix|app|sh|command|pkg|dmg|apk)$/.test(dlExt(n));
+  function dlEvent(p) {
+    const key = p.id != null ? 'i' + p.id : p.url ? 'u' + p.url : 'n' + (p.name || '');
+    let d = DL.items.find(x => x.key === key && x.state !== 'done' && x.state !== 'failed' && x.state !== 'cancelled') || (p.state !== 'started' ? null : null);
+    if (!d && p.state !== 'started') d = DL.items.find(x => x.key === key);
+    const now = Date.now();
+    if (!d) { d = { key, t0: now, bytes: 0, total: 0, speed: 0, _b: 0, _t: now }; DL.items.unshift(d); DL.dismissed = false; }
+    if (p.name) d.name = p.name; else if (!d.name) d.name = 'download';
+    if (p.url) { d.url = p.url; d.host = host(p.url); }
+    if (p.path) d.path = p.path; if (p.mime) d.mime = p.mime; if (p.id != null) d.id = String(p.id);
+    if (p.total) d.total = +p.total; if (p.size) { d.total = +p.size; d.bytes = +p.size; }
+    if (p.bytes != null) { const dt = (now - d._t) / 1000; if (dt > 0.25 && p.bytes >= d._b) { const inst = (p.bytes - d._b) / dt; d.speed = d.speed ? d.speed * 0.6 + inst * 0.4 : inst; d._b = p.bytes; d._t = now; } d.bytes = +p.bytes; }
+    d.state = p.state === 'progress' || p.state === 'started' ? 'active' : p.state === 'paused' ? 'paused' : p.state; if (p.error) { const c = (String(p.error).match(/reason (\d+)/) || [])[1]; d.error = ({ 1006: 'not enough storage', 1007: 'no storage found', 1009: 'file already exists', 1008: 'could not resume', 1004: 'network error', 1002: 'server refused it', 1001: 'could not save the file', 1005: 'too many redirects' })[c] || String(p.error).slice(0, 120); }
+    if (d.state === 'done' || d.state === 'failed' || d.state === 'cancelled') { d.t1 = now; d.speed = 0; }
+    dlDrop(); if (DL.list) DL.list();
+  }
+  const dlActive = () => DL.items.filter(d => d.state === 'active' || d.state === 'paused');
+  const dlRow = (d, compact) => { const e = dlExt(d.name), pct = d.total ? Math.min(100, Math.round(d.bytes / d.total * 100)) : null, act = d.state === 'active' || d.state === 'paused';
+    const meta = act ? [pct != null ? pct + '%' : 'Downloading…', d.total ? dlBytes(d.bytes) + ' of ' + dlBytes(d.total) : d.bytes ? dlBytes(d.bytes) : '', d.speed > 1024 ? dlBytes(d.speed) + '/s' : '', d.speed > 1024 && d.total ? dlTime((d.total - d.bytes) / d.speed) + ' left' : '', d.state === 'paused' ? 'Paused' : ''].filter(Boolean).join(' · ')
+      : d.state === 'done' ? [d.total ? dlBytes(d.total) : '', d.host || '', new Date(d.t1 || d.t0).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })].filter(Boolean).join(' · ')
+      : d.state === 'cancelled' ? 'Cancelled' : 'Failed' + (d.error ? ' · ' + d.error : '');
+    return `<div class="dl-r ${d.state}" data-k="${esc(d.key)}"><i class=dl-c style="--c:${dlColor(e)}">${esc(e.slice(0, 4))}</i><div class=dl-t><b title="${esc(d.name)}">${esc(d.name)}</b>
+      ${act ? `<div class=dl-bar><span style="width:${pct == null ? 38 : pct}%" class="${pct == null ? 'ind' : ''}"></span></div>` : ''}<small>${esc(meta)}</small></div>
+      <div class=dl-a>${act ? (A.dlCancel && d.id ? `<button data-a=cancel title="Cancel" aria-label="Cancel">✕</button>` : '') : d.state === 'done' ? `<button data-a=open title="${dlRisky(d.name) && !A.mobile ? 'Show in folder' : 'Open'}">${dlRisky(d.name) && !A.mobile ? 'Folder' : 'Open'}</button>${!compact && !A.mobile ? '<button data-a=show title="Show in folder">Folder</button>' : ''}` : ''}${!act && !compact ? '<button data-a=rm title="Remove from list" aria-label="Remove">✕</button>' : ''}</div></div>`; };
+  function dlAct(k, a) { const d = DL.items.find(x => x.key === k); if (!d) return;
+    if (a === 'rm') { DL.items.splice(DL.items.indexOf(d), 1); dlDrop(); if (DL.list) DL.list(); return; }
+    if (a === 'cancel') return A.dlCancel && A.dlCancel(d);
+    if (a === 'show' || (a === 'open' && dlRisky(d.name) && !A.mobile)) return A.dlShow && A.dlShow(d);
+    if (a === 'open') return A.dlOpen && A.dlOpen(d); }
+  const DLCSS = `.dl-r{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:14px}.dl-r+.dl-r{margin-top:2px}.dl-c{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;flex:none;font:700 11px/1 system-ui;font-style:normal;letter-spacing:.3px;text-transform:uppercase;color:var(--c);background:color-mix(in srgb,var(--c) 16%,transparent);border:1px solid color-mix(in srgb,var(--c) 30%,transparent)}
+    .dl-t{flex:1;min-width:0;display:grid;gap:3px}.dl-t b{font:600 14px system-ui;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dl-t small{font:12px system-ui;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .dl-bar{height:5px;border-radius:99px;background:color-mix(in srgb,var(--ink) 12%,transparent);overflow:hidden}.dl-bar span{display:block;height:100%;border-radius:99px;background:var(--acc,var(--ink));transition:width .5s ease}.dl-bar span.ind{width:38%!important;animation:dlind 1.2s ease-in-out infinite alternate}@keyframes dlind{from{margin-left:0}to{margin-left:62%}}
+    .dl-a{display:flex;gap:6px;flex:none}.dl-a button{all:unset;cursor:pointer;padding:6px 12px;border-radius:99px;font:600 12.5px system-ui;color:var(--ink);background:color-mix(in srgb,var(--ink) 10%,transparent)}.dl-a button:hover{background:color-mix(in srgb,var(--ink) 18%,transparent)}.dl-a button:active{transform:scale(.96)}
+    .dl-r.failed .dl-t small,.dl-r.cancelled .dl-t small{color:#ef4444}.dl-r.failed .dl-c,.dl-r.cancelled .dl-c{filter:grayscale(1);opacity:.6}
+    .dl-h{display:flex;align-items:center;gap:8px;padding:2px 4px 10px}.dl-h b{font:700 17px system-ui}.dl-h small{color:var(--mute);font:13px system-ui;flex:1}.dl-seg{display:flex;gap:6px;margin:0 0 10px}.dl-seg button{all:unset;cursor:pointer;padding:6px 14px;border-radius:99px;font:600 12.5px system-ui;color:var(--mute);border:1px solid var(--line)}.dl-seg button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+    .dl-empty{text-align:center;color:var(--mute);padding:40px 16px;font:14px/1.5 system-ui}.dl-empty svg{width:42px;height:42px;stroke:currentColor;fill:none;stroke-width:1.5;opacity:.5;margin-bottom:8px}
+    #dldrop{box-sizing:border-box;position:fixed;z-index:70;width:min(380px,calc(100vw - 20px));padding:8px;border-radius:20px;background:color-mix(in srgb,var(--card) 92%,transparent);backdrop-filter:blur(20px) saturate(1.4);-webkit-backdrop-filter:blur(20px) saturate(1.4);border:1px solid var(--line);box-shadow:0 18px 50px #0007;transform:translateY(-16px) scale(.97);opacity:0;pointer-events:none;transition:transform .3s cubic-bezier(.2,.9,.25,1),opacity .2s}
+    #dldrop.on{transform:none;opacity:1;pointer-events:auto}#dldrop .dl-h{padding:6px 8px 6px}#dldrop .dl-h b{font-size:14px}#dldrop .dl-h button{all:unset;cursor:pointer;color:var(--mute);font:600 12.5px system-ui;padding:4px 8px;border-radius:99px}#dldrop .dl-h button:hover{background:color-mix(in srgb,var(--ink) 10%,transparent)}`;
+  function dlList(el, o) { // full list, filter chips, remove / clear
+    if (!document.getElementById('dl-css')) { const st = document.createElement('style'); st.id = 'dl-css'; st.textContent = DLCSS; document.head.append(st); }
+    const draw = () => { const items = DL.items.filter(d => DL.filter === 'all' || (DL.filter === 'active' ? (d.state === 'active' || d.state === 'paused') : d.state === 'done')), act = dlActive().length, done = DL.items.filter(d => d.state === 'done').length;
+      el.innerHTML = `<div class=dl-h><div style="flex:1">${o && o.title === false ? '' : '<b>Downloads</b><br>'}<small>${act ? act + ' in progress · ' : ''}${done} finished this session</small></div>${DL.items.some(d => d.state !== 'active' && d.state !== 'paused') ? '<button data-clear style="all:unset;cursor:pointer;font:600 12.5px system-ui;color:var(--mute);padding:6px 10px;border-radius:99px">Clear</button>' : ''}</div>
+        <div class=dl-seg>${[['all', 'All'], ['active', 'Active'], ['done', 'Finished']].map(([k, l]) => `<button data-f=${k} class="${DL.filter === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+        ${items.length ? items.map(d => dlRow(d, false)).join('') : `<div class=dl-empty><svg viewBox="0 0 24 24"><path d="M12 4v10m0 0l-4-4m4 4l4-4M5 19h14" stroke-linecap="round" stroke-linejoin="round"/></svg><br>${DL.filter === 'all' ? 'Nothing downloaded yet.<br>Files go to your Downloads folder.' : 'Nothing here.'}</div>`}
+        ${o && o.footer ? `<div style="text-align:center;margin-top:10px"><button data-foot style="all:unset;cursor:pointer;color:var(--mute);font:600 13px system-ui;padding:8px 14px">${esc(o.footer)}</button></div>` : ''}`;
+      el.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { DL.filter = b.dataset.f; draw(); });
+      el.querySelector('[data-clear]')?.addEventListener('click', () => { DL.items.splice(0, DL.items.length, ...DL.items.filter(d => d.state === 'active' || d.state === 'paused')); draw(); dlDrop(); });
+      el.querySelector('[data-foot]')?.addEventListener('click', () => o.onFooter && o.onFooter());
+      el.querySelectorAll('.dl-r').forEach(r => r.querySelectorAll('[data-a]').forEach(b => b.onclick = e => { e.stopPropagation(); dlAct(r.dataset.k, b.dataset.a); }));
+      el.querySelectorAll('.dl-r.done').forEach(r => r.onclick = () => dlAct(r.dataset.k, 'open')); };
+    DL.list = () => { if (!el.isConnected) { DL.list = null; return; } draw(); }; draw(); }
+  function dlDrop() { // the drop-down: appears on a new download, stays while something downloads, folds away after
+    if (!DL.o) return; const o = DL.o;
+    if (!document.getElementById('dl-css')) { const st = document.createElement('style'); st.id = 'dl-css'; st.textContent = DLCSS; document.head.append(st); }
+    let b = DL.box; if (!b) { b = DL.box = document.createElement('div'); b.id = 'dldrop'; b.setAttribute('role', 'status'); document.body.append(b);
+      b.addEventListener('pointerenter', () => { DL.hover = true; clearTimeout(DL.hideT); }); b.addEventListener('pointerleave', () => { DL.hover = false; dlDrop(); }); }
+    const act = dlActive(), recent = DL.items.filter(d => Date.now() - (d.t1 || d.t0) < 9000 || d.state === 'active' || d.state === 'paused').sort((a, b) => (dlActive().includes(b) ? 1 : 0) - (dlActive().includes(a) ? 1 : 0)).slice(0, 3);
+    const show = recent.length && !DL.dismissed && !(o.suppress && o.suppress());
+    if (!show) { b.classList.remove('on'); return; }
+    const pos = o.pos || {}; b.style.top = pos.top || '12px'; if (pos.right != null) { b.style.right = pos.right; b.style.left = 'auto'; } else { b.style.left = '50%'; b.style.marginLeft = 'calc(min(380px,calc(100vw - 20px)) / -2)'; }
+    b.innerHTML = `<div class=dl-h><b>${act.length ? 'Downloading' + (act.length > 1 ? ' ' + act.length + ' files' : '') : 'Download complete'}</b><span style="flex:1"></span><button data-all>See all</button><button data-x aria-label="Dismiss">✕</button></div>${recent.map(d => dlRow(d, true)).join('')}`;
+    b.classList.add('on');
+    b.querySelector('[data-all]').onclick = () => { b.classList.remove('on'); o.onAll && o.onAll(); };
+    b.querySelector('[data-x]').onclick = () => { DL.dismissed = !!act.length; b.classList.remove('on'); };
+    b.querySelectorAll('.dl-r').forEach(r => { r.querySelectorAll('[data-a]').forEach(x => x.onclick = e => { e.stopPropagation(); dlAct(r.dataset.k, x.dataset.a); }); r.onclick = () => dlAct(r.dataset.k, 'open'); });
+    clearTimeout(DL.hideT); if (!act.length && !DL.hover) DL.hideT = setTimeout(() => b.classList.remove('on'), 5500);
+  }
+
   // ---------------- Site icons (favicons) ----------------
   // Icons are captured from the pages you actually visit (nothing is fetched on the side) and kept on this device.
   const FAVK = 'hush.fav';
@@ -727,6 +804,6 @@ window.HushX = function (A) {
     M.onSync((j, at) => syncOnMsg(j, at));
     setTimeout(syncTick, 4000); SY.timer = setInterval(syncTick, 6000);
   }
-  return { fav, favSet, favStyle, syncInit, syncSendTab, syncInbox, siteHit, privacyReport, ai, aiName, aiRename, assistant, reportForm, devId: () => DEV_ID, errLog: () => errLog.slice(), settingsSearch, tour, TOR_INFO, mediaPrompt, LEAVE, SEC, bump, report, tabNote, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
+  return { dl: { items: DL.items, event: dlEvent, list: dlList, drop: o => { DL.o = o; }, active: () => dlActive().length, get all() { return DL.items; } }, fav, favSet, favStyle, syncInit, syncSendTab, syncInbox, siteHit, privacyReport, ai, aiName, aiRename, assistant, reportForm, devId: () => DEV_ID, errLog: () => errLog.slice(), settingsSearch, tour, TOR_INFO, mediaPrompt, LEAVE, SEC, bump, report, tabNote, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
     destructSweep, destructLabel, DESTRUCT, watchAdd, watchSweep, watchPanel, watchCount, syncLink, LS };
 };

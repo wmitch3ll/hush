@@ -118,6 +118,8 @@
     // Video diary for problem reports: the last few things that happened to the videos on this page (no URLs).
     const log = window.__hushMediaLog = [];
     const note = (k, v) => { try { log.push([Math.round(performance.now()), k, v ? Math.round(v.clientWidth) + "x" + Math.round(v.clientHeight) + (v.paused ? " paused" : " playing") + (v.muted ? " muted" : "") : "", document.visibilityState, document.hasFocus() ? "focus" : "nofocus", innerWidth + "x" + innerHeight, Date.now() - touched < 1500 ? "touched" : ""].join(" ")); if (log.length > 40) log.shift(); } catch (_) {} };
+    // Who paused it? (script file names only, no addresses) — shows up in problem reports.
+    try { const op = HTMLMediaElement.prototype.pause; HTMLMediaElement.prototype.pause = function () { try { const w = (new Error().stack || "").split("\n").slice(2, 4).map(x => (x.match(/([^\/\s()]+?)(?:\?[^:]*)?:(\d+):\d+\)?$/) || [0, "?", ""]).slice(1).join(":")).join(">"); note("pause()<" + w, this); } catch (_) {} return op.apply(this, arguments); }; } catch (_) {}
     for (const k of ["play", "pause", "waiting", "stalled", "emptied", "ended"]) document.addEventListener(k, e => note(k, e.target), true);
     for (const k of ["visibilitychange", "blur", "focus", "resize", "pagehide"]) addEventListener(k, () => note(k), true);
     // Report: the top page gathers the diary from every player frame too (they answer by message).
@@ -127,8 +129,10 @@
     if (window === top) window.__hushMediaCollect = () => { window.__hushMediaOut = [window.__hushMediaDump()]; relay({ __hushAsk: 1 }); };
     window.__hushMediaDump = () => (window === top ? "" : "[frame " + location.host + "] ") + log.slice(-15).join(" | ");
     const switching = () => st.sw && Date.now() - st.sw < 2500;
-    document.addEventListener("pause", e => { const v = e.target; if (!st.on || v.ended || (!st.keep && !switching()) || (!switching() && Date.now() - touched < 4000)) return;
-      const r = n => setTimeout(() => { if (!st.on || !v.paused || v.ended || (!st.keep && !switching()) || (!switching() && Date.now() - touched < 4000)) return;
+    // In the mini player only the pause button counts as "you paused it"; any other pause (the site reacting to a tap) is undone.
+    const mine = () => window.__hushFloatOn ? Date.now() - (window.__hushUserPause || 0) < 1000 : Date.now() - touched < 4000;
+    document.addEventListener("pause", e => { const v = e.target; if (!st.on || v.ended || (!st.keep && !switching()) || (!switching() && mine())) return;
+      const r = n => setTimeout(() => { if (!st.on || !v.paused || v.ended || (!st.keep && !switching()) || (!switching() && mine())) return;
         // If the site keeps pausing it (3 restarts within 6 s), stop fighting for a while — no stutter loop.
         const now = Date.now(); v.__hushR = (v.__hushR || []).filter(t => now - t < 6000); if (v.__hushR.length >= 3) return; v.__hushR.push(now);
         if (forced()) v.muted = st.mute; v.play().then(() => {}, () => n < 4 && r(n + 1)); }, n ? 450 : 250); r(0); }, true);

@@ -638,6 +638,31 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         if (tabs.values.none { it.priv }) try { ProfileStore.getInstance().deleteProfile(PRIVATE) } catch (e: Throwable) {}
     }
 
+    // ---------- Downloads: progress is polled from Android's download manager and sent to the app ----------
+    private val dlNames = HashMap<Long, String>(); private val dlLast = HashMap<Long, Long>()
+    private val dlTick = object : Runnable { override fun run() { pollDownloads() } }
+    private fun dm() = act.getSystemService(Activity.DOWNLOAD_SERVICE) as DownloadManager
+    private fun pollDownloads() { if (dlNames.isEmpty()) return
+        try { val q = DownloadManager.Query().setFilterById(*dlNames.keys.toLongArray()); dm().query(q)?.use { c ->
+            while (c.moveToNext()) { val id = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_ID)); val st = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                val bytes = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)); val total = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+                val mime = c.getString(c.getColumnIndexOrThrow(DownloadManager.COLUMN_MEDIA_TYPE)) ?: ""
+                val state = when (st) { DownloadManager.STATUS_SUCCESSFUL -> "done"; DownloadManager.STATUS_FAILED -> "failed"; DownloadManager.STATUS_PAUSED -> "paused"; else -> "progress" }
+                if (state == "progress" || state == "paused") { if (dlLast[id] == bytes && state == "progress") continue; dlLast[id] = bytes }
+                emit("download", JSObject().apply { put("id", id.toString()); put("name", dlNames[id] ?: ""); put("state", state); put("bytes", bytes); put("total", total); put("mime", mime)
+                    if (state == "failed") put("error", "reason " + c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))) })
+                if (state == "done" || state == "failed") { dlNames.remove(id); dlLast.remove(id) } } } } catch (e: Throwable) {}
+        if (dlNames.isNotEmpty()) act.window.decorView.postDelayed(dlTick, 700) }
+    @InvokeArg class DlArgs { var id: String = "" }
+    /** Open a finished download with the app that handles its type. */
+    @Command fun downloadOpen(i: Invoke) { val id = i.parseArgs(DlArgs::class.java).id.toLongOrNull() ?: return i.reject("bad id")
+        act.runOnUiThread { try { val m = dm(); val u = m.getUriForDownloadedFile(id) ?: return@runOnUiThread i.reject("File is gone")
+            val intent = Intent(Intent.ACTION_VIEW).setDataAndType(u, m.getMimeTypeForDownloadedFile(id) ?: "*/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            act.startActivity(intent); i.resolve() } catch (e: Throwable) { i.reject("No app can open this file") } } }
+    @Command fun downloadCancel(i: Invoke) { val id = i.parseArgs(DlArgs::class.java).id.toLongOrNull() ?: return i.reject("bad id")
+        act.runOnUiThread { try { dm().remove(id); dlNames.remove(id); emit("download", JSObject().apply { put("id", id.toString()); put("state", "cancelled") }) } catch (e: Throwable) {}; i.resolve() } }
+    /** Android's own Downloads screen. */
+    @Command fun downloadsApp(i: Invoke) { act.runOnUiThread { try { act.startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Throwable) {}; i.resolve() } }
     private fun download(url: String, ua: String?, cd: String?, mime: String?) {
         val name = URLUtil.guessFileName(url, cd, mime)
         try {
@@ -648,8 +673,9 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                 setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name)
             }
-            (act.getSystemService(Activity.DOWNLOAD_SERVICE) as DownloadManager).enqueue(req)
-            emit("download", JSObject().apply { put("name", name); put("state", "started") })
+            val id = dm().enqueue(req); dlNames[id] = name
+            emit("download", JSObject().apply { put("id", id.toString()); put("name", name); put("state", "started"); put("url", url); put("mime", mime ?: "") })
+            act.window.decorView.removeCallbacks(dlTick); act.window.decorView.postDelayed(dlTick, 500)
         } catch (e: Throwable) {
             emit("download", JSObject().apply { put("name", name); put("state", "failed"); put("error", e.message ?: "") })
         }

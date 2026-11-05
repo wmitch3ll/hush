@@ -255,7 +255,7 @@ async function switchWs(name,dir){await setPref("ws",name);const last=inWs().at(
   render();if(sheet==="switcher")drawSwitcher(dir);toast(name)}
 
 // ---------- tabs ----------
-function newTab(priv,quiet){maybeFloat(cur);const t={id:nid++,native:null,url:"",title:"",priv:!!priv,ws:curWs(),canBack:false,canFwd:false,last:Date.now()};tabs.push(t);cur=t.id;
+function newTab(priv,quiet,keepPlaying){if(!keepPlaying)maybeFloat(cur);const t={id:nid++,native:null,url:"",title:"",priv:!!priv,ws:curWs(),canBack:false,canFwd:false,last:Date.now()};tabs.push(t);cur=t.id;
   if(!quiet){show(null);render();setTimeout(()=>$("#url").focus(),80)}return t}
 let prevTab=null;
 function select(id,anim){const t=tabs.find(x=>x.id===id);if(!t)return;if(id!==cur)prevTab=cur;if(t.ws!==curWs())setPref("ws",t.ws);toolsShow(true);if(id!==cur)maybeFloat(cur);if(floating===t.native){floating=null;native("floatClose",{stop:false}).catch(()=>{})}if(bgMedia===id){bgMedia=null;native("media",{id:t.native,action:"release"}).catch(()=>{})}cur=id;t.last=Date.now();show(null);
@@ -406,10 +406,7 @@ window.__hushEvent=(name,d)=>{
     if(d.state==="finished"){if(!t.priv&&d.url.startsWith("http"))inv("history_add",{url:d.url,title:t.title||bare(d.url)}).catch(()=>{});saveSession()}
     if(d.state==="started"&&!torOn&&/^https?:/.test(d.url)&&listHas("tor_sites",bare(d.url))){setTor(true);toast("🧅 Tor mode on — you set this site to always use Tor")}
     if(t.id===cur){progress(d.state==="started");toolsShow(true);render();requestAnimationFrame(insets)}}
-  else if(name==="download"){
-    if(d.state==="started"){downloads.unshift({name:d.name,state:"started"});toast("Downloading "+d.name+" — see notifications")}
-    else{downloads.unshift({name:d.name,state:"failed"});toast("Download failed"+(d.error?": "+d.error:""))}
-    if(sheet==="downloads")drawDownloads()}
+  else if(name==="download"){HX.dl.event(d);if(d.state==="done")vibe();if(sheet==="downloads")drawDownloads()}
   else if(name==="tabAudio"){const t=tabs.find(x=>x.native===d.id);if(t&&t.audio!==!!d.audio){t.audio=!!d.audio;render();if(sheet==="switcher")drawSwitcher()}}
   else if(name==="listen"){listenSt=d.state;if(d.state==="empty")toast("Nothing to read on this page");else if(d.state==="unavailable")toast("No voice is installed — check Android text-to-speech settings");
     else if(d.state==="done")listenSt="";if(sheet==="menu")drawMenu()}
@@ -430,6 +427,7 @@ window.__hushEvent=(name,d)=>{
     actions(d.kind==="image"?"Image":u,[
       ...(d.kind==="image"?[]:[["Peek — preview without leaving",()=>native("peek",{url:u}).catch(e=>toast(String(e)))]]),
       ["Open in new tab",()=>{const t=newTab(false,true);t.url=u;openNative(t);render();toast("Opened in new tab")}],
+      ...(d.kind==="image"||!T()?.native?[]:[["⬒ Open in split screen (new tab beside this one)",()=>openInSplit(u)]]),
       ["Open in background",()=>{const keep=cur,t=newTab(false,true);t.url=u;cur=keep;inv("open_tab",{input:u,space:spaceOf(t.ws)}).then(id=>{t.native=id;inv("switch_tab",{label:T().native||"none"});render()});toast("Opened in background")}],
       ["Open in private tab",()=>{const t=newTab(true,true);t.url=u;openNative(t);render()}],
       ["Copy link",()=>copy(u)],["Show QR code",()=>qrSheet(u)]])}
@@ -481,6 +479,12 @@ function splitMode(){native("splitMode",{mode:pref("split_mode")==="spot"?"spot"
 async function splitToggle(id){const t=tabs.find(x=>x.id===id);if(!t||!t.native)return;if(floating===t.native)floating=null;
   try{const r=await native("splitTab",{id:t.native});if(splitSet.has(id))splitSet.delete(id);else splitSet.add(id);splitWith=splitSet.size?[...splitSet][0]:null;splitMode();show(null);
     toast(splitSet.size?`Split screen · ${(r&&r.count)||splitSet.size+1} tabs — tap one for its sound`:"Split screen closed")}catch(e){toast(String(e&&e.message||e))}}
+// Open a link as a new tab AND put it beside the page you're on (split screen) in one step. The page you're watching keeps playing.
+async function openInSplit(u){if(splitSet.size>=3)return toast("Split screen holds up to 4 tabs");
+  const keep=cur,t=newTab(false,true,true);t.url=u;cur=keep;
+  try{t.native=await inv("open_tab",{input:u,space:spaceOf(t.ws)});await inv("switch_tab",{label:T().native||"none"});
+    await native("splitTab",{id:t.native});splitSet.add(t.id);splitWith=[...splitSet][0];splitMode();render();toast("Split screen · tap a half for its sound")}
+  catch(e){toast(String(e&&e.message||e))}}
 function splitClose(){splitSet.clear();splitWith=null;native("splitTab",{id:""}).catch(()=>{});show(null)}
 const scenes=()=>{try{return JSON.parse(pref("scenes")||"[]")}catch(e){return[]}};
 // Scenes: save the tabs in the split (their pages) and bring the whole set back later in one tap.
@@ -488,7 +492,7 @@ async function sceneSave(){const ids=[cur,...splitSet].filter(Boolean),urls=ids.
   if(urls.length<2)return toast("Open a split screen first");const name=(prompt("Name this scene",urls.map(u=>hostOf(u).replace(/^www\./,"")).join(" + "))||"").trim().slice(0,40);if(!name)return;
   const l=scenes().filter(x=>x.name!==name);l.unshift({name,urls,mode:pref("split_mode")||"grid"});await setPref("scenes",JSON.stringify(l.slice(0,12)));toast("Scene saved")}
 async function sceneOpen(sc){splitClose();if(sc.mode)await setPref("split_mode",sc.mode);
-  const [first,...rest]=sc.urls;go(first);for(const u of rest.slice(0,3)){const keep=cur,t=newTab(false,true);t.url=u;cur=keep;
+  const [first,...rest]=sc.urls;go(first);for(const u of rest.slice(0,3)){const keep=cur,t=newTab(false,true,true);t.url=u;cur=keep;
     try{t.native=await inv("open_tab",{input:u,space:spaceOf(t.ws)});await inv("switch_tab",{label:T().native||"none"});await native("splitTab",{id:t.native});splitSet.add(t.id)}catch(e){}}
   splitMode();render();toast("Scene: "+sc.name)}
 function splitMenu(){const sc=scenes(),on=splitSet.size>0,spot=pref("split_mode")==="spot",aw=pref("split_awake")!=="false";
@@ -553,7 +557,7 @@ async function setTor(on){show(null);try{
   if(on){toast("Connecting to Tor… the first time can take ~20 s");const port=await inv("tor_start");await native("torMode",{on:true,port});toast("Tor mode on — sites can’t see your IP")}
   else{await native("torMode",{on:false});toast("Tor mode off")}
   torOn=on;document.body.classList.toggle("tor",on);render()}catch(e){toast(String(e))}}
-const HX=HushX({inv,pref,setPref,toast,open:u=>{show(null);go(u)},state:()=>state,reload:()=>loadState(),mobile:true,act:id=>runAction(id),
+const HX=HushX({dlOpen:d=>native("downloadOpen",{id:d.id}).catch(e=>toast(String(e&&e.message||e))),dlCancel:d=>native("downloadCancel",{id:d.id}).catch(()=>{}),inv,pref,setPref,toast,open:u=>{show(null);go(u)},state:()=>state,reload:()=>loadState(),mobile:true,act:id=>runAction(id),
   watchPick:()=>{if(!T()?.native)return toast("Open the page you want to watch first");show(null);setTimeout(()=>native("pick",{mode:"watch"}),200);toast("Tap the price or text to watch")},
   zap:()=>{show(null);setTimeout(()=>native("pick"),200);toast("Tap the thing to remove")}});
 function renderHome(t){const v=$("#view");HX.home(v,{priv:!!t?.priv,icon,long:true,
@@ -561,7 +565,7 @@ function renderHome(t){const v=$("#view");HX.home(v,{priv:!!t?.priv,icon,long:tr
   bottom:`<p class="hint hx-mute">Swipe the address bar ← → to switch tabs · hold a link to peek · hold a shortcut to edit</p>`,after:loadStats})}
 setInterval(()=>HX.archiveSweep(tabs,cur,id=>closeTab(id)),5*60000);
 setInterval(()=>{HX.destructSweep(tabs,id=>closeTab(id));if(sheet==="switcher")drawSwitcher()},20000);
-HX.syncInit(HM);setInterval(()=>HX.watchSweep(),5*60000);setTimeout(()=>HX.watchSweep(),20000);
+HX.syncInit(HM);HX.dl.drop({pos:{top:"calc(env(safe-area-inset-top,0px) + 8px)"},suppress:()=>sheet==="downloads",onAll:()=>{drawDownloads();show("downloads")}});setInterval(()=>HX.watchSweep(),5*60000);setTimeout(()=>HX.watchSweep(),20000);
 function openWatch(){$("#xs").innerHTML=head("Change watch")+'<div id="wx" style="padding:0 4px 20px"></div>';wire($("#xs"));HX.watchPanel($("#wx"),u=>{newTab(false,true);go(u)});show("xs")}
 async function panic(){show(null);try{HM.api.lockNow();EC.close()}catch(e){}
   const gone=tabs.filter(t=>t.priv).map(t=>t.id);for(const id of gone)await closeTab(id).catch(()=>{});if(torOn)inv("tor_new_identity").catch(()=>{});
@@ -742,8 +746,8 @@ async function drawHistory(){const el=$("#history"),on=pref("history")==="on",li
   paint("");$("#h-q").oninput=e=>paint(e.target.value.toLowerCase());
   $("#h-clear").onclick=async()=>{if(confirm("Clear all history?")){await inv("history_clear");drawHistory()}}}
 function drawDownloads(){const el=$("#downloads");
-  el.innerHTML=head("Downloads")+(downloads.length?downloads.map(d=>item(esc(d.name),d.state==="started"?"Downloading — open it from the notification or your Downloads folder":"Failed")).join("")
-    :`<div class="empty">Nothing downloaded yet.<br>Files go to your phone’s Downloads folder.</div>`);wire(el)}
+  el.innerHTML=head("Downloads")+'<div id="dlbox" style="padding:4px 6px 24px"></div>';
+  HX.dl.list($("#dlbox"),{title:false,footer:"Open Android’s Downloads app",onFooter:()=>native("downloadsApp").catch(()=>{})});wire(el)}
 function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<button class="sw ${on?"on":""}" data-sw="${k}"></button>`;
   el.innerHTML=head("Settings")+`<input class="txt" id="s-q" placeholder="Search settings" style="margin:0 0 6px"><h3>Layout</h3>
    ${item("Address bar","Swipe it ← → to switch tabs",seg("bar_pos",[["top","Top"],["bottom","Bottom"]]))}

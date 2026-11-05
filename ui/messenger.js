@@ -566,6 +566,36 @@ window.HushMsg = function (A) {
 .hm-id{font:12px ui-monospace,monospace;word-break:break-all;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px;user-select:all}
 .hm-req{margin:10px 12px;padding:12px;border-radius:14px;background:var(--card);border:1px solid var(--line);font-size:13px}
 .hm-tor{display:inline-flex;align-items:center;gap:4px;font:600 10.5px system-ui;color:#7c3aed;background:#7c3aed1a;border-radius:99px;padding:2px 8px}`;
+
+  // Murmur v2 look: calm glass surfaces, roomy rows, soft bubbles, one accent. Pure styling on the same markup.
+  const css3 = `
+.hm{--mr:20px;--sp:14px;letter-spacing:-.005em}
+.hm-h{padding:calc(12px + env(safe-area-inset-top,0px)*0) 16px 12px;border-bottom:0;background:linear-gradient(var(--bg),color-mix(in srgb,var(--bg) 92%,transparent));position:relative;z-index:2}
+.hm-h h2{font:700 24px/1.1 system-ui;letter-spacing:-.02em}
+.hm-ib{width:38px;height:38px;background:color-mix(in srgb,var(--ink) 7%,transparent);transition:background .15s,transform .15s}.hm-ib:hover{background:color-mix(in srgb,var(--ink) 13%,transparent)}.hm-ib:active{transform:scale(.92)}
+.hm-st{padding:3px 9px;border-radius:99px;background:color-mix(in srgb,var(--ink) 6%,transparent);width:max-content}
+.hm-search{margin:4px 16px 10px;width:calc(100% - 32px);padding:11px 16px;border-radius:99px;border:0;background:color-mix(in srgb,var(--ink) 7%,transparent);transition:background .15s,box-shadow .15s}.hm-search:focus{outline:none;background:color-mix(in srgb,var(--ink) 10%,transparent);box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 45%,transparent)}
+.hm-folders{padding:0 16px 10px!important;scrollbar-width:none}.hm-folders::-webkit-scrollbar{display:none}.hm-chip{transition:background .15s,transform .15s;border:0!important;background:color-mix(in srgb,var(--ink) 7%,transparent)}.hm-chip:active{transform:scale(.95)}
+.hm-row{margin:0 8px;width:calc(100% - 16px)!important;padding:11px 12px;border-radius:18px;transition:background .15s,transform .12s}.hm-row:hover{background:color-mix(in srgb,var(--ink) 6%,transparent)}.hm-row:active{transform:scale(.985)}
+.hm-row .t b{font:600 15.5px system-ui;letter-spacing:-.01em}.hm-row .t span{font-size:13.5px;margin-top:1px}
+.hm-row.unread .t b{font-weight:750}.hm-row.unread .t span{color:var(--ink);opacity:.85}.hm-row.unread em{color:var(--ink)}
+.hm-row .u{background:var(--acc);box-shadow:0 2px 10px color-mix(in srgb,var(--acc) 40%,transparent);min-width:20px;text-align:center;padding:2px 7px}
+.hm-av{width:50px;height:50px;font-size:17px;box-shadow:inset 0 0 0 1px #ffffff22,0 2px 8px #0002}
+.hm-fab{width:58px;height:58px;border-radius:20px;right:20px;bottom:calc(20px + env(safe-area-inset-bottom,0px));box-shadow:0 10px 30px color-mix(in srgb,var(--acc) 35%,#0008),inset 0 1px 0 #fff3;transition:transform .15s}.hm-fab:active{transform:scale(.93)}
+.hm-msgs{padding:14px 14px 8px;gap:2px}
+.hm-m{padding:9px 14px;border-radius:20px;font-size:15px;line-height:1.38;box-shadow:0 1px 2px #0001;animation:hmIn .22s cubic-bezier(.2,.9,.25,1)}@keyframes hmIn{from{opacity:0;transform:translateY(6px) scale(.98)}}
+.hm-m.me{background:linear-gradient(155deg,color-mix(in srgb,var(--acc) 100%,#fff 0%),color-mix(in srgb,var(--acc) 93%,#000));border-bottom-right-radius:7px}
+.hm-m.them{background:color-mix(in srgb,var(--ink) 7%,var(--bg));border:0;border-bottom-left-radius:7px}
+.hm-m.me+.hm-m.me{border-top-right-radius:7px;margin-top:1px}.hm-m.them+.hm-m.them{border-top-left-radius:7px;margin-top:1px}
+.hm-day{border:0;background:color-mix(in srgb,var(--ink) 7%,transparent);font-weight:650;letter-spacing:.02em}
+.hm-c{align-items:flex-end;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));border-top:0;background:linear-gradient(transparent,var(--bg) 30%)}
+.hm-c textarea{border:0;background:color-mix(in srgb,var(--ink) 8%,transparent);border-radius:24px;padding:11px 16px;font-size:15px;transition:box-shadow .15s}.hm-c textarea:focus{box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 40%,transparent)}
+.hm-send{width:44px;height:44px;box-shadow:0 6px 18px color-mix(in srgb,var(--acc) 35%,#0006);transition:transform .15s}.hm-send:active{transform:scale(.9)}
+.hm-menu{border:1px solid color-mix(in srgb,var(--ink) 10%,transparent);background:color-mix(in srgb,var(--card) 90%,transparent);backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);border-radius:18px;box-shadow:0 18px 50px #0006}
+.hm-card{border:0;background:color-mix(in srgb,var(--ink) 5%,var(--bg));border-radius:22px}.hm-btn{border-radius:99px;padding:10px 18px}.hm-in{border:0;background:color-mix(in srgb,var(--ink) 7%,transparent);border-radius:14px}
+.hm-body{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--ink) 22%,transparent) transparent}.hm-body::-webkit-scrollbar{width:8px}.hm-body::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--ink) 22%,transparent);border-radius:99px;border:2px solid transparent;background-clip:padding-box}
+.hm-pinbar{border-bottom:0;background:color-mix(in srgb,var(--ink) 6%,var(--bg));margin:0 12px;border-radius:14px}
+@media (prefers-reduced-motion:reduce){.hm-m{animation:none}}`;
   const css2 = `
 .hm-img{display:block;width:100%;max-height:340px;object-fit:cover;border-radius:12px;margin:0 0 4px;cursor:zoom-in;background:#0002;min-height:60px}
 .hm-m.img{padding:4px;width:min(300px,78%)}.hm-m.img .tm{margin:0 6px 2px}
@@ -612,7 +642,7 @@ window.HushMsg = function (A) {
 .hm-rec .dot{width:10px;height:10px;border-radius:50%;background:#ef4444;animation:hmp .8s infinite alternate}.hm-rec .hint{flex:1;color:var(--mute);font-weight:500;transition:opacity .1s}.hm-rec .lockh{color:var(--mute);font-size:12px;font-weight:500}
 .hm-rec .cx{font-size:18px;padding:6px}.hm-cv{position:relative;width:min(70vw,300px);aspect-ratio:1;border-radius:50%;overflow:hidden;margin-bottom:24px;box-shadow:0 12px 50px #0006}
 .hm-cv video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}.hm-cv .ring{position:absolute;inset:0;border-radius:50%;background:conic-gradient(#ef4444 calc(var(--p,0)*360deg),transparent 0);-webkit-mask:radial-gradient(circle,transparent 66%,#000 67%);mask:radial-gradient(circle,transparent 66%,#000 67%)}`;
-  if (!document.getElementById('hm-css')) { const s = document.createElement('style'); s.id = 'hm-css'; s.textContent = css + css2; document.head.append(s); }
+  if (!document.getElementById('hm-css')) { const s = document.createElement('style'); s.id = 'hm-css'; s.textContent = css + css2 + css3; document.head.append(s); }
   const I = {
     back: '<svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>', plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
     x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>', send: '<svg viewBox="0 0 24 24"><path d="M3 20l18-8L3 4v6l12 2-12 2z"/></svg>',
@@ -704,7 +734,7 @@ window.HushMsg = function (A) {
       ${!view.q && keys.every(x => x.k === 'self') ? `<div class=hm-welcome style="margin:6px 14px 10px;padding:18px;border-radius:18px;background:color-mix(in srgb,var(--mur) 10%,var(--card));border:1px solid color-mix(in srgb,var(--mur) 25%,transparent)">
         <b style="display:block;font-size:17px;margin-bottom:4px">Add your first friend</b><span style="color:var(--mute);font-size:14px;line-height:1.45">Meet up and scan each other’s code (that also verifies them), or send a one-time invite link.</span>
         <div class=hm-cta style="justify-content:flex-start"><button class=hm-btn data-go=me>Show my code</button><button class="hm-btn ghost" data-go=add>Add a friend</button></div></div>` : ''}
-      ${keys.map(({ k, last }) => `<button class=hm-row data-chat="${k}">${avatar(k)}<div class=t><b>${esc(chatName(k))}${badgeV(k)}</b><span>${k === 'self' && !last ? 'Links, photos and notes — synced to your devices' : last ? (last.from === 'me' && k !== 'self' ? 'You: ' : isGroup(k) ? esc(first(last.from)) + ': ' : '') + esc(preview(last).slice(0, 80)) : c[k]?.request ? 'Wants to chat' : isGroup(k) ? 'New group' : 'Say hi 👋'}</span></div>
+      ${keys.map(({ k, last }) => `<button class="hm-row${un[k] ? ' unread' : ''}" data-chat="${k}">${avatar(k)}<div class=t><b>${esc(chatName(k))}${badgeV(k)}</b><span>${k === 'self' && !last ? 'Links, photos and notes — synced to your devices' : last ? (last.from === 'me' && k !== 'self' ? 'You: ' : isGroup(k) ? esc(first(last.from)) + ': ' : '') + esc(preview(last).slice(0, 80)) : c[k]?.request ? 'Wants to chat' : isGroup(k) ? 'New group' : 'Say hi 👋'}</span></div>
         <em>${last ? short(last.at) : ''}${un[k] ? `<br><span class=u>${un[k]}</span>` : ''}</em></button>`).join('') ||
         (status !== 'on' && !okRelays() ? '<div class=sk-row><div class="sk c"></div><div style="flex:1"><div class="sk l"></div><div class="sk l2"></div></div></div>'.repeat(3) : '') + `<div class=hm-empty><svg class=empty-art viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=1.2><path d="M4 5h16v11H9l-5 4z"/><path d="M8 10h8M8 13h5"/></svg><b>No chats yet</b>Tap <b>+</b> to add someone with their Hush ID, or show them yours with the QR button.</div>`}</div>
       <button class=hm-fab data-go=add aria-label="New chat">${I.plus}</button></div>`;
