@@ -12,7 +12,7 @@ window.HushMsg = function (A) {
                set(k, v) { try { localStorage.setItem('hush.msg.' + k, JSON.stringify(v)) } catch (e) { A.toast('Storage is full — delete some old chats'); } } };
   const RELAYS_DEFAULT = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net', 'wss://offchain.pub'];
   const REACT = ['❤️', '👍', '😂', '😮', '😢', '🙏'];
-  const K_TYPING = 20014, K_READ = 20015, K_PCARD = 10414, K_TOG = 20016;   // 20016: Watch Together controls (play/pause/skip/start/go)
+  const K_TYPING = 20014, K_READ = 20015, K_PCARD = 10414, K_TOG = 20016, K_SYNC = 10417;   // 20016: Watch Together controls (play/pause/skip/start/go)
     // 10414: your profile card (name, photo, status, aura), sent privately to contacts        // Hush-only signals, sent inside the same encrypted gift wraps
   const CHUNK = 24000, SMALL = 2.5 * 1024 * 1024, MAX_BIG = 100 * 1024 * 1024, AUTO_DL = 25 * 1024 * 1024;
   // Encrypted-file hosts (Blossom). Files are AES-256-GCM encrypted on this device before upload; uploads/downloads go through Tor.
@@ -130,7 +130,7 @@ window.HushMsg = function (A) {
 
   // ---------------------------------------------------------------- shared API for Echo (social): subscriptions + signed events
   const ECHO_KINDS = new Set([1414, 1416, 1417, 1418, 31414]);
-  const hooks = { echo: [], reset: [], backup: [], restore: [] }, subs = {}, subSeen = new Set();
+  const hooks = { echo: [], reset: [], backup: [], restore: [], sync: [] }, subs = {}, subSeen = new Set();
   function req(id, filters, onEvent, onEose) { subs[id] = { filters, onEvent, onEose, eose: 0 }; for (const u of relays()) send(u, ['REQ', id, ...filters]); }
   function unreq(id) { if (!subs[id]) return; delete subs[id]; for (const u of relays()) send(u, ['CLOSE', id]); }
   function sign(ev) { return N.finalizeEvent({ created_at: now(), tags: [], content: '', ...ev }, sk); }
@@ -168,6 +168,8 @@ window.HushMsg = function (A) {
   const api = { avatarHTML: (k, z) => avatarHTML(k, z), hydrate: el => hydrate(el), myProfile: () => profile(), ready: () => loadKey(), gate: (el, then) => gate(el, then), me: () => me, start, req, unreq, sign, broadcast, wrapTo, uploadEncrypted, mediaUrl, shrink,
     onEcho: f => hooks.echo.push(f), onReset: f => hooks.reset.push(f), onBackup: (get, put) => { hooks.backup.push(get); hooks.restore.push(put); }, npub, nameOf, colorOf, initials, contacts, profile, setProfile: p => LS.set('profile', p), status: () => status, okRelays,
     chatList: () => { if (!sk) return []; const c = contacts(); return [...new Set([...Object.keys(chats()), ...Object.keys(c).filter(k => !c[k].blocked && !c[k].request), ...Object.keys(groups())])].filter(k => k && k !== 'self').map(k => ({ key: k, name: chatName(k) })); },
+    // Device sync: end-to-end encrypted messages from this ID to itself; every linked device (same ID) receives them.
+    onSync: f => hooks.sync.push(f), syncSend: o => { if (!sk) return false; try { wrapTo([], K_SYNC, JSON.stringify(o).slice(0, 60000)); return true; } catch { return false; } }, hasId: () => !!sk,
     editPhoto: f => editPhoto(f),
     parseId: s => parseId(s),
     sendTo: (key, text) => { if (!sk || !key) return false; sendText(key, String(text).slice(0, 4000), null); return true; },
@@ -182,6 +184,7 @@ window.HushMsg = function (A) {
     if (seen.size % 25 === 0) LS.set('seen', [...seen].slice(-8000));
     let r; try { if (!N.verifyEvent(wrap)) return; r = N.nip59.unwrapEvent(wrap, sk); } catch { return; }
     if (ECHO_KINDS.has(r.kind)) { if (!contacts()[r.pubkey]?.blocked) hooks.echo.forEach(f => { try { f(r, 'private'); } catch (e) {} }); return; }   // Echo (private posts)
+    if (r.kind === K_SYNC) { if (r.pubkey !== me || now() - r.created_at > 14 * 86400) return; let j; try { j = JSON.parse(r.content); } catch { return; } hooks.sync.forEach(f => { try { f(j, r.created_at); } catch (e) {} }); return; }   // browser sync between my own devices
     const ps = r.tags.filter(t => t[0] === 'p').map(t => t[1]).filter(p => /^[0-9a-f]{64}$/.test(p));
     const key = keyOf([r.pubkey, ...ps]) || (r.pubkey === me ? 'self' : ''); if (!key) return;
     if (members(key).some(pk => contacts()[pk]?.blocked) && !isGroup(key)) return;

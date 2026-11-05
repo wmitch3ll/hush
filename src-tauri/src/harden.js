@@ -183,3 +183,30 @@
     setInterval(scan, 2000);
   }
 })();
+
+// ---- Audio-only mode: hides every video (this page and embedded players) but keeps the sound going. Toggle with __hushAO(true|false).
+(() => {
+  if (window.__hushAOinit) return; window.__hushAOinit = true;
+  const ID = "__hush_ao_style";
+  const apply = on => {
+    window.__hushAOon = !!on;
+    let st = document.getElementById(ID);
+    if (on && !st) { st = document.createElement("style"); st.id = ID; st.textContent = "video{opacity:0!important}"; (document.head || document.documentElement).append(st); }
+    if (!on && st) st.remove();
+    if (window === top) {
+      let o = document.getElementById("__hush_ao_o");
+      if (on && !o && document.body) {
+        o = document.createElement("div"); o.id = "__hush_ao_o";
+        o.style.cssText = "position:fixed;inset:0;z-index:2147483646;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:radial-gradient(120% 90% at 50% 0%,#1b1b1f,#050506);color:#f2f2f2;font:600 15px system-ui;text-align:center;padding:24px";
+        const t = (document.title || location.hostname).slice(0, 90).replace(/[<>&]/g, "");
+        o.innerHTML = '<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#f2f2f2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/></svg><div>' + t + '</div><div style="font-weight:500;color:#8a8a8e;font-size:13px">Audio only · tap to show video</div>';
+        o.onclick = () => window.__hushAO(false);
+        document.body.append(o);
+      }
+      if (!on && o) o.remove();
+    }
+    for (const f of document.querySelectorAll("iframe")) { try { f.contentWindow.postMessage({ __hushAO: on ? 1 : 0 }, "*"); } catch (e) {} }
+  };
+  window.__hushAO = on => { apply(on); };
+  addEventListener("message", e => { const d = e.data; if (d && typeof d === "object" && "__hushAO" in d && window !== top && e.source === parent) apply(!!d.__hushAO); });
+})();

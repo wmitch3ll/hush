@@ -661,6 +661,55 @@ window.HushX = function (A) {
       box.querySelectorAll('[data-h]').forEach(b => b.onclick = async () => { await o.resetPerm(b.dataset.h); privacyReport(el, o); });
       box.querySelector('.pv-all')?.addEventListener('click', async () => { for (const x of list) await o.resetPerm(x.host); privacyReport(el, o); }); }).catch(() => {});
   }
-  return { siteHit, privacyReport, ai, aiName, aiRename, assistant, reportForm, devId: () => DEV_ID, errLog: () => errLog.slice(), settingsSearch, tour, TOR_INFO, mediaPrompt, LEAVE, SEC, bump, report, tabNote, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
+
+  // ---------------- Device sync (PC <-> phone) ----------------
+  // Rides on Murmur: encrypted messages from your Hush ID to itself, through Tor. Link the two devices once
+  // (Murmur -> Your Hush ID -> Link another device) and they share bookmarks, the reading list, and "send this page".
+  const SY = { on: false, snap: null, timer: 0 };
+  const syKey = () => { try { return JSON.parse(localStorage.getItem('hush.sync.snap') || 'null'); } catch { return null; } };
+  const sySave = m => { try { localStorage.setItem('hush.sync.snap', JSON.stringify(m)); } catch {} };
+  const syMap = () => { const m = {}; for (const b of (A.state().bookmarks || [])) if (/^https?:/.test(b.url)) m[b.url] = [b.title || '', b.folder || '']; return m; };
+  const syWho = () => A.mobile ? 'phone' : 'computer';
+  function syncSendTab(url, title) {
+    if (!SY.M || !SY.M.hasId()) { A.toast('Set up Murmur and link your other device first'); return false; }
+    if (!/^https?:\/\//.test(url || '')) { A.toast('Only web pages can be sent'); return false; }
+    SY.M.syncSend({ t: 'tab', u: url, n: String(title || '').slice(0, 120), d: syWho(), at: Date.now() });
+    A.toast('📲 Sent to your other device'); return true;
+  }
+  function syncInbox() { try { return JSON.parse(localStorage.getItem('hush.sync.in') || '[]'); } catch { return []; } }
+  async function syncOnMsg(j, at) {
+    if (!j || typeof j !== 'object') return;
+    if (j.t === 'tab') {
+      if (!/^https?:\/\/\S{3,2000}$/.test(j.u || '')) return;
+      const seen = syncInbox(); if (seen.some(x => x.u === j.u && Math.abs(x.at - j.at) < 2000)) return;
+      seen.unshift({ u: j.u, n: String(j.n || '').slice(0, 120), d: String(j.d || '').slice(0, 12), at: +j.at || Date.now() }); try { localStorage.setItem('hush.sync.in', JSON.stringify(seen.slice(0, 30))); } catch {}
+      if (Date.now() - (+j.at || 0) < 6 * 3600e3) A.toast('📲 From your ' + (j.d === 'phone' ? 'phone' : 'computer') + ': ' + (j.n || new URL(j.u).hostname).slice(0, 60), ['Open', () => A.open(j.u)]);
+      return;
+    }
+    if (j.t === 'bm' && Array.isArray(j.add || [])) {
+      const have = syMap(), snap = syKey() || {}; let changed = false;
+      for (const b of (j.add || []).slice(0, 400)) {
+        if (!b || !/^https?:\/\/\S{3,2000}$/.test(b.u || '') || have[b.u]) continue;
+        try { await A.inv('bookmark_add', { title: String(b.n || '').slice(0, 200), url: b.u, folder: b.f === 'reading' ? 'reading' : null }); snap[b.u] = [String(b.n || '').slice(0, 200), b.f || '']; changed = true; } catch {}
+      }
+      for (const u of (j.del || []).slice(0, 400)) { if (have[u]) { try { await A.inv('bookmark_remove', { url: u }); delete snap[u]; changed = true; } catch {} } }
+      sySave(snap); if (changed) { try { await A.reload(); } catch {} }
+    }
+  }
+  function syncTick() {
+    if (!SY.M || !SY.M.hasId()) return;
+    const now = syMap(), old = syKey();
+    if (!old) { sySave(now); const all = Object.entries(now).slice(0, 300).map(([u, [n, f]]) => ({ u, n, f })); if (all.length) SY.M.syncSend({ t: 'bm', add: all }); return; }   // first run: offer everything once, merged by URL
+    const add = [], del = [];
+    for (const u in now) if (!old[u]) add.push({ u, n: now[u][0], f: now[u][1] });
+    for (const u in old) if (!now[u]) del.push(u);
+    if (add.length || del.length) { sySave(now); SY.M.syncSend({ t: 'bm', add: add.slice(0, 100), del: del.slice(0, 100) }); }
+  }
+  function syncInit(M) {
+    if (SY.on || !M || !M.onSync) return; SY.on = true; SY.M = M;
+    M.onSync((j, at) => syncOnMsg(j, at));
+    setTimeout(syncTick, 4000); SY.timer = setInterval(syncTick, 6000);
+  }
+  return { syncInit, syncSendTab, syncInbox, siteHit, privacyReport, ai, aiName, aiRename, assistant, reportForm, devId: () => DEV_ID, errLog: () => errLog.slice(), settingsSearch, tour, TOR_INFO, mediaPrompt, LEAVE, SEC, bump, report, tabNote, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
     destructSweep, destructLabel, DESTRUCT, watchAdd, watchSweep, watchPanel, watchCount, syncLink, LS };
 };
