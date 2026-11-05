@@ -434,7 +434,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                         if (inBg && !am.isMusicActive) v.evaluateJavascript("window.__hushBgResume&&__hushBgResume()", null) }, 350); true }
                     "hush-float" -> { act.runOnUiThread { onFloatUrl(t, r.url) }; true }
                     // split.js: you tapped this half → it gets the highlight and the sound.
-                    "hush-split" -> { act.runOnUiThread { if (splitIds.isNotEmpty() && t.id in panes() && splitFocus != t.id) { splitFocus = t.id; render(); applySplit() } }; true }
+                    "hush-split" -> { act.runOnUiThread { if (r.url.host == "swap") { if (t.id in panes()) { splitRot++; splitFrac = 1f - splitFrac; render() } } else if (splitIds.isNotEmpty() && t.id in panes() && splitFocus != t.id) { splitFocus = t.id; render(); applySplit() } }; true }
                     // harden.js: a link to another site that wanted a new window → Hush opens it in a background tab.
                     // harden.js on console.groq.com: hand a freshly made Groq key to the assistant (only from Groq's own site).
                     "hush-groq" -> { val k = r.url.getQueryParameter("k") ?: ""
@@ -530,6 +530,22 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
 
     /** Small JPEG of what the tab currently shows, for the tab grid. Never for private tabs. */
     /** Copy what a view shows on screen (WebViews draw on the GPU, so drawing them into a bitmap gives black). */
+    /** Full-page screenshot: scroll through the page one screen at a time and stitch the screens together
+     *  (up to 12 screens). Sticky headers/bars are hidden after the first screen so they don't repeat. */
+    private fun wholePage(w: WebView, done: (android.graphics.Bitmap?) -> Unit) {
+        val vh = w.height; val total = (w.contentHeight * w.resources.displayMetrics.density).toInt().coerceAtLeast(vh).coerceAtMost(vh * 12)
+        val out = try { android.graphics.Bitmap.createBitmap(w.width, total, android.graphics.Bitmap.Config.ARGB_8888) } catch (e: Throwable) { done(null); return }
+        val c = android.graphics.Canvas(out); val y0 = w.scrollY
+        val steps = (0 until total step vh).map { minOf(it, total - vh) }.distinct()
+        fun finish(ok: Boolean) { w.evaluateJavascript("document.querySelectorAll('[data-hush-shot]').forEach(e=>{e.style.visibility=e.dataset.hushShot;e.removeAttribute('data-hush-shot')})", null)
+            w.scrollTo(0, y0); if (ok) done(out) else { out.recycle(); done(null) } }
+        fun step(k: Int) { if (k >= steps.size) { finish(true); return }
+            w.scrollTo(0, steps[k])
+            w.postDelayed({ pixels(w, Int.MAX_VALUE) { b -> if (b == null) { finish(false); return@pixels }
+                c.drawBitmap(b, 0f, steps[k].toFloat(), null); b.recycle()
+                if (k == 0) w.evaluateJavascript("for(const e of document.querySelectorAll('body *')){const p=getComputedStyle(e).position;if(p==='fixed'||p==='sticky'){e.dataset.hushShot=e.style.visibility;e.style.visibility='hidden'}}", null)
+                w.postDelayed({ step(k + 1) }, if (k == 0) 120 else 0) } }, 160) }
+        step(0) }
     private fun pixels(v: android.view.View, maxW: Int, done: (android.graphics.Bitmap?) -> Unit) {
         if (v.width <= 0 || v.height <= 0 || !v.isAttachedToWindow || Build.VERSION.SDK_INT < 26) { done(null); return }
         val loc = IntArray(2); v.getLocationInWindow(loc)
@@ -637,18 +653,20 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             val W = root.width.takeIf { it > 0 } ?: act.resources.displayMetrics.widthPixels
             val H = (root.height.takeIf { it > 0 } ?: act.resources.displayMetrics.heightPixels) - topPx - bottomPx
             val gap = dp(4); val wide = W > H; val n = ps.size
+            // Long-press a pane swaps places: the layout order rotates; each tab keeps its sound/focus.
+            val L = if (n > 1) { val k = splitRot % n; ps.drop(k) + ps.take(k) } else ps
             val rects = HashMap<String, IntArray>()   // x, y, w, h (y from the top of the page area)
             if (splitMode == "spot") {
-                val f = splitFocus?.takeIf { it in ps } ?: ps[0]; val rest = ps.filter { it != f }
+                val f = splitFocus?.takeIf { it in L } ?: L[0]; val rest = L.filter { it != f }
                 if (wide) { val bw = (W * 0.72f).toInt(); rects[f] = intArrayOf(0, 0, bw, H); val sh = (H - gap * (rest.size - 1)) / rest.size
                     rest.forEachIndexed { k, id -> rects[id] = intArrayOf(bw + gap, k * (sh + gap), W - bw - gap, sh) } }
                 else { val bh = (H * 0.68f).toInt(); rects[f] = intArrayOf(0, 0, W, bh); val sw = (W - gap * (rest.size - 1)) / rest.size
                     rest.forEachIndexed { k, id -> rects[id] = intArrayOf(k * (sw + gap), bh + gap, sw, H - bh - gap) } }
             } else if (wide && n > 2) { val cw = (W - gap) / 2; val rh = (H - gap) / 2
-                ps.forEachIndexed { k, id -> val last = n == 3 && k == 2; rects[id] = intArrayOf(if (last) 0 else (k % 2) * (cw + gap), (k / 2) * (rh + gap), if (last) W else cw, rh) }
-            } else if (wide) { val cw = (W * splitFrac).toInt().coerceIn(dp(160), W - dp(160)); rects[ps[0]] = intArrayOf(0, 0, cw, H); rects[ps[1]] = intArrayOf(cw + gap, 0, W - cw - gap, H)
-            } else if (n == 2) { val h1 = (H * splitFrac).toInt().coerceIn(dp(120), H - dp(120)); rects[ps[0]] = intArrayOf(0, 0, W, h1); rects[ps[1]] = intArrayOf(0, h1 + gap, W, H - h1 - gap)
-            } else { val rh = (H - gap * (n - 1)) / n; ps.forEachIndexed { k, id -> rects[id] = intArrayOf(0, k * (rh + gap), W, rh) } }
+                L.forEachIndexed { k, id -> val last = n == 3 && k == 2; rects[id] = intArrayOf(if (last) 0 else (k % 2) * (cw + gap), (k / 2) * (rh + gap), if (last) W else cw, rh) }
+            } else if (wide) { val cw = (W * splitFrac).toInt().coerceIn(dp(160), W - dp(160)); rects[L[0]] = intArrayOf(0, 0, cw, H); rects[L[1]] = intArrayOf(cw + gap, 0, W - cw - gap, H)
+            } else if (n == 2) { val h1 = (H * splitFrac).toInt().coerceIn(dp(120), H - dp(120)); rects[L[0]] = intArrayOf(0, 0, W, h1); rects[L[1]] = intArrayOf(0, h1 + gap, W, H - h1 - gap)
+            } else { val rh = (H - gap * (n - 1)) / n; L.forEachIndexed { k, id -> rects[id] = intArrayOf(0, k * (rh + gap), W, rh) } }
             ps.forEach { id -> val pt = tabs[id] ?: return@forEach; val r = rects[id] ?: return@forEach
                 if (pt.wv == null) { pt.box = null; pt.wv = make(pt).also { w -> if (pt.saved != null) w.restoreState(pt.saved!!) else w.loadUrl(pt.url) } }
                 val pb = boxFor(pt, pt.wv!!); val lp = android.widget.FrameLayout.LayoutParams(r[2], r[3]).apply { leftMargin = r[0]; topMargin = topPx + r[1] }
@@ -656,13 +674,25 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                 if (pt.id in sunk) { sunk -= pt.id; pb.translationZ = 0f; pb.importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_AUTO; pb.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS } }
             // Drag handle between two panes in grid mode.
             if (n == 2 && splitMode != "spot") {
-                val d: android.view.View = splitBar ?: android.view.View(act).also { v: android.view.View -> splitBar = v; v.setBackgroundColor(0x55888888)
-                    var p0 = 0f; var f0 = 0f; v.setOnTouchListener(android.view.View.OnTouchListener { _: android.view.View, e: android.view.MotionEvent -> val w2 = root.width > root.height - topPx - bottomPx; val r: Boolean = when (e.actionMasked) {
-                        android.view.MotionEvent.ACTION_DOWN -> { p0 = if (w2) e.rawX else e.rawY; f0 = splitFrac; true }
-                        android.view.MotionEvent.ACTION_MOVE -> { val av = (if (w2) root.width else root.height - topPx - bottomPx).coerceAtLeast(1); splitFrac = (f0 + ((if (w2) e.rawX else e.rawY) - p0) / av).coerceIn(0.2f, 0.8f); render(); true }
-                        else -> true }; r }) }
-                val r0 = rects[ps[0]]!!
-                val dl = if (wide) android.widget.FrameLayout.LayoutParams(gap, H).apply { leftMargin = r0[2]; topMargin = topPx } else android.widget.FrameLayout.LayoutParams(-1, gap).apply { topMargin = topPx + r0[3] }
+                val d: android.view.View = splitBar ?: FrameLayout(act).also { v -> splitBar = v
+                    val pill = android.view.View(act).apply { background = android.graphics.drawable.GradientDrawable().apply { cornerRadius = dp(3).toFloat(); setColor(0xCCFFFFFF.toInt()) }; elevation = dp(2).toFloat(); tag = "pill" }
+                    v.addView(pill)
+                    var p0 = 0f; var f0 = 0f; var last = 0L
+                    v.setOnTouchListener { _, e -> val w2 = root.width > root.height - topPx - bottomPx
+                        when (e.actionMasked) {
+                            android.view.MotionEvent.ACTION_DOWN -> { p0 = if (w2) e.rawX else e.rawY; f0 = splitFrac; pill.animate().scaleX(1.4f).scaleY(1.4f).setDuration(120).start() }
+                            android.view.MotionEvent.ACTION_MOVE -> { val av = (if (w2) root.width else root.height - topPx - bottomPx).coerceAtLeast(1); splitFrac = (f0 + ((if (w2) e.rawX else e.rawY) - p0) / av).coerceIn(0.2f, 0.8f); render() }
+                            else -> { pill.animate().scaleX(1f).scaleY(1f).setDuration(160).start()
+                                val now = System.currentTimeMillis(); val tap = Math.abs((if (w2) e.rawX else e.rawY) - p0) < dp(6)
+                                // Snap back to 50/50 near the middle, or on a double-tap.
+                                if (Math.abs(splitFrac - 0.5f) < 0.05f || (tap && now - last < 320)) { splitFrac = 0.5f; render() }
+                                if (tap) last = now } }
+                        true } }
+                val pill = (d as ViewGroup).findViewWithTag<android.view.View>("pill")
+                val r0 = rects[L[0]]!!
+                val grab = dp(24)   // touch area wider than the visible gap
+                val dl = if (wide) android.widget.FrameLayout.LayoutParams(grab, H).apply { leftMargin = r0[2] + gap / 2 - grab / 2; topMargin = topPx } else android.widget.FrameLayout.LayoutParams(-1, grab).apply { topMargin = topPx + r0[3] + gap / 2 - grab / 2 }
+                pill.layoutParams = FrameLayout.LayoutParams(if (wide) dp(4) else dp(40), if (wide) dp(40) else dp(4), android.view.Gravity.CENTER)
                 if (d.parent == null) root.addView(d, dl) else d.layoutParams = dl
                 d.bringToFront()
             } else splitBar?.let { (it.parent as? ViewGroup)?.removeView(it) }
@@ -679,7 +709,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
      *  (or an in-page change like YouTube's) settles, if it can't scroll — or it's back at the top — show the bar. */
     private fun barCheck(t: Tab, v: WebView) { v.postDelayed({ if (t.id == active && (!v.canScrollVertically(1) || v.scrollY < dp(30)))
         emit("scroll", JSObject().apply { put("id", t.id); put("dir", -1); put("y", 0) }) }, 700) }
-    private val splitIds = mutableListOf<String>(); private var splitFrac = 0.5f; private var splitBar: android.view.View? = null
+    private val splitIds = mutableListOf<String>(); private var splitFrac = 0.5f; private var splitRot = 0; private var splitBar: android.view.View? = null
     private var splitMode = "grid"; private var splitAwake = true
     /** In-pane fullscreen videos (split screen): tab id → (holder view on top of that pane, the page's callback). */
     private val paneFs = HashMap<String, Pair<FrameLayout, WebChromeClient.CustomViewCallback>>()
@@ -713,7 +743,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     /** Split screen: add this tab to the split with the active one (again = take it out, "" = close the split). Up to 4 tabs. */
     @Command fun splitTab(i: Invoke) { val id = i.parseArgs(IdArgs::class.java).id
         act.runOnUiThread {
-            if (id.isEmpty()) splitIds.clear() else if (id in splitIds) splitIds.remove(id) else if (id != active && tabs.containsKey(id)) { if (splitIds.size >= 3) { i.reject("Split screen holds up to 4 tabs"); return@runOnUiThread }; splitIds.add(id) }
+            if (id.isEmpty()) { splitIds.clear(); splitRot = 0; splitFrac = 0.5f } else if (id in splitIds) splitIds.remove(id) else if (id != active && tabs.containsKey(id)) { if (splitIds.size >= 3) { i.reject("Split screen holds up to 4 tabs"); return@runOnUiThread }; splitIds.add(id) }
             if (!panes().contains(splitFocus ?: "")) splitFocus = active
             render(); applySplit(); i.resolve(JSObject().put("count", panes().size)) } }
     /** Split layout ("grid" or "spot" = spotlight) and keep-awake. */
@@ -743,8 +773,10 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     }
     /** Battery/RAM: destroy every background WebView, keep URL + navigation state, restore lazily. */
     @Command fun discardBackground(i: Invoke) { val mins = i.parseArgs(DiscardArgs::class.java).minutes; act.runOnUiThread {
-        val cutoff = System.currentTimeMillis() - mins * 60_000L
-        tabs.forEach { (id, t) -> if (id != active && !t.priv && t.lastUsed < cutoff) t.wv?.let { w -> t.saved = Bundle().also(w::saveState); t.box?.removeAllViews(); t.box = null; w.destroy(); t.wv = null } } }
+        val a = i.parseArgs(DiscardArgs::class.java); val keep = a.keep.split(',').filter { it.isNotEmpty() }.toSet(); val ps = panes()
+        val cutoff = if (a.id.isNotEmpty()) Long.MAX_VALUE else System.currentTimeMillis() - mins * 60_000L
+        // Never put to sleep: the open tab, split panes, the floating video, tabs you asked to keep awake. "id" = sleep that one tab now.
+        tabs.forEach { (id, t) -> if (id != active && id !in ps && id != floatId && id !in keep && (a.id.isEmpty() || a.id == id) && !t.priv && t.lastUsed < cutoff) t.wv?.let { w -> t.saved = Bundle().also(w::saveState); t.box?.removeAllViews(); t.box = null; w.destroy(); t.wv = null } } }
         i.resolve() }
     @Command fun navigate(i: Invoke) { val u = i.parseArgs(Args::class.java).url
         act.runOnUiThread { active?.let { tabs[it]?.url = u; tabs[it]?.wv?.loadUrl(u) } }; i.resolve() }
@@ -846,9 +878,11 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     @Command fun peekClose(i: Invoke) { act.runOnUiThread { closePeek(true) }; i.resolve() }
 
     // ---------- Screenshot (visible area) + save to Pictures/Hush ----------
-    @Command fun screenshot(i: Invoke) { act.runOnUiThread { val w = active?.let { tabs[it]?.wv }
+    @Command fun screenshot(i: Invoke) { val fullPage = try { i.parseArgs(ShotArgs::class.java).full } catch (e: Throwable) { false }
+      act.runOnUiThread { val w = active?.let { tabs[it]?.wv }
         if (w == null || w.width <= 0 || w.parent == null) { i.reject("no page"); return@runOnUiThread }
-        pixels(w, Int.MAX_VALUE) { bmp -> if (bmp == null) { i.reject("couldn't capture"); return@pixels }
+        val shoot: ((android.graphics.Bitmap?) -> Unit) -> Unit = if (fullPage) { cb -> wholePage(w, cb) } else { cb -> pixels(w, Int.MAX_VALUE, cb) }
+        shoot { bmp -> if (bmp == null) { i.reject("couldn't capture"); return@pixels }
             val out = java.io.ByteArrayOutputStream(); bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out); bmp.recycle()
             emit("screenshot", JSObject().apply { put("data", "data:image/png;base64," + android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)) })
             i.resolve() } } }
@@ -877,6 +911,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     @InvokeArg class TorArgs { var on: Boolean = false; var port: Int = 0 }
     @InvokeArg class ListenArgs { var action: String = ""; var rate: Double = 1.0 }
     @InvokeArg class ImgArgs { var data: String = "" }
+    @InvokeArg class ShotArgs { var full: Boolean = false }
     @InvokeArg class MuteArgs { var id: String = ""; var muted: Boolean = true }
     @InvokeArg class FindArgs { var query: String = ""; var action: String = "find" }
     @InvokeArg class JsArgs { var js: String = "" }
@@ -884,7 +919,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     @InvokeArg class PrefArgs { var textZoom: Int = 100; var desktop: Boolean = false; var pullRefresh: Boolean = true; var bgPlay: Boolean = true }
     @InvokeArg class PermArgs { var allow: Boolean = false; var remember: Boolean = true }
     @InvokeArg class HostArgs { var host: String = "" }
-    @InvokeArg class DiscardArgs { var minutes: Int = 0 }
+    @InvokeArg class DiscardArgs { var minutes: Int = 0; var id: String = ""; var keep: String = "" }
     @InvokeArg class NavArgs { var action: String = "" }
     @InvokeArg class Args { var url: String = ""; var isPrivate: Boolean = false; var space: String = "" }
     @InvokeArg class IdArgs { var id: String = "" }

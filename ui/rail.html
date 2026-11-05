@@ -97,7 +97,8 @@ const THUMBS={},TITLES={},AUDIO={};
 function draw(){
   const b=document.body,h=S.pos=='top'||S.pos=='bottom';
   b.className=S.legacy?'legacy pinned':[S.pos,h?'h':'v',S.collapsed?'collapsed':'',S.pinned?'pinned':'',S.previews=='off'?'noprev':S.previews=='small'?'small':''].join(' ');
-  $('#ws').textContent=S.ws;
+  $('#ws').textContent=S.ws;$('#ws').style.setProperty('--wsc',S.wsColor||'transparent');$('#ws').classList.toggle('col',!!S.wsColor);
+  document.body.style.setProperty('--wsc',S.wsColor||'transparent');
   $('#list').innerHTML=S.tabs.map(t=>{const th=THUMBS[t.id],ti=TITLES[t.id]||t.title||host(t.url)||'New tab',au=AUDIO[t.id];
     return `<div class="t ${t.id==S.cur?'on':''} ${t.priv?'priv':''} ${t.tor?'tor':''} ${t.sleeping?'sleep':''} ${t.id==S.split?'split':''}" data-id="${esc(t.id)}" draggable=true role=tab aria-selected=${t.id==S.cur} title="${esc(ti)}\n${esc(t.url)}">
       ${S.legacy?`<span class=fav>${t.priv?'◌':esc((host(t.url)||'·')[0].toUpperCase())}</span>`:''}<div class=shot ${th&&!t.priv?`style="background-image:url('${th}')"`:''}>${th&&!t.priv?'':(t.priv?'◌':esc((host(t.url)||'·')[0].toUpperCase()))}</div>
@@ -118,7 +119,7 @@ function draw(){
   const on=document.querySelector('.t.on');if(on&&!S.collapsed)on.scrollIntoView({block:'nearest',inline:'nearest'});
 }
 function menu(e,id){const t=S.tabs.find(x=>x.id==id);if(!t)return;const m=$('#menu');
-  const items=[[t.ess?'Remove from Essentials':'★ Add to Essentials (every workspace)','ess'],['Split view with this tab','split'],[t.muted?'Unmute tab':'Mute tab','mute'],['Duplicate tab','dup'],...(t.destruct?[['Cancel self-destruct','destruct:0']]:[['Self-destruct in 5 min','destruct:5'],['Self-destruct in 15 min','destruct:15'],['Self-destruct in 1 hour','destruct:60']]),['Copy link','copy'],
+  const items=[[t.ess?'Remove from Essentials':'★ Add to Essentials (every workspace)','ess'],['Split view with this tab','split'],[t.muted?'Unmute tab':'Mute tab','mute'],...(t.sleeping?[]:[['Sleep tab now (frees memory)','sleep']]),[t.awake?'Allow this tab to sleep':'Keep this tab awake','awake'],['Duplicate tab','dup'],...(t.destruct?[['Cancel self-destruct','destruct:0']]:[['Self-destruct in 5 min','destruct:5'],['Self-destruct in 15 min','destruct:15'],['Self-destruct in 1 hour','destruct:60']]),['Copy link','copy'],
     ...S.wsList.filter(w=>w!=S.ws).map(w=>['Move to '+w,'move:'+w]),['Close other tabs','others'],['Close tab','close']];
   m.innerHTML=items.map(([l,a])=>`<button data-a="${esc(a)}" role=menuitem>${esc(l)}</button>`).join('');
   m.style.left=Math.min(e.clientX,innerWidth-180)+'px';m.style.top=Math.min(e.clientY,innerHeight-items.length*32-10)+'px';m.classList.add('on');
@@ -143,4 +144,5 @@ T.event.listen('tab-audio',({payload:p})=>{AUDIO[p.tab]=p.audio;draw()});
 send('ready');
 </script>
 
+<style>#ws.col::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--wsc);margin-right:6px;vertical-align:1px}.t.on{box-shadow:inset 3px 0 0 var(--wsc,transparent)}.h .t.on{box-shadow:inset 0 -3px 0 var(--wsc,transparent)}</style>
 <script src="icons.js"></script>

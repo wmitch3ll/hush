@@ -178,7 +178,7 @@ const tab=id=>tabs.find(t=>t.id==id), hostOf=u=>{try{return new URL(u).hostname}
 
 // ---------- preferences (stored in Rust as ui.<name>) ----------
 const DEF={video_quality:'1080',video_leave:'ask',tabs_pos:'left',tabs_mode:'auto',hide_delay:'3',bar_pos:'top',density:'normal',theme:'system',tab_style:'auto',
-  zoom:'100',previews:'large',fp:'on',fp_off:'',bangs:'',memory_saver:'30',focus_sites:'youtube.com,reddit.com,x.com,instagram.com,tiktok.com,facebook.com',focus_until:'0',color:'graphite',force_dark:'false',history:'off',restore:'off',workspaces:'Personal',ws:'Personal'};
+  zoom:'100',previews:'large',fp:'on',fp_off:'',bangs:'',memory_saver:'30',focus_sites:'youtube.com,reddit.com,x.com,instagram.com,tiktok.com,facebook.com',focus_until:'0',color:'graphite',force_dark:'false',history:'off',restore:'off',ws_colors:'',sessions:'',workspaces:'Personal',ws:'Personal'};
 const pref=k=>state.settings.ui?.[k]??DEF[k];
 async function setPref(k,v){state.settings.ui[k]=String(v);layout(true);try{await inv('set_setting',{key:'ui.'+k,value:String(v)})}catch(e){toast(String(e))}}
 
@@ -257,8 +257,8 @@ const peek=()=>{reveal(true);if(!overBar)scheduleHide()};   // briefly show the 
 function railState(){if(!T.event.emitTo)return;
   const cs=getComputedStyle(document.documentElement),vars={};for(const k of ['--bg','--card','--line','--ink','--mute','--acc','--glow'])vars[k]=cs.getPropertyValue(k).trim();
   const dark=matchMedia('(prefers-color-scheme: dark)').matches?pref('theme')!='light':/dark|black/.test(pref('theme'));
-  T.event.emitTo('rail','rail-state',{tabs:(typeof inWs=='function'?inWs():tabs).map(t=>({id:t.id,url:t.url,title:t.title||'',priv:t.priv,ess:!!t.ess,tor:!!t.tor,destruct:HX.destructLabel(t),sleeping:!!t.sleeping,muted:!!t.muted})),
-    cur,split,pos:tabsPos(),ws:typeof curWs=='function'?curWs():'Personal',wsList:typeof wsList=='function'?wsList():[],collapsed:!tabsPinned()&&!revealed&&railOff>.5,
+  T.event.emitTo('rail','rail-state',{tabs:(typeof inWs=='function'?inWs():tabs).map(t=>({id:t.id,url:t.url,title:t.title||'',priv:t.priv,ess:!!t.ess,tor:!!t.tor,destruct:HX.destructLabel(t),sleeping:!!t.sleeping,muted:!!t.muted,awake:!!t.awake})),
+    cur,split,pos:tabsPos(),ws:typeof curWs=='function'?curWs():'Personal',wsList:typeof wsList=='function'?wsList():[],wsColor:typeof wsColor=='function'?wsColor(curWs()):'',collapsed:!tabsPinned()&&!revealed&&railOff>.5,
     pinned:tabsPinned(),legacy:legacyTabs(),previews:pref('previews'),vars,dark}).catch(()=>{})}
 // Clicks and hovers from the tab bar.
 T.event.listen('rail-action',async({payload:a})=>{const t=a.id&&tab(a.id);
@@ -275,6 +275,8 @@ T.event.listen('rail-action',async({payload:a})=>{const t=a.id&&tab(a.id);
     case 'mute':if(t){t.muted=!t.muted;inv('set_muted',{tab:t.id,muted:t.muted});railState()}break;
     case 'destruct':if(t){t.destruct=a.min?Date.now()+a.min*60000:0;toast(a.min?'This tab closes in '+a.min+' min':'Self-destruct off');railState()}break;
     case 'dup':if(t)openTab(t.url,{priv:t.priv,tor:t.tor});break;
+    case 'sleep':if(t&&!t.sleeping){if(t.id==cur){const o=inWs().filter(x=>x.id!=t.id&&!x.sleeping).at(-1);if(o)select(o.id)}if(t.id==split)toggleSplit(t.id);t.sleeping=true;await inv('close_tab',{label:t.id}).catch(()=>{});draw();toast('Tab asleep — it reloads when you open it')}break;
+    case 'awake':if(t){t.awake=!t.awake;saveSession();railState();toast(t.awake?'This tab won’t be put to sleep':'This tab can sleep again')}break;
     case 'ess':if(t){t.ess=!t.ess;saveSession();draw();toast(t.ess?'★ In Essentials — shows in every workspace':'Removed from Essentials')}break;
     case 'others':for(const o of inWs().filter(x=>x.id!=a.id))await closeTab(o.id,true);break;
     case 'move':if(t){t.ws=a.ws;if(cur==t.id){cur=inWs().at(-1)?.id??null;if(cur)inv('switch_tab',{label:cur})}draw();sync();saveSession()}break;
@@ -293,6 +295,17 @@ async function switchWs(name){await setPref('ws',name);const last=inWs().at(-1);
   $('#ws').textContent=name[0].toUpperCase();toast('Workspace: '+name);peek()}
 async function addWs(name){name=name.trim().replace(/\|/g,'').slice(0,24);if(!name||wsList().includes(name))return;
   await setPref('workspaces',[...wsList(),name].join('|'));await switchWs(name)}
+// Workspace colors (a dot in the tab bar and the workspace list) and saved sessions (a set of tabs to reopen later).
+const WS_COLORS=['','#6b8afd','#3fb68b','#e7a33e','#e5534b','#b072e8','#3db9d3'];
+function wsColorMap(){try{return JSON.parse(pref('ws_colors')||'{}')}catch(e){return{}}}
+function wsColor(n){return wsColorMap()[n]||''}
+async function setWsColor(n,c){const m=wsColorMap();if(c)m[n]=c;else delete m[n];await setPref('ws_colors',JSON.stringify(m));railState();if(panel=='ws')openPanel('ws')}
+function sessions(){try{return JSON.parse(pref('sessions')||'[]')}catch(e){return[]}}
+async function saveSessionAs(name){const urls=inWs().filter(t=>!t.priv&&/^https?:/.test(t.url||'')).map(t=>t.url);if(!urls.length)return toast('No tabs to save here');
+  const l=sessions().filter(s=>s.name!=name);l.unshift({name:(name||curWs()+' · '+new Date().toLocaleDateString()).slice(0,40),urls,at:Date.now()});
+  await setPref('sessions',JSON.stringify(l.slice(0,20)));toast('Saved '+urls.length+' tab'+(urls.length>1?'s':'')+' as a session');if(panel=='ws')openPanel('ws')}
+async function openSession(i){const s=sessions()[i];if(!s)return;for(const u of s.urls)await openTab(u);toast('Reopened '+s.name)}
+async function dropSession(i){const l=sessions();l.splice(i,1);await setPref('sessions',JSON.stringify(l));if(panel=='ws')openPanel('ws')}
 async function removeWs(name){if(wsList().length<2)return toast('Keep at least one workspace');
   for(const t of tabs.filter(t=>t.ws==name))await closeTab(t.id,true);
   await setPref('workspaces',wsList().filter(w=>w!=name).join('|'));if(pref('ws')==name)await switchWs(wsList()[0])}
@@ -493,7 +506,7 @@ T.event.listen('tab-url',({payload:p})=>{const t=tab(p.tab);if(!t)return;t.url=p
 T.event.listen('focus-blocked',({payload:p})=>{if(p.tab==cur){$('#load').classList.remove('on');toast('Focus mode: '+hostOf(p.url).replace(/^www\./,'')+' is paused — Ctrl+K → Focus mode to end')}});
 // Memory saver: background tabs you haven't opened for a while are closed in the background and reload when you click them.
 setInterval(async()=>{const m=+pref('memory_saver');if(!m)return;const cutoff=Date.now()-m*60000;
-  for(const t of tabs)if(t.id!=cur&&t.id!=split&&!t.sleeping&&(t.last||Date.now())<cutoff&&t.url){t.sleeping=true;await inv('close_tab',{label:t.id}).catch(()=>{});draw()}},60000);
+  for(const t of tabs)if(t.id!=cur&&t.id!=split&&!t.sleeping&&!t.awake&&!t.audio&&(t.last||Date.now())<cutoff&&t.url){t.sleeping=true;await inv('close_tab',{label:t.id}).catch(()=>{});draw()}},60000);
 T.event.listen('blocked',({payload:p})=>{counts[p.tab]=p.count;if(p.tab==cur)draw()});
 T.event.listen('https-failed',({payload:p})=>{if(p.tab==cur){$('#load').classList.remove('on');toast(hostOf(p.url)+' has no secure version')}});
 T.event.listen('download',({payload:p})=>{
@@ -725,9 +738,19 @@ function paintPalette(){const r=$('#palr');if(!r)return;
 
 function renderWs(){const p=$('#panel');
   p.innerHTML=`<h2>Workspaces ${closeBtn}</h2><p style="color:var(--mute);margin:-8px 0 14px">Separate sets of tabs — like “Work” and “Personal”.</p>
-  ${wsList().map(w=>`<div class=row><div><b>${esc(w)}</b><small>${tabs.filter(t=>t.ws==w).length} tabs${w==curWs()?' · current':''}</small></div>
+  ${wsList().map(w=>`<div class=row><div><b><span class=wsdot style="--c:${wsColor(w)||'transparent'}"></span>${esc(w)}</b><span class=wscol>${WS_COLORS.map(c=>`<button data-col="${c}" data-w="${esc(w)}" class="${(wsColor(w)||'')==c?'on':''}" style="--c:${c||'transparent'}" title="${c?'Color':'No color'}"></button>`).join('')}</span><small>${tabs.filter(t=>t.ws==w).length} tabs${w==curWs()?' · current':''}</small></div>
     <div class=acts style="display:flex;gap:6px"><button class="btn${sepWs(w)?' on':''}" data-sep="${esc(w)}" title="Keep this workspace's sign-ins, cookies and storage separate">${sepWs(w)?'🔐 Own sign-ins':'Shared sign-ins'}</button>${w!=curWs()?`<button class=btn data-go="${esc(w)}">Switch</button>`:''}${wsList().length>1?`<button class=btn data-rm="${esc(w)}">Remove</button>`:''}</div></div>`).join('')}
-  <div class=row><input class=txt id=wsname placeholder="New workspace name" style="margin:0"><button class=btn id=wsadd>Add</button></div>`;
+  <div class=row><input class=txt id=wsname placeholder="New workspace name" style="margin:0"><button class=btn id=wsadd>Add</button></div>
+  <h3>Saved sessions</h3>
+  <div class=row><div><b>Save these tabs</b><small>Keep the tabs in ${esc(curWs())} as a set you can reopen any time</small></div><button class=btn id=sessave>Save session</button></div>
+  ${sessions().map((x,i)=>`<div class=row><div><b>${esc(x.name)}</b><small>${x.urls.length} tabs · ${esc(x.urls.slice(0,3).map(u=>hostOf(u).replace(/^www\./,'')).join(', '))}${x.urls.length>3?'…':''}</small></div><div style="display:flex;gap:6px"><button class=btn data-sopen="${i}">Open</button><button class=btn data-sdrop="${i}">Delete</button></div></div>`).join('')}
+  <style>.wsdot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--c);margin-right:7px;vertical-align:1px;box-shadow:0 0 0 1px color-mix(in srgb,var(--ink) 15%,transparent)}
+  .wscol{display:flex;gap:5px;margin:6px 0 2px}.wscol button{width:16px;height:16px;border-radius:50%;border:1px solid var(--line);background:var(--c);padding:0;cursor:pointer}
+  .wscol button[data-col=""]{background:linear-gradient(135deg,transparent 45%,var(--mute) 45%,var(--mute) 55%,transparent 55%)}.wscol button.on{outline:2px solid var(--ink);outline-offset:1px}</style>`;
+  p.querySelectorAll('[data-col]').forEach(b=>b.onclick=()=>setWsColor(b.dataset.w,b.dataset.col));
+  $('#sessave').onclick=()=>saveSessionAs();
+  p.querySelectorAll('[data-sopen]').forEach(b=>b.onclick=()=>{closePanel();openSession(+b.dataset.sopen)});
+  p.querySelectorAll('[data-sdrop]').forEach(b=>b.onclick=()=>dropSession(+b.dataset.sdrop));
   p.querySelectorAll('[data-sep]').forEach(b=>b.onclick=async()=>{const w=b.dataset.sep,l=(pref('ws_sep')||'').split('|').filter(Boolean);await setPref('ws_sep',(l.includes(w)?l.filter(x=>x!=w):[...l,w]).join('|'));toast(sepWs(w)?'🔐 New tabs in '+w+' get their own sign-ins':'New tabs in '+w+' share sign-ins');renderWs()});
   p.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{closePanel();switchWs(b.dataset.go)});
   p.querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{if(confirm('Remove “'+b.dataset.rm+'” and close its tabs?')){await removeWs(b.dataset.rm);renderWs()}});
@@ -945,4 +968,25 @@ layout(true);draw();loadState(true).then(()=>{if(!state.settings.ui.toured)setTi
 setTimeout(()=>{try{splitModeSync()}catch(e){}},1500);
 
 inv('app_info').then(r=>{window.__hushBuild=r&&r.build}).catch(()=>{});
+</script>
+<div id="splitbar" title="Drag to resize · double-click for 50/50 · long-press a pane to swap" hidden><i></i><button id="splitswap" title="Swap panes"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h12l-3-3M17 17H5l3 3"/></svg></button></div>
+<style>
+#splitbar{position:fixed;z-index:5;cursor:col-resize;display:grid;place-items:center;touch-action:none}
+#splitbar[hidden]{display:none}
+#splitbar i{width:4px;height:44px;border-radius:4px;background:color-mix(in srgb,var(--ink) 30%,transparent);transition:background .15s,height .2s var(--ease-out,ease),width .15s}
+#splitbar:hover i,#splitbar.drag i{background:var(--acc,var(--ink));height:72px;width:4px}
+#splitbar button{position:absolute;top:10px;width:22px;height:22px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--ink);display:grid;place-items:center;opacity:0;transition:opacity .15s;cursor:pointer;padding:0}
+#splitbar:hover button{opacity:1}
+</style>
+<script>
+// Split divider (desktop): Hush lays the two panes out with a 6px gap; this grab handle sits in it.
+(()=>{const T=window.__TAURI__;if(!T)return;const bar=document.getElementById('splitbar');let g=null,raf=0,want=0;
+  T.event.listen('split-bar',({payload:p})=>{g=p;bar.hidden=!p.on;if(!p.on)return;
+    const pad=7;Object.assign(bar.style,{left:(p.x-pad)+'px',top:p.y+'px',width:(p.w+pad*2)+'px',height:p.h+'px'})});
+  const send=()=>{raf=0;T.core.invoke('set_split_ratio',{ratio:want})};
+  bar.addEventListener('pointerdown',e=>{if(e.target.closest('button')||!g)return;bar.setPointerCapture(e.pointerId);bar.classList.add('drag');e.preventDefault()});
+  bar.addEventListener('pointermove',e=>{if(!bar.classList.contains('drag')||!g)return;want=(e.clientX-g.cx-g.w/2)/(g.cw-g.w);if(!raf)raf=requestAnimationFrame(send)});
+  const end=()=>bar.classList.remove('drag');bar.addEventListener('pointerup',end);bar.addEventListener('pointercancel',end);
+  bar.addEventListener('dblclick',()=>T.core.invoke('set_split_ratio',{ratio:.5}));
+  document.getElementById('splitswap').onclick=()=>T.core.invoke('split_swap');})();
 </script>

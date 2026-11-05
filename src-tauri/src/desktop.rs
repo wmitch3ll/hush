@@ -202,7 +202,13 @@ fn relayout(win: &Window) {
     let (cx, cy, cw, ch) = content_rect(win);
     let st = win.app_handle().state::<AppState>();
     let split = st.split.lock().clone();
+    // Split divider: a 6px gap the chrome draws a grab handle in; drag it to resize (snaps back to 50/50 near the middle).
+    let gap = if split.is_some() { SPLIT_GAP } else { 1.0 };
+    let ratio = SPLIT_RATIO.load(Ordering::Relaxed) as f64 / 1000.0;
+    let lw = (((cw - gap) * ratio).round()).clamp(160.0_f64.min(cw / 3.0), (cw - gap - 160.0_f64.min(cw / 3.0)).max(1.0));
+    let rw = (cw - gap - lw).max(1.0);
     let half = ((cw - 1.0) / 2.0).max(1.0);
+    let flip = SPLIT_FLIP.load(Ordering::Relaxed);
     // 3–4 tab split: the active tab and the split tab on top, extra tabs below (a 2×2 grid, or one wide tab).
     let extra: Vec<String> = if split.is_some() { SPLIT_MORE.lock().iter().filter(|l| st.tabs.lock().contains(*l)).take(2).cloned().collect() } else { vec![] };
     let hh = if extra.is_empty() { ch } else { ((ch - 1.0) / 2.0).max(1.0) };
@@ -221,12 +227,33 @@ fn relayout(win: &Window) {
             else if spot && focus.as_deref() == Some(l) { (cx, cy, bw, ch) }
             else if let Some(i) = rest.iter().position(|e| e == l).filter(|_| spot) { (cx + bw + 1.0, cy + i as f64 * (sh + 1.0), (cw - bw - 1.0).max(1.0), sh) }
             else if let Some(i) = extra.iter().position(|e| e == l) { if extra.len() == 1 { (cx, cy + hh + 1.0, cw, hh) } else { (cx + i as f64 * (half + 1.0), cy + hh + 1.0, half, hh) } }
-            else if split.as_deref() == Some(l) { (cx + half + 1.0, cy, half, hh) }       // split view: right half
-            else if split.is_some() { (cx, cy, half, hh) }                                  // split view: left half
+            else if split.as_deref() == Some(l) { if flip { (cx, cy, lw, hh) } else { (cx + lw + gap, cy, rw, hh) } }   // split view: second pane
+            else if split.is_some() { if flip { (cx + lw + gap, cy, rw, hh) } else { (cx, cy, lw, hh) } }                // split view: active pane
             else { (cx, cy, cw, ch) };
         let _ = wv.set_position(LogicalPosition::new(x, y));
         let _ = wv.set_size(LogicalSize::new(w, h));
     }
+    let bar = split.is_some() && !spot && FLOAT.lock().as_ref().map_or(true, |f| Some(&f.label) != split.as_ref());
+    let _ = win.app_handle().emit_to("chrome", "split-bar", serde_json::json!({ "on": bar, "x": cx + lw, "y": cy, "w": gap, "h": hh, "cx": cx, "cw": cw }));
+}
+const SPLIT_GAP: f64 = 6.0;
+static SPLIT_RATIO: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(500);
+static SPLIT_FLIP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Drag the split divider: `ratio` = left pane share (0.2–0.8); within 4% of the middle it snaps to 50/50.
+#[tauri::command]
+pub async fn set_split_ratio(app: AppHandle, ratio: f64) {
+    let r = ratio.clamp(0.2, 0.8); let r = if (r - 0.5).abs() < 0.04 { 0.5 } else { r };
+    SPLIT_RATIO.store((r * 1000.0).round() as u32, Ordering::Relaxed);
+    if let Some(win) = app.get_window("main") { relayout(&win); }
+}
+/// Long-press a pane (split.js) or the chrome's swap button: the two halves trade places. Sound stays with its tab.
+#[tauri::command]
+pub async fn split_swap(app: AppHandle) { swap_panes(&app); }
+fn swap_panes(app: &AppHandle) {
+    if split_panes(app).is_empty() { return; }
+    SPLIT_FLIP.fetch_xor(true, Ordering::Relaxed);
+    SPLIT_RATIO.store(1000 - SPLIT_RATIO.load(Ordering::Relaxed), Ordering::Relaxed);   // each tab keeps its width
+    if let Some(win) = app.get_window("main") { relayout(&win); }
 }
 
 fn show_only(app: &AppHandle, label: &str) {
@@ -325,7 +352,7 @@ pub async fn set_split_more(app: AppHandle, labels: Vec<String>) {
 #[tauri::command]
 pub async fn set_split(app: AppHandle, label: Option<String>) {
     let st = app.state::<AppState>();
-    if label.is_none() { SPLIT_MORE.lock().clear(); }
+    if label.is_none() { SPLIT_MORE.lock().clear(); SPLIT_FLIP.store(false, Ordering::Relaxed); SPLIT_RATIO.store(500, Ordering::Relaxed); }
     *st.split.lock() = label.filter(|l| st.tabs.lock().contains(l));
     let active = st.active.lock().clone();
     if let Some(a) = active { show_only(&app, &a); }
@@ -589,7 +616,7 @@ fn make_tab_with(app: &AppHandle, input: String, private: bool, peek: bool, tor:
                         let _ = app_nav.emit_to("chrome", "groq-key", serde_json::json!({ "key": k, "tab": lbl_nav })); } }
                 false }
             "hush-float" => { handle_float(&app_nav, &lbl_nav, u); false }
-            "hush-split" => { split_focus(&app_nav, &lbl_nav); false }
+            "hush-split" => { if u.host_str() == Some("swap") { swap_panes(&app_nav); } else { split_focus(&app_nav, &lbl_nav); } false }
             // Mouse gesture drawn in the page (tools.js): only the direction letters are passed on.
             "hush-gesture" => {
                 let h = u.host_str().unwrap_or("").to_ascii_lowercase();

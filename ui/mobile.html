@@ -63,6 +63,8 @@ body.bottom #tools{order:-1}
 .sug button:active,.sug button.sel{background:var(--card)}
 .sug i{font-style:normal;width:30px;height:30px;border-radius:9px;background:var(--card);border:1px solid var(--line);display:grid;place-items:center;font-size:13px;flex:none}
 .sug span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.sug small{color:var(--mute);font-size:11px;flex:none}
+.sheet.dock{top:auto;height:min(56vh,560px);border-radius:22px 22px 0 0;box-shadow:0 -10px 40px rgb(0 0 0/.18);border-top:1px solid var(--line);padding-top:6px}
+.sheet.dock::before{content:"";display:block;width:36px;height:4px;border-radius:4px;background:var(--line);margin:4px auto 6px;flex:none}
 .sheet{position:fixed;inset:0;background:var(--bg);z-index:10;padding:calc(env(safe-area-inset-top,0px) + 8px) 14px calc(env(safe-area-inset-bottom,0px) + 20px);display:none;flex-direction:column;gap:8px;overflow:auto;transition:transform .2s}
 .sheet.on{display:flex;animation:up .2s ease-out}@keyframes up{from{opacity:0;transform:translateY(16px)}}
 .sheet .grab{width:40px;height:5px;border-radius:3px;background:var(--line);margin:0 auto 2px;flex:none}
@@ -227,7 +229,8 @@ function insets(){
   // The row may still be sliding (its margin animates), so count where it will END UP, not where it is mid-slide.
   const v=$("#view").getBoundingClientRect(), k=ANDROID?devicePixelRatio:1, tl=$("#tools");
   const slide=pref("toolbar")!=="off"&&!toolsHidden?-(parseFloat(getComputedStyle(tl).marginBottom)||0):0;
-  const top=v.top, bot=innerHeight-v.bottom+slide;
+  let top=v.top, bot=innerHeight-v.bottom+slide;
+  if(dock){const d=$("#"+dock).getBoundingClientRect();bot=Math.max(bot,innerHeight-d.top)}
   inv("set_chrome_inset",{px:Math.round(top*k),bottom:Math.round(Math.max(0,bot)*k)}).catch(()=>{});
 }
 addEventListener("resize",()=>insets());
@@ -249,7 +252,7 @@ function select(id,anim){const t=tabs.find(x=>x.id===id);if(!t)return;if(id!==cu
   if(t.url&&!t.native)openNative(t);render()}
 async function openNative(t){try{const r=await inv("open_tab",{input:t.url,private:t.priv,space:spaceOf(t.ws)});t.native=typeof r==="string"?r:r;render()}catch(e){toast("Couldn’t open that page")}}
 let touring=false;
-function syncNative(){const t=T();inv("switch_tab",{label:!sheet&&!typing&&!touring&&t&&t.native?t.native:"none"}).catch(()=>{})}
+function syncNative(){const t=T();inv("switch_tab",{label:(!sheet||dock)&&!typing&&!touring&&t&&t.native?t.native:"none"}).catch(()=>{})}
 // Hands-on welcome walkthrough (coach.js): you do each thing for real; the page itself is hidden while it runs.
 function startTour(){touring=true;show(null);syncNative();const u0=(T()||{}).url||"",tor0=torOn,menu=()=>{if(sheet!=="menu"){drawMenu();show("menu")}};
   const fin=()=>{touring=false;setPref("toured","1");show(null);syncNative()};
@@ -486,6 +489,12 @@ function splitMenu(){const sc=scenes(),on=splitSet.size>0,spot=pref("split_mode"
 function openMsgs(chat){native("bubble",{show:false}).catch(()=>{});show("msgs");HM.open($("#msgs"),typeof chat==="string"?chat:null)}
 const EC=HushEcho({haptic:vibe,M:HM.api,toast,mobile:true,page:()=>{const t=T();return t&&t.native&&!t.priv&&/^https?:/.test(t.url)?{url:t.url}:null},open:u=>{show(null);newTab(false,true);go(u)},close:()=>{EC.close();show(null)},openMurmur:pk=>{EC.close();openMsgs(pk||null)},badge:n=>{}});
 function openEcho(){show("echos");EC.open($("#echos"))}
+// Side panel: Murmur, Echo or your Notes in the bottom half while the page stays usable above it.
+function openDock(kind){const id=kind==="echo"?"echos":"msgs";if(dock&&dock!==id){$("#"+dock).classList.remove("dock");dock=null}
+  show(id);dock=id;$("#"+id).classList.add("dock");
+  if(kind==="echo")EC.open($("#echos"));else{HM.open($("#msgs"));if(kind==="notes")setTimeout(()=>HM.api.openChat("self"),250)}
+  syncNative();setTimeout(insets,40);setTimeout(insets,260)}
+function dockPick(){actions("Side panel — beside the page",[["Murmur · messages",()=>openDock("murmur")],["Echo · your feed",()=>openDock("echo")],["Notes · notes to yourself",()=>openDock("notes")]])}
 setTimeout(()=>{EC.boot();setInterval(noteDraw,4000)},3000);setTimeout(()=>HX.ai.start(),6000);
 setTimeout(()=>HM.boot(),2000);
 // Floating video: leave a tab that's playing and it keeps going in a small player you can drag and resize.
@@ -530,7 +539,8 @@ function runAction(id){const t=T();const A={panic,back:()=>inv("nav",{action:"ba
   copylink:()=>t&&copy(t.url),dark:async()=>{await setPref("force_dark",pref("force_dark")==="true"?"false":"true");applyDarkNow()},alltabs:()=>openSwitcher(),home:()=>newTab(false,true),
   private:()=>newTab(true),mute:()=>toggleMute(t),boosts:()=>{drawMenu();$("#m-boost")?.click()},destruct:()=>{if(!t)return;actions("Self-destruct this tab",HX.DESTRUCT.map(([l,m])=>[l,()=>{t.destruct=m?Date.now()+m*60000:0;toast(m?"Closes in "+l:"Off")}]))}};
   (A[id]||(()=>{}))()}
-function show(id){sheet=id;try{const cp=JSON.parse(localStorage.getItem("hush.msg.prefs")||"{}").curtain!==false;native("secure",{on:cp&&(id==="msgs"||id==="echos")}).catch(()=>{})}catch(e){}["switcher","menu","settings","downloads","site","history","cmd","reading","focus","about","xs","msgs","echos"].forEach(s=>$("#"+s).classList.toggle("on",s===id));
+let dock=null;
+function show(id){if(dock&&id!==dock){$("#"+dock).classList.remove("dock");dock=null;setTimeout(insets,30)}sheet=id;try{const cp=JSON.parse(localStorage.getItem("hush.msg.prefs")||"{}").curtain!==false;native("secure",{on:cp&&(id==="msgs"||id==="echos")}).catch(()=>{})}catch(e){}["switcher","menu","settings","downloads","site","history","cmd","reading","focus","about","xs","msgs","echos"].forEach(s=>$("#"+s).classList.toggle("on",s===id));
   if(id!=="cmd"&&document.activeElement?.id==="cmdq")document.activeElement.blur();syncNative()}
 const head=title=>`<div class="grab"></div><h2>${title}<button class="btn sm" data-done>Done</button></h2>`;
 const wire=el=>{el.querySelectorAll("[data-done]").forEach(b=>b.onclick=()=>show(null));const h=el.querySelector("h2");if(h)sheetGestures(h)};
@@ -559,7 +569,9 @@ function drawSwitcher(dir){const el=$("#switcher"),list=inWs();
         ...(id!==cur&&t.native&&T()?.native?[[splitSet.has(id)?"⬒ Take out of split screen":"⬒ Add to split screen (up to 4)",()=>splitToggle(id)]]:[]),
         ...(t.destruct?[["Cancel self-destruct",()=>{t.destruct=0;drawSwitcher()}]]:HX.DESTRUCT.filter(d=>d[1]).map(([l,m])=>["Self-destruct in "+l,()=>{t.destruct=Date.now()+m*60000;toast("Closes in "+l);drawSwitcher()}])),
         ...wsList().filter(w=>w!==t.ws).map(w=>["Move to "+w,()=>{t.ws=w;saveSession();drawSwitcher()}]),
-        ...(t.native?[[t.muted?"Unmute tab":"Mute tab",()=>toggleMute(t)]]:[]),["Copy link",()=>copy(t.url)],["Close tab",()=>closeTab(id)],["Close other tabs",()=>inWs().filter(x=>x.id!==id).forEach(x=>closeTab(x.id))]])})})});
+        ...(t.native?[[t.muted?"Unmute tab":"Mute tab",()=>toggleMute(t)]]:[]),
+        ...(id!==cur?[["Sleep tab now (frees memory)",()=>{native("discardBackground",{minutes:0,id:String(id)}).then(()=>toast("Tab asleep — it reloads when you open it")).catch(()=>{})}]]:[]),
+        [t.awake?"Allow this tab to sleep":"Keep this tab awake",()=>{t.awake=!t.awake;saveSession();toast(t.awake?"This tab won’t be put to sleep":"This tab can sleep again")}],["Copy link",()=>copy(t.url)],["Close tab",()=>closeTab(id)],["Close other tabs",()=>inWs().filter(x=>x.id!==id).forEach(x=>closeTab(x.id))]])})})});
   el.querySelectorAll("[data-x]").forEach(b=>{const shut=e=>{e.stopPropagation();e.preventDefault();const c=b.closest(".card");if(c){c.style.transition="transform .16s,opacity .16s";c.style.transform="scale(.9)";c.style.opacity="0"}vibe();setTimeout(()=>closeTab(+b.dataset.x),140)};
     b.ontouchstart=e=>e.stopPropagation();b.ontouchend=shut;b.onclick=shut});
   el.querySelectorAll("[data-snd]").forEach(b=>{b.onclick=e=>{e.stopPropagation();toggleMute(tabs.find(x=>x.id===+b.dataset.snd))};b.ontouchstart=e=>e.stopPropagation();b.ontouchend=e=>{e.stopPropagation();e.preventDefault();toggleMute(tabs.find(x=>x.id===+b.dataset.snd))}});
@@ -571,11 +583,12 @@ function drawMenu(){const el=$("#menu"),t=T(),live=!!(t&&t.native);
   el.innerHTML=head("Menu")+`<div class="row"><button class="btn" id="m-back" ${live&&t.canBack?"":"disabled"}>‹ Back</button><button class="btn" id="m-fwd" ${live&&t.canFwd?"":"disabled"}>Forward ›</button></div>
    <div class="row"><button class="btn" id="m-find" ${live?"":"disabled"}>Find</button><button class="btn" id="m-read" ${live?"":"disabled"}>Reader</button><button class="btn" id="m-qr" ${live?"":"disabled"}>QR</button></div>
    <div class="row"><button class="btn" id="m-later" ${live?"":"disabled"}>Read later</button><button class="btn" id="m-pdf" ${live?"":"disabled"}>Save as PDF</button><button class="btn" id="m-pip" ${live?"":"disabled"}>Pop-out video</button></div>
-   ${live?`<div class="row"><button class="btn" id="m-listen">${listenSt?"■ Stop reading":"▶ Listen"}</button><button class="btn" id="m-boost">Boosts</button><button class="btn" id="m-shot">Screenshot</button></div>`:""}
+   ${live?`<div class="row"><button class="btn" id="m-listen">${listenSt?"■ Stop reading":"▶ Listen"}</button><button class="btn" id="m-boost">Boosts</button><button class="btn" id="m-shot">Screenshot</button><button class="btn" id="m-shotfull">Whole page</button></div>`:""}
    ${listenSt?`<div class="row"><button class="btn" id="l-prev">‹ Prev</button><button class="btn" id="l-pp">${listenSt==="paused"?"Resume":"Pause"}</button><button class="btn" id="l-next">Next ›</button><button class="btn" id="l-rate">${lRate}×</button></div>`:""}
    <button class="item" id="m-echo"><div>Echo<small>${EC.unread()?EC.unread()+" new · ":""}share with friends, privately</small></div></button>
    <button class="item" id="m-msg"><div>Murmur<small>${HM.unread()?HM.unread()+" unread · ":""}private chat through Tor</small></div></button>
    <button class="item" id="m-ai"><div>${esc(HX.aiName())}<small>your AI assistant, offline on this phone — summarize pages, ask anything</small></div></button>
+   <button class="item" id="m-dock"><div>Side panel<small>Murmur, Echo or notes under the page — keep browsing above</small></div></button>
    <button class="item" id="m-split"><div>⬒ Split screen<small>${splitSet.size?(splitSet.size+1)+" tabs open · layout, scenes, close":"up to 4 tabs · tap one for its sound"}</small></div></button>
    <div class="item"><div>Tor mode <button class="btn sm" id="m-tori" aria-label="What is Tor?" style="padding:0 8px;min-width:0">ⓘ</button><small>${torOn?"on — every tab goes through Tor":"hide your IP and location from every site"}</small></div><button class="sw ${torOn?"on":""}" id="m-tor"></button></div>
    ${torOn?'<button class="item" id="m-newid"><div>New Tor identity<small>fresh circuits and a new IP, then reload</small></div></button>':""}
@@ -601,10 +614,11 @@ function drawMenu(){const el=$("#menu"),t=T(),live=!!(t&&t.native);
   if($("#m-boost"))$("#m-boost").onclick=()=>{const h=hostOf(t.url).replace(/^www\./,"");$("#xs").innerHTML=head("Boosts · "+esc(h))+'<div id="bx" style="padding:0 4px 20px"></div>';wire($("#xs"));
     HX.boost($("#bx"),h,()=>inv("nav",{action:"reload"}).catch(()=>{}));show("xs")};
   if($("#m-shot"))$("#m-shot").onclick=()=>{show(null);setTimeout(()=>native("screenshot").catch(e=>toast(String(e))),250)};
+  if($("#m-shotfull"))$("#m-shotfull").onclick=()=>{show(null);toast("Capturing the whole page…");setTimeout(()=>native("screenshot",{full:true}).catch(e=>toast(String(e))),250)};
   if($("#l-pp"))$("#l-pp").onclick=()=>{native("listen",{action:listenSt==="paused"?"resume":"pause"})};
   if($("#l-next"))$("#l-next").onclick=()=>native("listen",{action:"next"});if($("#l-prev"))$("#l-prev").onclick=()=>native("listen",{action:"prev"});
   if($("#l-rate"))$("#l-rate").onclick=()=>{const R=[1,1.25,1.5,1.75,2,0.75];lRate=R[(R.indexOf(lRate)+1)%R.length];native("listen",{action:"rate",rate:lRate});drawMenu()};
-  $("#m-tor").onclick=()=>setTor(!torOn);$("#m-tori").onclick=e=>{e.stopPropagation();torInfo()};$("#m-ai").onclick=()=>openAssistant();$("#m-split").onclick=()=>splitMenu();$("#m-msg").onclick=openMsgs;$("#m-echo").onclick=openEcho;if($("#m-newid"))$("#m-newid").onclick=async()=>{try{await inv("tor_new_identity");inv("nav",{action:"reload"}).catch(()=>{});toast("New identity")}catch(e){toast(String(e))}show(null)};
+  $("#m-tor").onclick=()=>setTor(!torOn);$("#m-tori").onclick=e=>{e.stopPropagation();torInfo()};$("#m-ai").onclick=()=>openAssistant();$("#m-split").onclick=()=>splitMenu();$("#m-dock").onclick=()=>dockPick();$("#m-msg").onclick=openMsgs;$("#m-echo").onclick=openEcho;if($("#m-newid"))$("#m-newid").onclick=async()=>{try{await inv("tor_new_identity");inv("nav",{action:"reload"}).catch(()=>{});toast("New identity")}catch(e){toast(String(e))}show(null)};
   $("#m-arch").onclick=()=>{$("#xs").innerHTML=head("Archived tabs")+'<div id="arx" style="padding:0 4px 20px"></div>';wire($("#xs"));HX.archivePanel($("#arx"),u=>{newTab(false,true);go(u)});show("xs")};
   $("#m-rl").onclick=()=>{drawReading();show("reading")};$("#m-focus").onclick=()=>{drawFocus();show("focus")};$("#m-about").onclick=()=>{drawAbout();show("about")}}
 
@@ -781,7 +795,7 @@ async function handleIncoming(){let u="";try{u=(await native("takeIntent")).url|
       await loadState();applyPrefs();for(const u of tl){const t=newTab(false,true);t.url=u}saveSession();render();toast("Synced "+parts.join(", "))}}catch(e){toast("That link couldn’t be read")}return}
   const t=T();if(t&&!t.native)go(u);else{newTab(false,true);go(u)}}
 // Memory saver: tabs you haven't looked at for a while give back their memory (they reload when you return).
-setInterval(()=>{const m=+pref("memory_saver");if(m>0)native("discardBackground",{minutes:m}).catch(()=>{})},60000);
+setInterval(()=>{const m=+pref("memory_saver");if(m>0)native("discardBackground",{minutes:m,keep:tabs.filter(t=>t.awake).map(t=>String(t.id)).join(",")}).catch(()=>{})},60000);
 
 function drawReading(){const el=$("#reading"),list=state.bookmarks.filter(b=>b.folder==="reading");
   el.innerHTML=head("Reading list")+(list.length?list.map((b,i)=>`<div class="item"><div style="flex:1" data-open="${esc(b.url)}">${esc(b.title||bare(b.url))}<small>${esc(bare(b.url))}</small></div><button class="btn sm" data-done-r="${esc(b.url)}">Done</button></div>`).join("")
