@@ -154,20 +154,23 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                 "play" -> t?.wv?.evaluateJavascript("(document.querySelector('video,audio')||{play(){}}).play()", null)
             }
             render(); i.resolve() } }
+    /** Short diary of what the app did to the videos' pages (shown, hidden, floated, split) — goes into problem reports, no URLs. */
+    private val natLog = ArrayDeque<String>()
+    private fun nlog(m: String) { synchronized(natLog) { natLog.addLast((System.currentTimeMillis() % 100000).toString() + " " + m); while (natLog.size > 40) natLog.removeFirst() } }
     private var floatScale = 1f; private var floatId: String? = null; private var floatX = -1; private var floatY = -1; private var floatW = 0
     private var dragStart = IntArray(3); private var dragId = -1
     @Command fun floatTab(i: Invoke) { val a = i.parseArgs(FloatArgs::class.java)
         act.runOnUiThread { val t = tabs[a.id]; val w = t?.wv
             if (t == null || w == null) { i.reject("no tab"); return@runOnUiThread }
             floatId?.takeIf { it != a.id }?.let { unfloat(it, false) }
-            floatId = a.id; floatX = a.x; floatY = a.y; floatW = if (a.w > 0) a.w else (act.resources.displayMetrics.widthPixels * 0.62).toInt(); dragId = -1
+            nlog("float on " + a.id.takeLast(4)); floatId = a.id; floatX = a.x; floatY = a.y; floatW = if (a.w > 0) a.w else (act.resources.displayMetrics.widthPixels * 0.62).toInt(); dragId = -1
             w.evaluateJavascript(Native.floatJs() + ";__hushFloat(true);window.__hushMediaSet&&__hushMediaSet({on:true,mute:null,keep:true});", null)
             w.onResume(); w.resumeTimers(); render(); i.resolve() } }
     /** Problem reports: what happened to the videos in the mini player / current tab (events, sizes, focus) — no URLs. */
     @Command fun mediaLog(i: Invoke) { act.runOnUiThread {
         val ids = listOfNotNull(floatId, active).distinct() + panes().filter { it != active }
         ids.forEach { id -> tabs[id]?.wv?.evaluateJavascript("window.__hushMediaCollect&&__hushMediaCollect()", null) }
-        act.window.decorView.postDelayed({ val out = JSObject(); var left = ids.size
+        act.window.decorView.postDelayed({ val out = JSObject(); out.put("app", synchronized(natLog) { natLog.joinToString(" | ") }); var left = ids.size
             if (left == 0) { i.resolve(out); return@postDelayed }
             ids.forEach { id -> val role = if (id == floatId) "mini" else if (id == active) "tab" else "pane"
                 val w = tabs[id]?.wv; if (w == null) { if (--left == 0) i.resolve(out); return@forEach }
@@ -175,7 +178,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     @Command fun floatClose(i: Invoke) { val stop = i.parseArgs(FloatArgs::class.java).stop
         act.runOnUiThread { floatId?.let { unfloat(it, stop) }; i.resolve() } }
     private fun unfloat(id: String, stop: Boolean) {
-        if (floatId != id) return; floatId = null
+        if (floatId != id) return; nlog("float off " + id.takeLast(4) + if (stop) " stop" else ""); floatId = null
         tabs[id]?.let { t -> t.wv?.evaluateJavascript(Native.floatJs() + ";__hushFloat(false);" + (if (id !in panes()) "window.__hushMediaSet&&__hushMediaSet({on:false});" else "") + (if (stop) "document.querySelectorAll('video,audio').forEach(v=>v.pause());" else ""), null)
             t.box?.let { b -> b.elevation = 0f; b.clipToOutline = false; if (id != active) { (b.parent as? ViewGroup)?.removeView(b) } } }
         render() }
@@ -411,7 +414,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         val earlyScripts = try { WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT) } catch (e: Throwable) { false }
         if (earlyScripts) try { WebViewCompat.addDocumentStartJavaScript(w, Native.scriptletJs(), setOf("*")) } catch (e: Throwable) {}
         // Popup / click-jack guard (streaming sites): invisible ad layers, new-window ads, script popups.
-        if (earlyScripts) try { WebViewCompat.addDocumentStartJavaScript(w, Native.hardenJs(), setOf("*")) } catch (e: Throwable) {}
+        if (earlyScripts) try { WebViewCompat.addDocumentStartJavaScript(w, "window.__hushAndroid=1;" + Native.hardenJs(), setOf("*")) } catch (e: Throwable) {}
         if (earlyScripts) setPtr(t, w)
         // Tor mode: WebRTC could reveal your real IP outside the proxy, so it's removed from every page.
         if (torOn && earlyScripts) try { WebViewCompat.addDocumentStartJavaScript(w, NO_RTC_JS, setOf("*")) } catch (e: Throwable) {}
@@ -450,6 +453,8 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                         if (inBg && !am.isMusicActive) v.evaluateJavascript("window.__hushBgResume&&__hushBgResume()", null) }, 350); true }
                     "hush-float" -> { act.runOnUiThread { onFloatUrl(t, r.url) }; true }
                     // split.js: you tapped this half → it gets the highlight and the sound.
+                    // Any frame of this page reports "play" / "pause" after YOU tapped: the app draws a brief round icon over the page.
+                    "hush-pulse" -> { val k = r.url.host ?: ""; if (k == "play" || k == "pause") pulse(t.id, k); true }
                     "hush-split" -> { act.runOnUiThread { if (r.url.host == "swap") { if (t.id in panes()) { splitRot++; splitFrac = 1f - splitFrac; render() } } else if (splitIds.isNotEmpty() && t.id in panes() && splitFocus != t.id) { splitFocus = t.id; render(); applySplit() } }; true }
                     // harden.js: a link to another site that wanted a new window → Hush opens it in a background tab.
                     // harden.js on console.groq.com: hand a freshly made Groq key to the assistant (only from Groq's own site).
@@ -632,12 +637,15 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             // Kept tabs sink BEHIND the app's own screen (lower Z): still attached and "visible" to the page so media
             // keeps playing, but every touch goes to the tab list / sheets on top. (Moving them off-screen could leave
             // video layers catching touches.)
-            if (off && (t.id in keepIds || (t.id == active && !visible && t.audio))) {
-                if (b.parent == null) root.addView(b, 0, FrameLayout.LayoutParams(-1, -1)) else if (t.id !in sunk) snap(t)
-                if (t.id !in sunk) { sunk += t.id; b.translationZ = -1000f; b.elevation = 0f
+            // The mini player and the split-screen panes count too: a menu, the tab list or the keyboard on top must never
+            // take their page off the screen — a WebView that leaves the window is paused by Android, and so is its video.
+            val live = t.id == floatId || t.id in splitIds || (splitIds.isNotEmpty() && t.id == active)
+            if (off && (t.id in keepIds || live || (t.id == active && !visible && t.audio))) {
+                if (b.parent == null) root.addView(b, 0, FrameLayout.LayoutParams(-1, -1)) else if (t.id !in sunk && !live) snap(t)
+                if (t.id !in sunk) { sunk += t.id; nlog("sink " + t.id.takeLast(4) + if (t.id == floatId) " mini" else if (live) " split" else ""); b.translationZ = -1000f; b.elevation = 0f
                     b.importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS; b.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS; t.wv?.clearFocus() }
                 return@let }
-            if (t.id in sunk) { sunk -= t.id; b.translationZ = 0f; b.importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_AUTO; b.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS; if (!off) b.bringToFront() }
+            if (t.id in sunk) { sunk -= t.id; nlog("unsink " + t.id.takeLast(4)); b.translationZ = 0f; b.importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_AUTO; b.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS; if (!off) b.bringToFront() }
         } }
         tabs.values.forEach { t -> t.box?.let { b -> if (b.parent != null && t.id !in sunk && (t.id != active || !visible) && !(t.id == floatId && visible) && !(t.id in splitIds && visible)) {
             // Grab the preview first (it needs the tab on screen), then take it off one frame later (the new tab covers it).
@@ -706,7 +714,9 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                     v.setOnTouchListener { _, e -> val w2 = root.width > root.height - topPx - bottomPx
                         when (e.actionMasked) {
                             android.view.MotionEvent.ACTION_DOWN -> { p0 = if (w2) e.rawX else e.rawY; f0 = splitFrac; pill.animate().scaleX(1.4f).scaleY(1.4f).setDuration(120).start() }
-                            android.view.MotionEvent.ACTION_MOVE -> { val av = (if (w2) root.width else root.height - topPx - bottomPx).coerceAtLeast(1); splitFrac = (f0 + ((if (w2) e.rawX else e.rawY) - p0) / av).coerceIn(0.3f, 0.7f); render() }
+                            android.view.MotionEvent.ACTION_MOVE -> { val av = (if (w2) root.width else root.height - topPx - bottomPx).coerceAtLeast(1); splitFrac = (f0 + ((if (w2) e.rawX else e.rawY) - p0) / av).coerceIn(0.3f, 0.7f)
+                                // One layout per screen frame: laying both pages out on every touch event made the videos stutter.
+                                if (!dragPending) { dragPending = true; v.postOnAnimation { dragPending = false; render() } } }
                             else -> { pill.animate().scaleX(1f).scaleY(1f).setDuration(160).start()
                                 val now = System.currentTimeMillis(); val tap = Math.abs((if (w2) e.rawX else e.rawY) - p0) < dp(6)
                                 // Snap back to 50/50 near the middle, or on a double-tap.
@@ -734,7 +744,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
      *  (or an in-page change like YouTube's) settles, if it can't scroll — or it's back at the top — show the bar. */
     private fun barCheck(t: Tab, v: WebView) { v.postDelayed({ if (t.id == active && (!v.canScrollVertically(1) || v.scrollY < dp(30)))
         emit("scroll", JSObject().apply { put("id", t.id); put("dir", -1); put("y", 0) }) }, 700) }
-    private val splitIds = mutableListOf<String>(); private var splitFrac = 0.5f; private var splitRot = 0; private var splitBar: android.view.View? = null
+    private val splitIds = mutableListOf<String>(); private var splitFrac = 0.5f; private var splitRot = 0; private var dragPending = false; private var splitBar: android.view.View? = null
     private var splitMode = "grid"; private var splitAwake = true
     /** In-pane fullscreen videos (split screen): tab id → (holder view on top of that pane, the page's callback). */
     private val paneFs = HashMap<String, Pair<FrameLayout, WebChromeClient.CustomViewCallback>>()
@@ -745,6 +755,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     /** Tell both halves whether split is on and which one has the focus (highlight + sound); halves that left the split go back to normal. */
     private fun applySplit(): Unit = act.runOnUiThread {
         val panes = panes().takeIf { it.size > 1 } ?: emptyList()
+        nlog("split " + panes.size + " focus " + (splitFocus ?: "-").takeLast(4))
         // Keep awake: the screen stays on while you're watching a split.
         if (panes.isNotEmpty() && splitAwake) act.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else act.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (!panes.contains(splitFocus ?: "")) splitFocus = panes.firstOrNull()
@@ -785,6 +796,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     @Command fun switchTab(i: Invoke) {
         val id = i.parseArgs(IdArgs::class.java).id
         if (id == "none") visible = false else { visible = true; if (tabs.containsKey(id)) active = id }
+        nlog("switch " + (if (id == "none") "none" else id.takeLast(4)))
         render(); i.resolve()
     }
     @Command fun closeTab(i: Invoke) {
@@ -796,6 +808,22 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         }
         i.resolve()
     }
+    /** A brief play / pause icon drawn by the app itself over a tab's page — it can't be hidden by a site's styles,
+     *  a lifted video, or a cross-site player frame. Shows where that page is on screen (full tab, split pane or mini player). */
+    private var lastPulse = 0L
+    private fun pulse(id: String, kind: String) = act.runOnUiThread {
+        val now = System.currentTimeMillis(); if (now - lastPulse < 220) return@runOnUiThread; lastPulse = now
+        val b = tabs[id]?.box ?: return@runOnUiThread
+        if (b.parent == null || b.width <= 0 || id in sunk || !visible) return@runOnUiThread
+        val root = act.findViewById<ViewGroup>(android.R.id.content)
+        val a = IntArray(2); val o = IntArray(2); b.getLocationInWindow(a); root.getLocationInWindow(o)
+        val w = b.width * b.scaleX; val h = b.height * b.scaleY
+        val size = (minOf(w, h) * 0.34f).toInt().coerceIn(dp(44), dp(76))
+        (0 until root.childCount).map { root.getChildAt(it) }.filter { it.tag == "hush-pulse" }.forEach { root.removeView(it) }
+        val v = PulseView(act, kind == "play", size); v.tag = "hush-pulse"; v.alpha = 0f; v.scaleX = .7f; v.scaleY = .7f; v.elevation = dp(40).toFloat(); v.translationZ = dp(40).toFloat()
+        root.addView(v, FrameLayout.LayoutParams(size, size).apply { leftMargin = (a[0] - o[0] + w / 2 - size / 2).toInt(); topMargin = (a[1] - o[1] + h / 2 - size / 2).toInt() })
+        v.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(130).withEndAction {
+            v.animate().alpha(0f).scaleX(1.25f).scaleY(1.25f).setStartDelay(280).setDuration(240).withEndAction { root.removeView(v) }.start() }.start() }
     /** Battery/RAM: destroy every background WebView, keep URL + navigation state, restore lazily. */
     @Command fun discardBackground(i: Invoke) { val mins = i.parseArgs(DiscardArgs::class.java).minutes; act.runOnUiThread {
         val a = i.parseArgs(DiscardArgs::class.java); val keep = a.keep.split(',').filter { it.isNotEmpty() }.toSet(); val ps = panes()
@@ -993,5 +1021,18 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         private val IMG = Regex(".*\\.(png|jpe?g|gif|webp|svg|ico|avif)$")
         private val FONT = Regex(".*\\.(woff2?|ttf|otf)$")
         private val MEDIA = Regex(".*\\.(mp4|webm|mp3|m4a|ogg)$")
+    }
+}
+
+/** The round play / pause icon (frosted dark disc, white glyph). Not clickable: touches go to the page underneath. */
+private class PulseView(c: android.content.Context, private val play: Boolean, private val s: Int) : android.view.View(c) {
+    private val bg = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0xB3121216.toInt() }
+    private val ring = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0x24FFFFFF; style = android.graphics.Paint.Style.STROKE; strokeWidth = 2f }
+    private val fg = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() }
+    init { isClickable = false; isFocusable = false }
+    override fun onDraw(c: android.graphics.Canvas) {
+        val r = s / 2f; c.drawCircle(r, r, r - 1f, bg); c.drawCircle(r, r, r - 1f, ring)
+        if (play) { val p = android.graphics.Path().apply { moveTo(r * .80f, r * .60f); lineTo(r * 1.44f, r); lineTo(r * .80f, r * 1.40f); close() }; c.drawPath(p, fg) }
+        else { val w = r * .20f; c.drawRoundRect(r * .72f, r * .62f, r * .72f + w, r * 1.38f, w / 2, w / 2, fg); c.drawRoundRect(r * 1.08f, r * .62f, r * 1.08f + w, r * 1.38f, w / 2, w / 2, fg) }
     }
 }

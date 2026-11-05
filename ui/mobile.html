@@ -196,7 +196,7 @@ let tabs=[], cur=null, nid=1, sheet=null, downloads=[], typing=false, finding=fa
 const T=()=>tabs.find(t=>t.id===cur);
 
 // ---------- preferences (stored in Rust as ui.<name>) ----------
-const DEF={toolbar:"on",video_quality:"1080",video_leave:"ask",fp:"on",fp_off:"",bg_play:"true",memory_saver:"10",bangs:"",focus_sites:"youtube.com,reddit.com,x.com,instagram.com,tiktok.com,facebook.com",focus_until:"0",color:"graphite",bar_pos:"top",theme:"system",text_zoom:"100",desktop:"false",pull_refresh:"true",force_dark:"false",history:"off",restore:"off",workspaces:"Personal",ws:"Personal"};
+const DEF={toolbar:"on",video_quality:"1080",video_leave:"mini",fp:"on",fp_off:"",bg_play:"true",memory_saver:"10",bangs:"",focus_sites:"youtube.com,reddit.com,x.com,instagram.com,tiktok.com,facebook.com",focus_until:"0",color:"graphite",bar_pos:"top",theme:"system",text_zoom:"100",desktop:"false",pull_refresh:"true",force_dark:"false",history:"off",restore:"off",workspaces:"Personal",ws:"Personal"};
 const pref=k=>state.settings.ui?.[k]??DEF[k];
 async function setPref(k,v){state.settings.ui[k]=String(v);applyPrefs();try{await inv("set_setting",{key:"ui."+k,value:String(v)})}catch(e){}}
 // Browser color: a hue/saturation tints every surface; light and dark variants are derived from it.

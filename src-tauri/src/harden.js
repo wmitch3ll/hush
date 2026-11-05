@@ -107,8 +107,14 @@
       if (!pz.isConnected) document.documentElement.append(pz);
       try { if (pz.matches(":popover-open")) pz.hidePopover(); pz.showPopover(); } catch (_) {}
       clearTimeout(pzT); pzT = setTimeout(() => { try { pz.hidePopover(); } catch (_) {} }, 650); } catch (_) {} };
+    // Android: the app itself draws the icon (it can't be hidden by site styles, a lifted video or a player frame).
+    // The frame that owns the video tells the top page; the top page tells the app. Windows draws it in the page.
+    const native = k => { if (window === top) { try { location.href = "hush-pulse://" + k; } catch (_) {} } else { try { top.postMessage({ __hushPulse: k }, "*"); } catch (_) {} } };
     for (const k of ["play", "pause"]) document.addEventListener(k, e => { const v = e.target;
-      if (v.tagName === "VIDEO" && !v.ended && Date.now() - touched < 1200 && !(window.__hushSplitBar && window.__hushSplitBar(v))) pulse(v, k); }, true);
+      if (v.tagName !== "VIDEO" || v.ended || Date.now() - touched >= 1200) return;
+      const r = v.getBoundingClientRect(); if (r.width < 120 || r.height < 68) return;
+      if (window.__hushAndroid) native(k); else if (!(window.__hushSplitBar && window.__hushSplitBar(v))) pulse(v, k); }, true);
+    addEventListener("message", e => { const d = e.data; if (d && d.__hushPulse && window === top && window.__hushAndroid && (d.__hushPulse === "play" || d.__hushPulse === "pause") && e.source !== window) native(d.__hushPulse); });
     // Video diary for problem reports: the last few things that happened to the videos on this page (no URLs).
     const log = window.__hushMediaLog = [];
     const note = (k, v) => { try { log.push([Math.round(performance.now()), k, v ? Math.round(v.clientWidth) + "x" + Math.round(v.clientHeight) + (v.paused ? " paused" : " playing") + (v.muted ? " muted" : "") : "", document.visibilityState, document.hasFocus() ? "focus" : "nofocus", innerWidth + "x" + innerHeight, Date.now() - touched < 1500 ? "touched" : ""].join(" ")); if (log.length > 40) log.shift(); } catch (_) {} };

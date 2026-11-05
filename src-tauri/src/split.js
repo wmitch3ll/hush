@@ -49,7 +49,7 @@ window.__hushSplit = window.__hushSplit || (() => {
   const want = () => on ? !focus : !!window.__hushMuted;
   // Smooth switching: the sound fades out (~150 ms) / in (~220 ms) instead of cutting, so moving it between panes is soft.
   const fade = (x, m) => { if (x.__hushFade) cancelAnimationFrame(x.__hushFade.raf);
-    const vol = x.__hushFade ? x.__hushFade.vol : x.volume, dur = m ? 150 : 220, t0 = performance.now();
+    const vol = x.__hushFade ? x.__hushFade.vol : x.volume, dur = m ? 90 : 140, t0 = performance.now();
     if (!m) { x.volume = 0; x.muted = false; }
     const f = { vol, raf: 0 }; x.__hushFade = f;
     const step = now => { const k = Math.min(1, (now - t0) / dur);
