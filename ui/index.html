@@ -50,6 +50,8 @@ body.tor #pill{border-color:#8b5cf6;box-shadow:0 0 0 3px #8b5cf622}#torb{display
 #lock{width:12px;height:12px;color:var(--mute);flex:none}
 #bar{all:unset;flex:1;color:var(--ink);font-size:13.5px;user-select:text;min-width:0}
 #bar::placeholder{color:var(--mute)}
+#msgbn{position:fixed;right:16px;top:calc(var(--bar-h,46px) + 10px);z-index:80;width:min(360px,calc(100vw - 32px));display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:16px;cursor:pointer;background:color-mix(in srgb,var(--card) 90%,transparent);backdrop-filter:blur(18px) saturate(1.4);border:1px solid var(--line);box-shadow:0 12px 34px #0006;transform:translateY(-14px) scale(.98);opacity:0;pointer-events:none;transition:transform .28s cubic-bezier(.2,.9,.25,1),opacity .2s}
+#msgbn.on{transform:none;opacity:1;pointer-events:auto}#msgbn i{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:#fff;font:700 13px system-ui;font-style:normal;flex:none}#msgbn div{min-width:0;flex:1;display:grid}#msgbn b{font:650 13.5px system-ui;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#msgbn span{font:12.5px system-ui;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#msgbn em{font:700 11px system-ui;font-style:normal;background:var(--ink);color:var(--bg);border-radius:99px;padding:2px 8px}
 .badge{position:absolute;top:2px;right:0;min-width:14px;height:14px;padding:0 3px;border-radius:7px;background:var(--ink);color:var(--bg);font-size:9px;font-weight:600;display:none;place-items:center}
 #shield.off{opacity:.4}#shield.off .badge{display:none!important}
 #load{position:absolute;left:0;right:0;height:2px;background:var(--acc);transform-origin:left;transform:scaleX(0);opacity:0;transition:transform .4s,opacity .3s;z-index:4}
@@ -624,7 +626,7 @@ T.event.listen('float-action',({payload:p})=>{if(p.a=='open'){floating=null;sele
   else if(p.a=='moved')setPref('float_pos',[p.x,p.y,p.w].map(Math.round).join(','))});
 // ---------- Hush Messenger ----------
 const HM=HushMsg({ai:{ready:()=>HX.ai.status()=='ready',ask:(p,on)=>HX.ai.ask(p,on,200)},inv,secret:{get:n=>inv('secret_get',{name:n}),set:(n,v)=>inv('secret_set',{name:n,value:v}),del:n=>inv('secret_del',{name:n})},invRaw:(c,d,h)=>T.core.invoke(c,d,{headers:h}),listen:(e,f)=>T.event.listen(e,f),toast,mobile:false,open:u=>{closePanel();openTab(u)},page:()=>{const t=tab(cur);return t&&/^https?:/.test(t.url)&&!t.priv?{url:t.url}:null},
-  badge:n=>{for(const id of ['#msgcnt','#dmc']){$(id).textContent=n>99?'99+':n;$(id).style.display=n?'grid':'none'}},qr:s=>{try{return hushQR.svg(s)}catch(e){return ''}},close:()=>{closePanel();closeDock()},
+  banner:m=>msgBanner(m),badge:n=>{for(const id of ['#msgcnt','#dmc']){$(id).textContent=n>99?'99+':n;$(id).style.display=n?'grid':'none'}},qr:s=>{try{return hushQR.svg(s)}catch(e){return ''}},close:()=>{closePanel();closeDock()},
   media:(a,v)=>inv('page_action',{action:'media-'+a,arg:v==null?undefined:String(v)}).catch(()=>{}),
   togetherBar:(st,cb)=>{const e=$('#tog');if(!st){e.classList.remove('on');e.textContent='';return}e.innerHTML='';const t=document.createElement('span');t.textContent=st.title;e.append(t);
     for(const [l,a] of st.items){const b=document.createElement('button');const ic=l.split(' ')[0];b.textContent=a=='go'?'🔗':ic;b.title=l.slice(ic.length+1)||l;b.setAttribute('aria-label',b.title);b.onclick=()=>cb(a);e.append(b)}e.classList.add('on')}});
@@ -652,6 +654,13 @@ $('#dockh').onclick=e=>{const b=e.target.closest('[data-hub]');if(!b)return;cons
 $('#dockr').onpointerdown=e=>{e.preventDefault();const x0=e.clientX,w0=+pref('dock_w')||380;const mv=m=>{state.settings.ui.dock_w=String(Math.max(300,Math.min(640,w0+(x0-m.clientX))));layout(true)};
   const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up);setPref('dock_w',state.settings.ui.dock_w)};addEventListener('pointermove',mv);addEventListener('pointerup',up)};
 $('#msgb').onclick=()=>toggleDock('murmur');
+// Murmur banner (top right): the newest message; click opens that chat. The taskbar button flashes when Hush isn't in front.
+let bnT=0,bnKey=null,bnN=0;
+function msgBanner(m){const el=$('#msgbn');bnN=(bnKey===m.key&&el.classList.contains('on'))?bnN+1:1;bnKey=m.key;
+  el.innerHTML=`<i style="background:${m.color}">${esc(m.ini||'?')}</i><div><b>${esc(m.name)}</b><span>${esc(m.text)}</span></div>${bnN>1?`<em>+${bnN-1}</em>`:''}`;
+  el.classList.add('on');clearTimeout(bnT);bnT=setTimeout(()=>el.classList.remove('on'),7000);inv('attention').catch(()=>{})}
+$('#msgbn').onclick=()=>{$('#msgbn').classList.remove('on');if(dockTab!=='murmur')toggleDock('murmur');setTimeout(()=>{try{HM.api.openChat&&HM.api.openChat(bnKey)}catch(e){}},250)};
+
 $('#aib').onclick=()=>toggleDock('ai');
 const aiBtn=()=>{try{const n=HX.aiName(),i=(n.trim()[0]||'A').toUpperCase();document.querySelectorAll('.ai-av').forEach(e=>e.textContent=i);$('#aib').title=n+' — AI assistant (Ctrl+Shift+A)'}catch(e){}};addEventListener('hush-ai-name',aiBtn);setTimeout(aiBtn,0);setTimeout(()=>HM.boot(),1500);
 const EC=HushEcho({M:HM.api,toast,mobile:false,page:()=>{const t=tab(cur);return t&&/^https?:/.test(t.url)&&!t.priv?{url:t.url}:null},open:u=>{closePanel();openTab(u)},close:()=>{closePanel();closeDock()},openMurmur:pk=>{closePanel(true);closeDock();openDock('murmur');if(pk)setTimeout(()=>HM.api.openChat(pk),300)},

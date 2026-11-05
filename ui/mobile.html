@@ -33,6 +33,10 @@ body.bottom #top{border-bottom:0;border-top:1px solid var(--line)}
 .ib svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .ib:active{background:var(--line)}
 #shield.off{opacity:.4}#shield.priv::after{content:"";position:absolute;inset:9px;border:1.5px dashed var(--mute);border-radius:50%}
+#msgbn{position:fixed;left:10px;right:10px;top:calc(env(safe-area-inset-top,0px) + 8px);z-index:60;display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:18px;background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);border:1px solid var(--line);box-shadow:0 10px 30px #0006;transform:translateY(-140%);opacity:0;transition:transform .32s cubic-bezier(.2,.9,.25,1),opacity .2s;touch-action:none}
+#msgbn.on{transform:none;opacity:1}#msgbn i{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;color:#fff;font:700 14px system-ui;font-style:normal;flex:none}#msgbn div{min-width:0;flex:1;display:grid}#msgbn b{font:650 14px system-ui;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#msgbn span{font:13px system-ui;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#msgbn em{font:700 12px system-ui;font-style:normal;background:var(--acc);color:var(--bg);border-radius:99px;padding:2px 8px}
+#msg-btn.msgdot::after,#tb-msg.msgdot::after{content:attr(data-n);position:absolute;top:3px;right:2px;min-width:16px;height:16px;padding:0 4px;border-radius:99px;background:var(--acc);color:var(--bg);font:700 10px/16px system-ui;text-align:center}
+body.tools #msg-btn{display:none}body:not(.tools) #tb-msg{display:none}
 #menu-btn.msgdot::after{content:attr(data-n);position:absolute;top:2px;right:0;min-width:16px;height:16px;padding:0 4px;border-radius:99px;background:var(--acc);color:var(--bg);font:700 10px/16px system-ui;text-align:center}
 #np{color:var(--acc)}#np.on svg{animation:npb 1.2s ease-in-out infinite alternate}@keyframes npb{to{transform:scale(1.12)}}
 #tabs-btn.playing::after{content:"";position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:50%;background:var(--acc);border:2px solid var(--bg)}
@@ -126,6 +130,7 @@ body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
     </div>
     <button id="tog" class="ib" aria-label="Watch together controls" style="display:none;font-size:18px">🎬</button><button id="mnote" class="ib" aria-label="Friends’ notes on this page" style="display:none;font-size:15px;width:auto;padding:0 6px">📌<b style="font-size:11px"></b></button>
     <button id="np" class="ib" aria-label="Now playing" style="display:none"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg></button>
+    <button id="msg-btn" class="ib" aria-label="Murmur messages"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg></button>
     <button id="tabs-btn" class="ib" aria-label="Tabs"><span>1</span></button>
     <button id="menu-btn" class="ib" aria-label="Menu"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg></button>
     <div id="bar"></div>
@@ -136,6 +141,7 @@ body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
     <button class="tb" id="tb-fwd" aria-label="Forward"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
     <button class="tb" id="tb-new" aria-label="New tab"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
     <button class="tb" id="tb-ai" aria-label="AI assistant"><i class="tb-av">A</i></button>
+    <button class="tb" id="tb-msg" aria-label="Murmur messages"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg></button>
     <button class="tb" id="tb-tabs" aria-label="Tabs"><span>1</span></button>
     <button class="tb" id="tb-menu" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
   </nav>
@@ -155,6 +161,7 @@ body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
 <div class="sheet" id="echos" style="padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px);overflow:hidden"></div>
 <div class="sheet" id="msgs" style="padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px);overflow:hidden"></div>
 <div id="scrim"></div><div class="act" id="act"></div>
+<div id="msgbn" role="alert" aria-live="polite"></div>
 <div id="toast" role="status"></div>
 
 <script src="icons.js"></script>
@@ -189,10 +196,10 @@ function liftCard(c,id,menu){vibe();c.style.transition="transform .12s";c.style.
 function toggleMute(t){if(!t||!t.native)return;t.muted=!t.muted;native("muteTab",{id:t.native,muted:t.muted});toast(t.muted?"Tab muted":"Tab unmuted");render();if(sheet==="switcher")drawSwitcher()}
 const native=(cmd,args)=>inv("native_call",{cmd,args:args||{}});
 // Site icons (sent by Android as tiny PNGs), kept on this phone in browser storage — a convenience, safe to lose.
-let ICONS={};try{ICONS=JSON.parse(localStorage.getItem("hush-icons")||"{}")}catch(e){}
+let ICONS={};try{if(!localStorage.getItem("hush-icons-v2")){localStorage.removeItem("hush-icons");localStorage.setItem("hush-icons-v2","1")}ICONS=JSON.parse(localStorage.getItem("hush-icons")||"{}")}catch(e){}   // v2: older icons were sometimes filed under the wrong site
 const icon=u=>ICONS[bare(u)]||"";
 function saveIcon(host,data){host=host.replace(/^www\./,"");if(!host||ICONS[host]===data)return;ICONS[host]=data;const k=Object.keys(ICONS);if(k.length>300)delete ICONS[k[0]];
-  try{localStorage.setItem("hush-icons",JSON.stringify(ICONS))}catch(e){}}
+  try{localStorage.setItem("hush-icons",JSON.stringify(ICONS))}catch(e){}try{HX.favSet(host,data)}catch(e){}}
 const WORDMARK=`<div class="wordmark">hush.</div>`;
 let state={settings:{search:"duckduckgo",ui:{}},bookmarks:[],allow_sites:[],site_dark:{},session:[]}, allow=new Set();
 // tabs: {id, native (label of the native WebView; null = not opened yet), url, title, priv, ws, canBack, canFwd}
@@ -286,7 +293,7 @@ function startTour(){touring=true;show(null);syncNative();const u0=(T()||{}).url
   ],{onEnd:fin});
   window.HUSH_COACH_END=()=>{document.getElementById("hc")?.remove();fin()}}
 async function closeTab(id){const t=tabs.find(x=>x.id===id);const back=t&&!t.priv&&/^https?:/.test(t.url||"")?{url:t.url,ws:t.ws}:null;if(t&&t.native&&floating===t.native){floating=null;native("floatClose",{stop:true}).catch(()=>{})}if(t&&t.native)inv("close_tab",{label:t.native}).catch(()=>{});
-  splitSet.delete(id);tabs=tabs.filter(x=>x.id!==id);if(!inWs().length)newTab(false,true);else if(cur===id)cur=inWs().at(-1).id;render();saveSession();if(sheet==="switcher")drawSwitcher();
+  splitSet.delete(id);tabs=tabs.filter(x=>x.id!==id);if(!inWs().length)newTab(false,true);else if(cur===id)cur=inWs().at(-1).id;splitSet.delete(cur);if(!splitSet.size){splitWith=null;native("splitTab",{id:""}).catch(()=>{})}render();saveSession();if(sheet==="switcher")drawSwitcher();
   if(back)toast("Tab closed",["Undo",()=>{if(back.ws!==curWs())setPref("ws",back.ws);newTab();go(back.url)}])}
 function step(d){const w=inWs();if(w.length<2){toast(d>0?"No tab to the right":"No tab to the left");return}const i=w.findIndex(t=>t.id===cur),j=i+d;
   if(j<0||j>=w.length){toast(d>0?"Last tab":"First tab");return}vibe();select(w[j].id,d>0?"sl":"sr");toast(bare(w[j].url)||"New tab")}
@@ -344,7 +351,7 @@ gesture($("#tb-back"),{tap:()=>inv("nav",{action:"back"}),long:()=>{drawHistory(
 // Paste and go: open whatever link (or search) you just copied, in a new tab.
 async function pasteGo(){let t="";try{t=((await native("clipText"))||{}).text||""}catch(e){}t=t.trim();
   if(!t)return toast("Nothing copied yet — copy a link first");newTab();go(t.slice(0,2000))}
-$("#tb-menu").onclick=()=>{drawMenu();show("menu")};
+$("#tb-menu").onclick=()=>{drawMenu();show("menu")};$("#msg-btn").onclick=$("#tb-msg").onclick=()=>openMsgs();
 // One tap: your assistant. The button shows its initial.
 $("#tb-ai").onclick=()=>{vibe&&vibe();openAssistant()};
 const aiBtn=()=>{try{const n=HX.aiName();$("#tb-ai .tb-av").textContent=(n.trim()[0]||"A").toUpperCase();$("#tb-ai").setAttribute("aria-label",n)}catch(e){}};addEventListener("hush-ai-name",aiBtn);setTimeout(aiBtn,0);
@@ -390,7 +397,7 @@ $("#reload").onclick=()=>{const t=T();if(t&&t.native){progress(true);inv("nav",{
 window.__hushEvent=(name,d)=>{
   // Groq's key page handed over a new key (harden.js): connect the assistant, close that tab, open the assistant.
   if(name==="groqKey"){toast("🔑 Checking your key through Tor…");HX.ai.connectGroq(d.key).then(()=>{const t=tabs.find(x=>x.native===d.id);if(t&&inWs().length>1)closeTab(t.id);toast("✓ "+HX.aiName()+" is ready — powered by Groq");openAssistant()}).catch(e=>toast(String(e&&e.message||e)));return}
-  if(name==="floatEnded"){if(floating===d.id)floating=null;return}if(name==="favicon"){HX.favSet(d.host,d.data);return}if(name==="blocked"){HX.siteHit(d.host,+d.n||0);return}
+  if(name==="floatEnded"){if(floating===d.id)floating=null;return}if(name==="favicon"){if(typeof d.data==="string"&&d.data.startsWith("data:image/png;base64,")&&d.data.length<20000)saveIcon(d.host||"",d.data);return}if(name==="blocked"){HX.siteHit(d.host,+d.n||0);return}
   if(name==="popupBlocked"){HX.bump("pop");toast("🚫 Blocked a popup ad — you stayed on the page");return}
   if(name==="linkTab"){const u=d.url;if(!/^https?:/.test(u))return;const keep=cur,t=newTab(false,true);t.url=u;cur=keep;inv("open_tab",{input:u,space:spaceOf(t.ws)}).then(id=>{t.native=id;inv("switch_tab",{label:T().native||"none"});render()});toast("Opened in a background tab");return}
   if(name==="tabUrl"){const t=tabs.find(x=>x.native===d.id);if(!t)return;t.url=d.url;t.title=d.title||t.title;t.canBack=d.canBack;t.canFwd=d.canFwd;
@@ -426,7 +433,7 @@ window.__hushEvent=(name,d)=>{
       ["Open in background",()=>{const keep=cur,t=newTab(false,true);t.url=u;cur=keep;inv("open_tab",{input:u,space:spaceOf(t.ws)}).then(id=>{t.native=id;inv("switch_tab",{label:T().native||"none"});render()});toast("Opened in background")}],
       ["Open in private tab",()=>{const t=newTab(true,true);t.url=u;openNative(t);render()}],
       ["Copy link",()=>copy(u)],["Show QR code",()=>qrSheet(u)]])}
-  else if(name==="icon"){if(typeof d.data==="string"&&d.data.startsWith("data:image/png;base64,")&&d.data.length<20000)saveIcon(d.host||"",d.data)}
+  else if(name==="icon"){/* the app's own guess can belong to the previous page: icons now come from the page itself ("favicon") */}
   else if(name==="openUrl"){handleIncoming()}
   else if(name==="permission"){const what=(d.kinds||[]).map(k=>({camera:"camera",microphone:"microphone",location:"location"}[k]||k)).join(" & ");
     actions(bare("https://"+d.host)+" wants to use your "+what,[["Allow",()=>native("permissionReply",{allow:true,remember:true})],
@@ -453,7 +460,7 @@ function torInfo(){$("#xs").innerHTML=head("What is Tor?")+'<div style="padding:
 // Hush Messenger (full-screen sheet). Stays connected through Tor in the background once set up.
 const HM=HushMsg({ai:{ready:()=>HX.ai.status()==="ready",ask:(p,on)=>HX.ai.ask(p,on,200)},haptic:vibe,inv,secret:{get:n=>native('secretGet',{name:n}).then(r=>r&&typeof r.value==='string'?r.value:null),set:(n,v)=>native('secretSet',{name:n,value:v}),del:n=>native('secretDel',{name:n})},biometric:()=>native('biometric'),invRaw:(c,d,h)=>window.__TAURI__.core.invoke(c,d,{headers:h}),listen:(e,f)=>window.__TAURI__.event.listen(e,f),toast,mobile:true,open:u=>{show(null);newTab(false,true);go(u)},
   page:()=>{const t=T();return t&&t.native&&!t.priv&&/^https?:/.test(t.url)?{url:t.url}:null},
-  badge:n=>{for(const b of [$("#menu-btn"),$("#tb-menu")]){b.classList.toggle("msgdot",n>0);b.dataset.n=n>99?"99+":n}},qr:s=>{try{return hushQR.svg(s)}catch(e){return ""}},close:()=>{HM.close();show(null)},
+  badge:n=>{for(const b of [$("#msg-btn"),$("#tb-msg")]){b.classList.toggle("msgdot",n>0);b.dataset.n=n>99?"99+":n}},banner:m=>{if(sheet==="msgs")return;msgBanner(m)},notify:m=>native("notify",{key:m.key,title:m.title,text:m.text,count:m.count||1}).catch(()=>{}),clearNotif:k=>native("clearNotif",{key:k}).catch(()=>{}),live:on=>{native("msgLive",{on}).catch(()=>{});if(on&&!pref("notif_asked")){setPref("notif_asked","1");native("notifPerm").catch(()=>{})}},qr:s=>{try{return hushQR.svg(s)}catch(e){return ""}},close:()=>{HM.close();show(null)},
   onIncoming:(key,txt,color)=>{if(sheet==="msgs")return;bubbleKey=key;native("bubble",{show:true,text:txt,color}).catch(()=>{})},
   saveImage:d=>native("saveImage",{data:d}).then(()=>toast("Saved to Photos")).catch(e=>toast(String(e))),
   media:(a,v)=>inv("page_action",{action:"media-"+a,arg:v==null?undefined:String(v)}).catch(()=>{}),
@@ -491,6 +498,17 @@ function splitMenu(){const sc=scenes(),on=splitSet.size>0,spot=pref("split_mode"
     ...(on?[["＋ Save as a scene",sceneSave]]:[["Add tabs: hold a tab in the tab list › Add to split screen",()=>{show("switcher")}]]),
     ...sc.map(x=>["▶ "+x.name,()=>sceneOpen(x)]),
     ...(sc.length?[["🗑 Delete a scene",async()=>{const n=prompt("Scene name to delete:\n"+sc.map(x=>x.name).join("\n"));if(n)await setPref("scenes",JSON.stringify(sc.filter(x=>x.name!==n.trim())))}]]:[])])}
+
+// ---------- Murmur banner: a message shows at the top of the app; tap opens the chat, swipe up (or wait) to dismiss ----------
+let bnT=0,bnKey=null,bnN=0;
+function msgBanner(m){const el=$("#msgbn");bnN=(bnKey===m.key&&el.classList.contains("on"))?bnN+1:1;bnKey=m.key;
+  el.innerHTML=`<i style="background:${m.color}">${esc(m.ini||"?")}</i><div><b>${esc(m.name)}</b><span>${esc(m.text)}</span></div>${bnN>1?`<em>+${bnN-1}</em>`:""}`;
+  el.classList.add("on");vibe();clearTimeout(bnT);bnT=setTimeout(()=>el.classList.remove("on"),6500)}
+{const el=$("#msgbn");let y0=null;
+ el.addEventListener("pointerdown",e=>{y0=e.clientY});
+ el.addEventListener("pointermove",e=>{if(y0!=null&&y0-e.clientY>24){y0=null;el.classList.remove("on")}});
+ el.addEventListener("pointerup",e=>{if(y0!=null&&Math.abs(e.clientY-y0)<10){el.classList.remove("on");openMsgs(bnKey)}y0=null})}
+
 function openMsgs(chat){native("bubble",{show:false}).catch(()=>{});show("msgs");HM.open($("#msgs"),typeof chat==="string"?chat:null)}
 const EC=HushEcho({haptic:vibe,M:HM.api,toast,mobile:true,page:()=>{const t=T();return t&&t.native&&!t.priv&&/^https?:/.test(t.url)?{url:t.url}:null},open:u=>{show(null);newTab(false,true);go(u)},close:()=>{EC.close();show(null)},openMurmur:pk=>{EC.close();openMsgs(pk||null)},badge:n=>{}});
 // Problem reports: add what happened to the videos (mini player / tab / split panes) — events only, no addresses.
@@ -809,7 +827,7 @@ function toast(m,act){const e=$("#toast");e.textContent=m;e.style.pointerEvents=
   e.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>{e.classList.remove("on");e.style.pointerEvents=""},act?5000:1800)}
 // ---------- links from other apps, shares, widget, tile, hush: imports ----------
 async function handleIncoming(){let u="";try{u=(await native("takeIntent")).url||""}catch(e){}if(!u)return;
-  if(u==="hush:private")return newTab(true);if(u==="hush:search")return newTab();if(u==="hush:voice"){newTab(false,true);render();return voice()}
+  if(u.startsWith("hush:chat:")){openMsgs(u.slice(10));return}if(u==="hush:private")return newTab(true);if(u==="hush:search")return newTab();if(u==="hush:voice"){newTab(false,true);render();return voice()}
   if(/^hush:(\/\/)?add/i.test(u)){const pk=await HM.addFromLink(u);if(pk){openMsgs(pk);toast("Contact added — say hi")}else{openMsgs();toast("Set up Murmur first, then scan again")}return}
   if(u.startsWith("hush://import")||u.startsWith("hush:import")){try{const raw=u.split("#")[1]||"",j=JSON.parse(decodeURIComponent(escape(atob(raw.replace(/-/g,"+").replace(/_/g,"/")))));
     const items=(j.b||[]).map(x=>({title:String(x[0]||""),url:String(x[1]||""),folder:String(x[2]||"")})).filter(x=>/^https?:\/\//.test(x.url));

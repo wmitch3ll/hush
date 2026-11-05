@@ -333,9 +333,8 @@ window.HushX = function (A) {
   const weekKey = () => Math.floor(Date.now() / 604800e3);
   function bump(k, n = 1) { try { const r = JSON.parse(localStorage.getItem('hush.report') || '{}'); if (r.w !== weekKey()) { r.w = weekKey(); r.c = {}; } r.c[k] = (r.c[k] || 0) + n; localStorage.setItem('hush.report', JSON.stringify(r)); } catch (e) {} }
   function report(blockedWeek, M) { let c = {}; try { const r = JSON.parse(localStorage.getItem('hush.report') || '{}'); if (r.w === weekKey()) c = r.c || {}; } catch (e) {}
-    let sent = 0; try { const ch = JSON.parse(localStorage.getItem('hush.msg.chats') || '{}'); const t0 = Date.now() - 7 * 86400e3; for (const l of Object.values(ch)) for (const m of l) if (m.from === 'me' && m.at > t0) sent++; } catch (e) {}
     const f = n => n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(n);
-    const items = [[blockedWeek, 'ads & trackers blocked'], [c.tor || 0, 'pages opened through Tor'], [sent, 'messages sent encrypted'], [c.pop || 0, 'popup ads stopped'], [c.meta || 0, 'photos cleaned of location data']].filter(x => x[0] > 0);
+    const items = [[blockedWeek, 'ads & trackers blocked'], [c.tor || 0, 'pages opened through Tor'], [c.pop || 0, 'popup ads stopped'], [c.meta || 0, 'photos cleaned of location data']].filter(x => x[0] > 0);
     if (!items.length) return 'Ads, trackers and cookie banners are blocked automatically.';
     return `<span style="display:block;font-weight:600;margin-bottom:2px">Your week with Hush</span>` + items.map(([n, l]) => `<b>${f(n)}</b> ${l}`).join(' · '); }
   // Tab notes: a private note pinned to a page, kept only on this device.
@@ -673,8 +672,9 @@ window.HushX = function (A) {
     const ks = Object.keys(m); if (ks.length > 250) ks.sort((a, b) => m[a][1] - m[b][1]).slice(0, ks.length - 250).forEach(k => delete m[k]);
     try { localStorage.setItem(FAVK, JSON.stringify(m)); } catch {}
   }
-  const fav = u => { const h = host(u); if (!h) return ''; const e = favAll()[h]; if (e) return e[0];
-    try { return (JSON.parse(localStorage.getItem('hush-icons') || '{}')[h]) || ''; } catch { return ''; } };   // Android's tab-list icon cache
+  const fav = u => { const h = host(u); if (!h) return ''; const m = favAll(); if (m[h]) return m[h][0];
+    for (const k in m) if (k.endsWith('.' + h) || h.endsWith('.' + k)) return m[k][0];   // m.youtube.com <-> youtube.com
+    return ''; };
   const tileBg = h => { let n = 0; for (const c of h || '?') n = (n * 31 + c.charCodeAt(0)) >>> 0; const a = n % 360; return `linear-gradient(135deg,hsl(${a} 55% 38%),hsl(${(a + 40) % 360} 60% 24%))`; };
   // style for a round/rounded icon box: the site's own icon on a soft tile, or its colored letter tile
   const favStyle = u => { const ic = fav(u); return ic ? `background:#fff center/62% no-repeat url('${ic}');color:transparent;border-color:transparent` : `background:${tileBg(host(u))};color:#fff;border-color:transparent`; };

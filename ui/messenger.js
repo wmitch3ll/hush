@@ -101,7 +101,8 @@ window.HushMsg = function (A) {
   let status = 'off', started = false;
   const okRelays = () => Object.values(conns).filter(c => c.open).length;
   function setStatus(s) { status = s; paintStatus(); }
-  function start() {
+  const syncLive = () => { try { A.live && A.live(!!sk && !prefs().nonotif && !prefs().nobg); } catch (e) {} };
+  function start() { syncLive();
     if (started || !sk) return; started = true; setStatus('connecting');
     A.listen('msg-ws', ({ payload: p }) => onWs(p));
     for (const u of relays()) openRelay(u);
@@ -247,7 +248,11 @@ window.HushMsg = function (A) {
       const c = contacts(); if (!isGroup(key) && !c[key]) { c[key] = { name: nameOf(key), added: Date.now(), request: true }; LS.set('contacts', c); }
       if (view.open && view.chat === key && document.visibilityState !== 'hidden') sendRead(key);
       else { const un = LS.get('unread', {}); un[key] = (un[key] || 0) + 1; LS.set('unread', un);
-        A.toast('💬 ' + (isGroup(key) ? chatName(key) + ' · ' + first(r.pubkey) : nameOf(r.pubkey)) + ': ' + preview.slice(0, 60));
+        const pn = prefs(), who = isGroup(key) ? chatName(key) + ' · ' + first(r.pubkey) : nameOf(r.pubkey), body = pn.nopreview ? 'New message' : preview.slice(0, 140);
+        if (!pn.nonotif) {
+          if (A.banner) A.banner({ key, name: who, text: body, ini: initials(isGroup(key) ? chatName(key) : nameOf(r.pubkey)), color: contacts()[r.pubkey]?.aura || '#4F46E5', unread: unreadTotal() });
+          else A.toast('💬 ' + who + ': ' + body.slice(0, 60));
+          if (A.notify && document.visibilityState === 'hidden') A.notify({ key, title: who, text: body, count: un[key] }); }
         if (A.onIncoming) A.onIncoming(key, initials(isGroup(key) ? chatName(key) : nameOf(r.pubkey)), contacts()[r.pubkey]?.aura || '#4F46E5'); }
     }
     LS.set('since', Math.max(LS.get('since', 0), Math.min(now(), r.created_at)));
@@ -712,7 +717,7 @@ window.HushMsg = function (A) {
       let t; b.addEventListener('touchstart', e => { const p = e.touches[0]; t = setTimeout(() => chatMenu(p.clientX, p.clientY, b.dataset.chat), 550); }, { passive: true });
       b.addEventListener('touchend', () => clearTimeout(t)); b.addEventListener('touchmove', () => clearTimeout(t), { passive: true }); });
   }
-  function openChat(k) { view.screen = 'chat'; view.chat = k; view.reply = null; const un = LS.get('unread', {}); delete un[k]; LS.set('unread', un); badge(); repaint(); sendRead(k); }
+  function openChat(k) { A.clearNotif && A.clearNotif(k); view.screen = 'chat'; view.chat = k; view.reply = null; const un = LS.get('unread', {}); delete un[k]; LS.set('unread', un); badge(); repaint(); sendRead(k); }
   function bubble(m, list, key, prev) {
     if (m.sys) return `<div class=hm-day style="font-weight:500">${esc(m.text)}</div>`;
     if (m.unsent) return `<div class="hm-m ${m.from === 'me' ? 'me' : 'them'}" data-m="${m.id}" style="opacity:.6;font-style:italic">${m.from === 'me' ? 'You unsent a message' : 'Message unsent'}<span class=tm>${time(m.at)}</span></div>`;
@@ -1206,6 +1211,9 @@ window.HushMsg = function (A) {
         <p style="margin:10px 0 0;font-size:12px">Your photo, banner and status go only to your contacts, encrypted.</p></div></div>
       <div class=hm-card><h3>Chat settings</h3>
         <div class=hm-opt><div>Read receipts<small>Show ✓✓ / “Seen” — if off, you won’t see theirs either</small></div><button class="hm-sw ${p.receipts ? 'on' : ''}" data-pref=receipts aria-label="Read receipts"></button></div>
+        <div class=hm-opt><div>🔔 Message notifications<small>A banner at the top of Hush${A.mobile ? ', and a notification when Hush is in the background' : ''}</small></div><button class="hm-sw ${!p.nonotif ? 'on' : ''}" data-pref=nonotif aria-label="Message notifications"></button></div>
+        <div class=hm-opt><div>Show message text in notifications<small>Off: only “New message” is shown, so nothing private appears on your lock screen</small></div><button class="hm-sw ${!p.nopreview ? 'on' : ''}" data-pref=nopreview aria-label="Show message text"></button></div>
+        ${A.mobile ? `<div class=hm-opt><div>Stay connected in the background<small>Keeps Murmur online with a quiet notification so messages arrive when Hush isn’t open</small></div><button class="hm-sw ${!p.nobg ? 'on' : ''}" data-pref=nobg aria-label="Stay connected"></button></div>` : ''}
         <div class=hm-opt><div>Typing indicator<small>Let people see when you’re typing</small></div><button class="hm-sw ${p.typing ? 'on' : ''}" data-pref=typing aria-label="Typing indicator"></button></div>
         <div class=hm-opt><div>👻 Ghost mode<small>Never share your location, even by accident</small></div><button class="hm-sw ${p.ghost ? 'on' : ''}" data-pref=ghost aria-label="Ghost mode"></button></div>
         <div class=hm-opt><div>Privacy curtain<small>Blur chats when you switch away${A.mobile ? '; block screenshots and the recent-apps preview while Murmur or Echo is open' : ''}</small></div><button class="hm-sw ${p.curtain !== false ? 'on' : ''}" data-pref=curtain aria-label="Privacy curtain"></button></div></div>
@@ -1221,7 +1229,7 @@ window.HushMsg = function (A) {
       <p style="margin:0">Your secret key is kept in ${A.mobile ? 'the Android Keystore' : 'your operating system’s protected storage'} and never leaves this device unless you make a backup.</p></div>
       <div class=hm-card><h3>Start over</h3><p>Deletes your ID, contacts, groups, photos and every message on this device.</p><button class="hm-btn ghost" id=hm-reset style="color:#ef4444">Delete everything</button></div></div></div>`;
     wireCommon();
-    view.el.querySelectorAll('[data-pref]').forEach(b => b.onclick = () => { const q = prefs(); q[b.dataset.pref] = !q[b.dataset.pref]; LS.set('prefs', q); repaint(); });
+    view.el.querySelectorAll('[data-pref]').forEach(b => b.onclick = () => { const q = prefs(); q[b.dataset.pref] = !q[b.dataset.pref]; LS.set('prefs', q); syncLive(); repaint(); });
     view.el.querySelector('#hm-copy').onclick = async () => { try { await navigator.clipboard.writeText(id); A.toast('Hush ID copied'); } catch { prompt('Your Hush ID', id); } };
     const sh = view.el.querySelector('#hm-sh'); if (sh) sh.onclick = () => navigator.share({ text: 'Message me privately on Hush: ' + id }).catch(() => {});
     view.el.querySelector('#hm-lock').onclick = async () => { if (lockCfg) { if (!await askPin('Enter your PIN to turn off the lock')) return; lockCfg = null; await A.secret.del('murmur-lock').catch(() => {}); A.toast('Lock turned off'); return repaint(); }

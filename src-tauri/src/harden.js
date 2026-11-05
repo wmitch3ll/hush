@@ -212,7 +212,7 @@
 })();
 // ---- Site icon for bookmarks (desktop; Android reads it natively): top page only, once per site per session.
 (() => {
-  if (window !== top || window.__hushAndroid || window.__hushFavInit || !/^https?:$/.test(location.protocol)) return; window.__hushFavInit = 1;
+  if (window !== top || window.__hushFavInit || !/^https?:$/.test(location.protocol)) return; window.__hushFavInit = 1;
   const run = () => {
     try {
       const h = location.hostname.replace(/^www\./, ""); if (!h || sessionStorage.getItem("__hushFav")) return;
@@ -221,7 +221,7 @@
       const tryNext = i => { if (i >= cands.length) return;
         const im = new Image(); im.crossOrigin = "anonymous";
         im.onload = () => { try { const c = document.createElement("canvas"); c.width = c.height = 64; c.getContext("2d").drawImage(im, 0, 0, 64, 64);
-          const d = c.toDataURL("image/png"); if (d.length > 300 && d.length < 15000) { sessionStorage.setItem("__hushFav", "1"); location.href = "hush-fav://x/?h=" + encodeURIComponent(h) + "&d=" + encodeURIComponent(d); } else tryNext(i + 1); } catch (e) { tryNext(i + 1); } };
+          const d = c.toDataURL("image/png"); if (d.length > 300 && d.length < 15000) { sessionStorage.setItem("__hushFav", "1"); if (typeof hushFav !== "undefined") hushFav.postMessage(h + "\n" + d); else location.href = "hush-fav://x/?h=" + encodeURIComponent(h) + "&d=" + encodeURIComponent(d); } else tryNext(i + 1); } catch (e) { tryNext(i + 1); } };
         im.onerror = () => tryNext(i + 1); im.src = cands[i]; };
       tryNext(0);
     } catch (e) {}

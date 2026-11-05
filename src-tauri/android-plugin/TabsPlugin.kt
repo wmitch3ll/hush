@@ -289,6 +289,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             i.getBooleanExtra("hush_private", false) -> "hush:private"
             i.getBooleanExtra("hush_search", false) -> "hush:search"
             i.getBooleanExtra("hush_voice", false) -> "hush:voice"
+            !i.getStringExtra("hush_chat").isNullOrEmpty() -> "hush:chat:" + i.getStringExtra("hush_chat")
             i.action == Intent.ACTION_VIEW -> i.dataString
             i.action == Intent.ACTION_SEND -> i.getStringExtra(Intent.EXTRA_TEXT)?.let { Regex("https?://\\S+").find(it)?.value ?: it }
             i.action == Intent.ACTION_WEB_SEARCH -> i.getStringExtra(SearchManager.QUERY)
@@ -449,6 +450,11 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                 t.audio = msg.data == "1"; emit("tabAudio", JSObject().apply { put("id", t.id); put("audio", t.audio) }); act.runOnUiThread { bgCheck() } }
             if (earlyScripts) WebViewCompat.addDocumentStartJavaScript(w, AUDIO_JS, setOf("*"))
             // "Where you left off": the page tells the app its scroll position and video time (top page only, never from private tabs).
+            // The page's own icon (small PNG): filed under the site that really sent it (never from private tabs).
+            WebViewCompat.addWebMessageListener(w, "hushFav", setOf("*")) { _, msg, _, main, _ -> if (!main || t.priv) return@addWebMessageListener
+                val d = msg.data ?: return@addWebMessageListener; val n = d.indexOf('\n'); if (n < 1 || d.length > 16000) return@addWebMessageListener
+                val h = d.substring(0, n).removePrefix("www."); val ph = Uri.parse(t.page).host?.removePrefix("www.") ?: return@addWebMessageListener
+                if (h == ph && d.startsWith("data:image/png;base64,", n + 1)) emit("favicon", JSObject().apply { put("host", h); put("data", d.substring(n + 1)) }) }
             WebViewCompat.addWebMessageListener(w, "hushPos", setOf("*")) { _, msg, _, main, _ -> if (main && !t.priv) msg.data?.let { posSave(it) } }
         } catch (e: Throwable) {}
         w.webViewClient = object : WebViewClient() {
@@ -733,6 +739,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             ps.forEach { id -> val pt = tabs[id] ?: return@forEach; val r = rects[id] ?: return@forEach
                 if (pt.wv == null) { pt.box = null; pt.wv = make(pt).also { w -> if (pt.saved != null) w.restoreState(pt.saved!!) else w.loadUrl(pt.url) } }
                 val pb = boxFor(pt, pt.wv!!); val lp = android.widget.FrameLayout.LayoutParams(r[2], r[3]).apply { leftMargin = r[0]; topMargin = topPx + r[1] }
+                pb.clipToOutline = false; pb.outlineProvider = android.view.ViewOutlineProvider.BACKGROUND; pb.elevation = 0f; if (pb.scaleX != 1f) { pb.scaleX = 1f; pb.scaleY = 1f }   // a pane is a plain box (it may have been the rounded mini player)
                 if (pb.parent == null) root.addView(pb, lp) else pb.layoutParams = lp
                 if (pt.id in sunk) { sunk -= pt.id; pb.translationZ = 0f; pb.importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_AUTO; pb.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS } }
             // Drag handle between two panes in grid mode.
@@ -747,7 +754,8 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
                             android.view.MotionEvent.ACTION_MOVE -> { val av = (if (w2) root.width else root.height - topPx - bottomPx).coerceAtLeast(1); splitFrac = (f0 + ((if (w2) e.rawX else e.rawY) - p0) / av).coerceIn(0.3f, 0.7f)
                                 // One layout per screen frame: laying both pages out on every touch event made the videos stutter.
                                 if (!dragPending) { dragPending = true; v.postOnAnimation { dragPending = false; render() } } }
-                            else -> { pill.animate().scaleX(1f).scaleY(1f).setDuration(160).start()
+                            else -> { pill.animate().scaleX(1f).scaleY(1f).setDuration(160).start(); v.postDelayed({ applySplit() }, 200)   // after resizing, re-assert which half has the highlight and the sound
+                                
                                 val now = System.currentTimeMillis(); val tap = Math.abs((if (w2) e.rawX else e.rawY) - p0) < dp(6)
                                 // Snap back to 50/50 near the middle, or on a double-tap.
                                 if (Math.abs(splitFrac - 0.5f) < 0.05f || (tap && now - last < 320)) { splitFrac = 0.5f; render() }
@@ -789,12 +797,12 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         // Keep awake: the screen stays on while you're watching a split.
         if (panes.isNotEmpty() && splitAwake) act.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else act.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (!panes.contains(splitFocus ?: "")) splitFocus = panes.firstOrNull()
-        (splitPanes - panes.toSet()).forEach { id -> tabs[id]?.wv?.evaluateJavascript(Native.splitJs() + ";__hushSplit({on:false});", null) }
+        ((if (panes.isEmpty()) splitPanes + listOfNotNull(active) else splitPanes).distinct() - panes.toSet()).forEach { id -> tabs[id]?.wv?.evaluateJavascript(Native.splitJs() + ";__hushSplit({on:false});", null) }
         // Order matters: mute the other panes FIRST, then give the sound to the focused one a moment later. If the
         // new pane got its sound first, two panes would be audible at once and Android would pause one of them.
         val sw = System.currentTimeMillis()
         panes.filter { it != splitFocus }.forEach { id -> tabs[id]?.wv?.evaluateJavascript(Native.splitJs() + ";__hushSplit({on:true,focus:false,sw:" + sw + "});", null) }
-        splitFocus?.takeIf { it in panes }?.let { f -> act.window.decorView.postDelayed({ if (splitFocus == f) tabs[f]?.wv?.evaluateJavascript(Native.splitJs() + ";__hushSplit({on:true,focus:true,sw:" + sw + "});", null) }, 180) }
+        splitFocus?.takeIf { it in panes }?.let { f -> act.window.decorView.postDelayed({ if (splitFocus == f) tabs[f]?.wv?.evaluateJavascript(Native.splitJs() + ";__hushSplit({on:true,focus:true,sw:" + sw + "});", null) }, 240) }
         // Highlight ring drawn natively, so it shows over a fullscreen video too.
         if (Build.VERSION.SDK_INT >= 23) tabs.values.forEach { t -> val ring = if (t.id == splitFocus && panes.isNotEmpty()) android.graphics.drawable.GradientDrawable().apply { setStroke(dp(3), 0xFF4DA3FF.toInt()); setColor(0) } else null
             t.box?.foreground = ring; paneFs[t.id]?.first?.foreground = ring?.constantState?.newDrawable() }
@@ -812,6 +820,15 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             if (id.isEmpty()) { splitIds.clear(); splitRot = 0; splitFrac = 0.5f } else if (id in splitIds) splitIds.remove(id) else if (id != active && tabs.containsKey(id)) { if (splitIds.size >= 3) { i.reject("Split screen holds up to 4 tabs"); return@runOnUiThread }; splitIds.add(id) }
             if (!panes().contains(splitFocus ?: "")) splitFocus = active
             render(); applySplit(); i.resolve(JSObject().put("count", panes().size)) } }
+    // ---------- Murmur notifications ----------
+    @InvokeArg class MsgNotifArgs { var key: String = ""; var title: String = ""; var text: String = ""; var count: Int = 1; var on: Boolean = true }
+    /** Keep Murmur connected while Hush is in the background (a quiet notification), or let it sleep. */
+    @Command fun msgLive(i: Invoke) { val a = i.parseArgs(MsgNotifArgs::class.java); act.runOnUiThread { if (a.on) HushMessages.start(act) else HushMessages.stop(act); i.resolve() } }
+    /** A new message while Hush is in the background: a normal notification that opens that chat. */
+    @Command fun notify(i: Invoke) { val a = i.parseArgs(MsgNotifArgs::class.java); act.runOnUiThread { if (inBg || !visible) HushMessages.post(act, a.key, a.title, a.text, a.count); i.resolve() } }
+    @Command fun clearNotif(i: Invoke) { val a = i.parseArgs(MsgNotifArgs::class.java); act.runOnUiThread { HushMessages.clear(act, a.key); i.resolve() } }
+    /** Android 13+ asks before an app may show notifications. */
+    @Command fun notifPerm(i: Invoke) { act.runOnUiThread { try { if (Build.VERSION.SDK_INT >= 33 && act.checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED) act.requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 91) } catch (e: Throwable) {}; i.resolve() } }
     /** Split layout ("grid" or "spot" = spotlight) and keep-awake. */
     @Command fun splitMode(i: Invoke) { val a = i.parseArgs(SplitModeArgs::class.java); act.runOnUiThread { splitMode = if (a.mode == "spot") "spot" else "grid"; splitAwake = a.awake; render(); applySplit(); i.resolve() } }
     @Command fun openTab(i: Invoke) {

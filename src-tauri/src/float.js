@@ -55,8 +55,15 @@ const FI = { play: '<svg viewBox="0 0 24 24" width="20" height="20"><path fill="
   if (isVid) { v.addEventListener("play", () => { sync(); flash(); }); v.addEventListener("pause", () => { sync(); flash(); }); setTimeout(flash, 50); }
   else { // a player frame: its own controls work (taps go through); keep only move / close / back-to-tab here
     pb.parentElement.remove(); o.style.pointerEvents = "none"; sh.querySelectorAll(".b,.g").forEach(x => x.style.pointerEvents = "auto"); }
+  // What YOU asked for wins for a moment: a tap that the page also reacts to (sites often toggle play/pause themselves ~¼ s later)
+  // must not undo it. Whatever flips the video within 0.9 s of your tap is flipped straight back (at most 3 times).
+  let hold = null;
+  const setHold = p => { hold = { p, until: Date.now() + 900, n: 0 }; };
+  const enforce = () => { if (!hold || Date.now() > hold.until || v.paused === hold.p || hold.n >= 3) return; hold.n++; if (hold.p) v.pause(); else v.play().catch(() => {}); };
+  if (isVid) { v.addEventListener("play", enforce); v.addEventListener("pause", enforce); }
+  o.addEventListener("pointerdown", () => { if (isVid && (!hold || Date.now() > hold.until)) setHold(v.paused); }, true);   // a tap on the frame itself must not toggle the video
   sh.querySelectorAll("[data-a]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); const a = b.dataset.a;
-    if (a === "play") { v.paused ? v.play() : v.pause(); } else go(a); }));
+    if (a === "play") { const want = !v.paused; setHold(want); if (v.paused) v.play().catch(() => {}); else v.pause(); } else go(a); }));
   // Drag anywhere to move it; drag the corner grip to resize. Updates are sent ~25×/s while you drag.
   let s = null, last = 0, mode = "", id = 0;
   const send = (a, force) => { const t = performance.now(); if (!force && t - last < 40) return; last = t; go(a); };

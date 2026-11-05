@@ -601,7 +601,7 @@ pub fn run() {
             check_update, app_info, import_bookmarks,
             desktop::page_action, desktop::set_split, desktop::set_rail, desktop::set_zoom, desktop::set_muted,
             desktop::toggle_fullscreen, desktop::capture_tab, desktop::peek_open, desktop::peek_close, desktop::peek_expand,
-            desktop::screenshot, desktop::save_png, boost_set, remove_custom_filter, bookmarks_reorder,
+            desktop::screenshot, desktop::save_png, desktop::attention, boost_set, remove_custom_filter, bookmarks_reorder,
             extensions::extension_list, extensions::extension_install, extensions::extension_remove,
             desktop::arc_import, desktop::set_split_more, desktop::set_split_mode, desktop::set_split_ratio, desktop::split_swap, desktop::page_text, desktop::open_tab, desktop::switch_tab, desktop::close_tab, desktop::navigate, desktop::nav,
             desktop::clear_data, desktop::start_picker, desktop::set_layout, desktop::show_content,

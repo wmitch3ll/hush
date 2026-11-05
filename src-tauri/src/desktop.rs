@@ -787,3 +787,7 @@ pub async fn start_picker(app: AppHandle, mode: Option<String>) {
     let pre = if mode.as_deref() == Some("watch") { "window.__hushPickMode=\"watch\";" } else { "" };
     if let Some(w) = l.and_then(|l| app.get_webview(&l)) { let _ = w.eval(&format!("{pre}{}", include_str!("picker.js"))); }
 }
+
+/// A message arrived while Hush isn't in front: flash the taskbar button (the in-app banner shows the message).
+#[tauri::command]
+pub fn attention(app: AppHandle) { if let Some(w) = app.get_window("main") { if !w.is_focused().unwrap_or(true) { let _ = w.request_user_attention(Some(tauri::UserAttentionType::Informational)); } } }
