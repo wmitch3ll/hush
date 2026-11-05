@@ -75,7 +75,10 @@
     // player never sees it, so it doesn't pause/play); it's reported to the top page, which moves the sound here.
     let eat = 0;
     const swallow = e => { if (Date.now() < eat) { e.preventDefault(); e.stopImmediatePropagation(); } };
+    // A tap anywhere on the page counts as "you touched the player": the top page passes its taps down to the player
+    // frames, so a pause you make through a site's overlay (common on sports streams) is never undone.
     addEventListener("pointerdown", e => { touched = Date.now();
+      if (window === top) relay({ __hushTouch: touched });
       if (window !== top && e.isTrusted) { if (st.on && st.mute === true) { eat = Date.now() + 700; e.preventDefault(); e.stopImmediatePropagation(); }
         try { top.postMessage({ __hushTap: 1 }, "*"); } catch (_) {} } }, true);
     for (const t of ["mousedown", "mouseup", "pointerup", "click", "dblclick", "touchstart", "touchend"]) addEventListener(t, swallow, true);
@@ -84,10 +87,12 @@
     document.addEventListener("volumechange", e => { if (forced() && e.target.muted !== st.mute) e.target.muted = st.mute; }, true);
     document.addEventListener("play", e => { if (forced()) e.target.muted = st.mute; }, true);
     const switching = () => st.sw && Date.now() - st.sw < 2500;
-    document.addEventListener("pause", e => { const v = e.target; if (!st.on || v.ended || (!st.keep && !switching()) || (!switching() && Date.now() - touched < 1500)) return;
-      const r = n => setTimeout(() => { if (!st.on || !v.paused || v.ended || (!st.keep && !switching()) || (!switching() && Date.now() - touched < 1500)) return;
+    document.addEventListener("pause", e => { const v = e.target; if (!st.on || v.ended || (!st.keep && !switching()) || (!switching() && Date.now() - touched < 4000)) return;
+      const r = n => setTimeout(() => { if (!st.on || !v.paused || v.ended || (!st.keep && !switching()) || (!switching() && Date.now() - touched < 4000)) return;
         if (forced()) v.muted = st.mute; v.play().then(() => {}, () => n < 4 && r(n + 1)); }, n ? 450 : 250); r(0); }, true);
-    addEventListener("message", e => { const d = e.data; if (!d || !d.__hushMedia || window === top || e.source !== parent) return; st = d.__hushMedia; apply(); relay(d); });
+    addEventListener("message", e => { const d = e.data; if (d && d.__hushTouch && window !== top && e.source === parent) { touched = Math.max(touched, Date.now()); relay(d); return; }
+      if (d && d.__hushTap && window === top) touched = Date.now();
+      if (!d || !d.__hushMedia || window === top || e.source !== parent) return; st = d.__hushMedia; apply(); relay(d); });
     if (window === top) window.__hushMediaSet = s => { st = s; apply(); relay({ __hushMedia: s }); };
     // New player frames that load later get the current state too.
     if (window === top) setInterval(() => { if (st.on) relay({ __hushMedia: st }); }, 2000);

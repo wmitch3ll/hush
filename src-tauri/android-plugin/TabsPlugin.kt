@@ -52,6 +52,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     private class Tab(val id: String, var url: String, var wv: WebView?, var saved: Bundle? = null, val priv: Boolean = false, val space: String = "") {
         var lastUsed = System.currentTimeMillis()
         @Volatile var audio = false
+        var ptr: androidx.webkit.ScriptHandler? = null
         var box: SwipeRefreshLayout? = null   // pull-to-refresh container around the WebView
         /** Current page URL, readable from WebView's network thread (WebView methods like getUrl() are UI-thread only). */
         @Volatile var page: String = url
@@ -160,12 +161,12 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             if (t == null || w == null) { i.reject("no tab"); return@runOnUiThread }
             floatId?.takeIf { it != a.id }?.let { unfloat(it, false) }
             floatId = a.id; floatX = a.x; floatY = a.y; floatW = if (a.w > 0) a.w else (act.resources.displayMetrics.widthPixels * 0.62).toInt(); dragId = -1
-            w.evaluateJavascript(Native.floatJs() + ";__hushFloat(true);", null); render(); i.resolve() } }
+            w.evaluateJavascript(Native.floatJs() + ";__hushFloat(true);window.__hushMediaSet&&__hushMediaSet({on:true,mute:null,keep:true});", null); render(); i.resolve() } }
     @Command fun floatClose(i: Invoke) { val stop = i.parseArgs(FloatArgs::class.java).stop
         act.runOnUiThread { floatId?.let { unfloat(it, stop) }; i.resolve() } }
     private fun unfloat(id: String, stop: Boolean) {
         if (floatId != id) return; floatId = null
-        tabs[id]?.let { t -> t.wv?.evaluateJavascript(Native.floatJs() + ";__hushFloat(false);" + (if (stop) "document.querySelectorAll('video,audio').forEach(v=>v.pause());" else ""), null)
+        tabs[id]?.let { t -> t.wv?.evaluateJavascript(Native.floatJs() + ";__hushFloat(false);" + (if (id !in panes()) "window.__hushMediaSet&&__hushMediaSet({on:false});" else "") + (if (stop) "document.querySelectorAll('video,audio').forEach(v=>v.pause());" else ""), null)
             t.box?.let { b -> b.elevation = 0f; b.clipToOutline = false; if (id != active) { (b.parent as? ViewGroup)?.removeView(b) } } }
         render() }
     private fun onFloatUrl(t: Tab, u: Uri) { if (t.id != floatId) return
@@ -381,6 +382,8 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             if (near && lastDir != -1) { lastDir = -1; acc = 0; emit("scroll", JSObject().apply { put("id", t.id); put("dir", -1); put("y", 0) }) }
             else if (kotlin.math.abs(acc) > dp(24)) { val d = if (acc > 0) 1 else -1; acc = 0
                 if (d != lastDir) { lastDir = d; emit("scroll", JSObject().apply { put("id", t.id); put("dir", d); put("y", y) }) } } }
+        // Visible tabs get the renderer's full priority (faster page + video startup); hidden ones yield.
+        try { w.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, true) } catch (e: Throwable) {}
         w.settings.apply {
             javaScriptEnabled = true; domStorageEnabled = true; mediaPlaybackRequiresUserGesture = false   // videos autoplay
             setSupportMultipleWindows(true); javaScriptCanOpenWindowsAutomatically = false   // popups are dropped in onCreateWindow (not loaded over the page)
@@ -397,6 +400,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         if (earlyScripts) try { WebViewCompat.addDocumentStartJavaScript(w, Native.scriptletJs(), setOf("*")) } catch (e: Throwable) {}
         // Popup / click-jack guard (streaming sites): invisible ad layers, new-window ads, script popups.
         if (earlyScripts) try { WebViewCompat.addDocumentStartJavaScript(w, Native.hardenJs(), setOf("*")) } catch (e: Throwable) {}
+        if (earlyScripts) setPtr(t, w)
         // Tor mode: WebRTC could reveal your real IP outside the proxy, so it's removed from every page.
         if (torOn && earlyScripts) try { WebViewCompat.addDocumentStartJavaScript(w, NO_RTC_JS, setOf("*")) } catch (e: Throwable) {}
         // Tor mode: every phone looks the same (UTC, letterboxing, fonts, hardware).
@@ -573,9 +577,13 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     private fun boxFor(t: Tab, w: WebView): SwipeRefreshLayout = t.box ?: HushRefresh(act).also { b ->
         b.addView(w, ViewGroup.LayoutParams(-1, -1))
         b.setOnRefreshListener { w.reload() }
-        b.isEnabled = pullRefresh
+        b.isEnabled = false   // pull-to-refresh is done in the page (PTR_JS): it knows about scrolling boxes inside the page
         t.box = b
     }
+    /** Pull-to-refresh script for this tab, on or off per the setting (re-registered when the setting changes). */
+    private fun setPtr(t: Tab, w: WebView) { try { t.ptr?.remove(); t.ptr = null
+        if (pullRefresh) t.ptr = WebViewCompat.addDocumentStartJavaScript(w, PTR_JS, setOf("*"))
+        w.evaluateJavascript("window.__hushPtrOn=" + pullRefresh, null) } catch (e: Throwable) {} }
     private fun dropPrivateProfileIfUnused() {
         if (tabs.values.none { it.priv }) try { ProfileStore.getInstance().deleteProfile(PRIVATE) } catch (e: Throwable) {}
     }
@@ -715,7 +723,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     private val paneFs = HashMap<String, Pair<FrameLayout, WebChromeClient.CustomViewCallback>>()
     private fun paneTouched(id: String) { if (splitIds.isNotEmpty() && id in panes() && splitFocus != id) { splitFocus = id; if (splitMode == "spot") render(); applySplit() } }
     /** Tabs on screen in split view: the active tab first, then up to 3 more (empty = no split). */
-    private fun panes(): List<String> = if (splitIds.isNotEmpty() && active != null && visible) listOf(active!!) + splitIds.filter { it != active && tabs.containsKey(it) }.take(3) else emptyList()
+    private fun panes(): List<String> = if (splitIds.isNotEmpty() && active != null && visible) (listOf(active!!) + splitIds.filter { it != active && tabs.containsKey(it) }.take(3)).takeIf { it.size > 1 } ?: emptyList() else emptyList()
     private var splitFocus: String? = null; private var splitPanes: List<String> = emptyList()
     /** Tell both halves whether split is on and which one has the focus (highlight + sound); halves that left the split go back to normal. */
     private fun applySplit(): Unit = act.runOnUiThread {
@@ -792,7 +800,7 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     /** Page preferences from Settings: text size (%) and "desktop site". Applied to every open tab. */
     @Command fun setPrefs(i: Invoke) { val a = i.parseArgs(PrefArgs::class.java)
         textZoom = a.textZoom.coerceIn(50, 200); val reload = desktop != a.desktop; desktop = a.desktop; pullRefresh = a.pullRefresh; bgPlay = a.bgPlay
-        act.runOnUiThread { tabs.values.forEach { t -> t.box?.isEnabled = pullRefresh; t.wv?.let { w -> applyPrefs(w); if (reload) w.reload() } } }
+        act.runOnUiThread { tabs.values.forEach { t -> t.wv?.let { w -> setPtr(t, w); applyPrefs(w); if (reload) w.reload() } } }
         i.resolve() }
 
     /** Native find in page; results arrive as a `find` event. */
@@ -939,6 +947,25 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             "const tell=()=>{const on=[...document.querySelectorAll('video,audio')].some(m=>!m.paused&&!m.ended&&!m.muted&&m.volume>0);" +
             "if(on!==last){last=on;try{hushAudio.postMessage(on?'1':'0')}catch(e){}}};" +
             "for(const e of ['play','playing','pause','ended','volumechange','emptied'])document.addEventListener(e,()=>setTimeout(tell,50),true);setInterval(tell,4000)})()"
+        /** Pull-to-refresh, decided by the page itself: only when the page is at the very top AND the drag didn't start
+         *  in a box that scrolls on its own (comments, chats, side lists) — those just scroll. A long, deliberate pull
+         *  (~140 px) is needed; a small spinner follows the finger and the page reloads when you let go past the line. */
+        const val PTR_JS = "(()=>{if(window!==top||window.__hushPtr)return;window.__hushPtr=1;window.__hushPtrOn=true;" +
+            "const NEED=140;let y0=0,x0=0,ok=false,d=0,host=null,dot=null;" +
+            "const inner=t=>{for(let e=t;e&&e!==document.body&&e!==document.documentElement;e=e.parentElement){if(!(e instanceof Element))continue;const s=getComputedStyle(e);" +
+            "if(/(auto|scroll|overlay)/.test(s.overflowY)&&e.scrollHeight>e.clientHeight+4)return true;if(s.position==='fixed')return true}return false};" +
+            "const ui=()=>{if(host)return;host=document.createElement('hush-ptr');host.style.cssText='all:initial;position:fixed;left:0;right:0;top:0;height:0;z-index:2147483647;pointer-events:none';" +
+            "const r=host.attachShadow({mode:'closed'});r.innerHTML='<style>i{position:absolute;left:50%;top:0;width:36px;height:36px;margin-left:-18px;border-radius:50%;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.25);display:grid;place-items:center;opacity:0;transition:opacity .15s}" +
+            "b{width:18px;height:18px;border-radius:50%;border:2.5px solid #9aa0a6;border-top-color:transparent;display:block}i.go b{border-color:#1a73e8;border-top-color:transparent;animation:s .7s linear infinite}@keyframes s{to{transform:rotate(360deg)}}</style><i><b></b></i>';" +
+            "dot=r.querySelector('i');document.documentElement.append(host)};" +
+            "const draw=()=>{ui();const k=Math.min(1,d/NEED);dot.style.opacity=d>12?1:0;dot.style.transform='translateY('+(Math.min(d,NEED*1.25)*0.6)+'px) rotate('+(k*270)+'deg)';dot.classList.toggle('go',false)};" +
+            "const hide=()=>{if(dot){dot.style.transition='opacity .15s,transform .2s';dot.style.opacity=0;dot.style.transform='translateY(0)';setTimeout(()=>{if(dot)dot.style.transition='opacity .15s'},220)}};" +
+            "addEventListener('touchstart',e=>{d=0;ok=window.__hushPtrOn!==false&&e.touches.length===1&&(scrollY||document.scrollingElement?.scrollTop||0)<=0&&!inner(e.target);" +
+            "if(ok){y0=e.touches[0].clientY;x0=e.touches[0].clientX}},{capture:true,passive:true});" +
+            "addEventListener('touchmove',e=>{if(!ok)return;const t=e.touches[0],dy=t.clientY-y0,dx=Math.abs(t.clientX-x0);" +
+            "if(dy<=0||(scrollY||0)>0||dx>dy){ok=false;d=0;hide();return}d=dy;draw()},{capture:true,passive:true});" +
+            "const end=()=>{if(!ok){return}ok=false;if(d>=NEED&&(scrollY||0)<=0){dot.style.transform='translateY('+(NEED*0.6)+'px)';dot.classList.add('go');setTimeout(()=>location.reload(),150)}else hide();d=0};" +
+            "addEventListener('touchend',end,true);addEventListener('touchcancel',()=>{ok=false;d=0;hide()},true)})()"
         /** Background play: pages can't tell the app is in the background, so videos keep playing. */
         private const val BG_PLAY_JS = "(()=>{if(window.__hushBg)return;window.__hushBg=1;try{Object.defineProperty(document,'visibilityState',{get:()=>'visible'});" +
             "Object.defineProperty(document,'hidden',{get:()=>false});Object.defineProperty(document,'webkitVisibilityState',{get:()=>'visible'});" +

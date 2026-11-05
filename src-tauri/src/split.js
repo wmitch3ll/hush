@@ -131,12 +131,12 @@ window.__hushSplit = window.__hushSplit || (() => {
     // Decide a moment later: when the sound moves to the other pane, this pane learns it lost the focus a beat
     // AFTER the system paused it — checking right away (still "focused") skipped the restart.
     const switching = () => Date.now() - sw < 2500;
-    if (!on || v.tagName !== "VIDEO" || v.ended || (!switching() && (focus || Date.now() - touched < 1500))) return;
-    const retry = n => setTimeout(() => { if (!on || !v.paused || v.ended || (!switching() && (focus || Date.now() - touched < 1500))) return;
+    if (!on || v.tagName !== "VIDEO" || v.ended || (!switching() && (focus || Date.now() - touched < 4000))) return;
+    const retry = n => setTimeout(() => { if (!on || !v.paused || v.ended || (!switching() && (focus || Date.now() - touched < 4000))) return;
       v.muted = !focus; v.play().then(() => {}, () => n < 4 && retry(n + 1)); }, n ? 450 : 250);
     retry(0); }, true);
   const ask = () => { try { location.href = "hush-split://focus"; } catch (_) {} };
-  addEventListener("message", e => { if (e.data && e.data.__hushTap && on && !focus) ask(); });
+  addEventListener("message", e => { if (e.data && e.data.__hushTap) { touched = Date.now(); if (on && !focus) ask(); } });
   // Tapping the other half moves the focus (and the sound) there; the tap itself still reaches the page.
   // Report the tap; Hush mutes the other pane first and then gives this one the sound (never both audible at once).
   // The first tap/click on a pane that doesn't have the sound ONLY selects it: the page never sees that tap, so it
