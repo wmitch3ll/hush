@@ -606,6 +606,7 @@ fn make_tab_with(app: &AppHandle, input: String, private: bool, peek: bool, tor:
     // The page this tab is on, so a jump to another site can be checked against the popup-ad lists (EasyList $popup).
     let cur_page = std::sync::Arc::new(parking_lot::Mutex::new(String::new()));
     let upgrade_reset = last_upgrade.clone();
+    let keep_icons = !private && tor.is_none();   // private and Tor tabs never leave a trace of the sites they visit
 
     let builder = WebviewBuilder::new(&label, WebviewUrl::External(url))
         .on_navigation(move |u| match u.scheme() {
@@ -616,6 +617,11 @@ fn make_tab_with(app: &AppHandle, input: String, private: bool, peek: bool, tor:
                         let _ = app_nav.emit_to("chrome", "groq-key", serde_json::json!({ "key": k, "tab": lbl_nav })); } }
                 false }
             "hush-float" => { handle_float(&app_nav, &lbl_nav, u); false }
+            // harden.js: the page's own icon (small PNG as a data URL), kept by the UI so bookmarks show real logos.
+            "hush-fav" => { if !keep_icons { return false; } let q: std::collections::HashMap<String, String> = u.query_pairs().map(|(a, b)| (a.to_string(), b.to_string())).collect();
+                if let (Some(h), Some(d)) = (q.get("h"), q.get("d")) { if d.starts_with("data:image/png;base64,") && d.len() < 16000 && h.len() < 100 && h.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-') {
+                    let _ = app_nav.emit_to("chrome", "favicon", serde_json::json!({ "host": h, "data": d })); } }
+                false }
             "hush-split" => { if u.host_str() == Some("swap") { swap_panes(&app_nav); } else { split_focus(&app_nav, &lbl_nav); } false }
             // Mouse gesture drawn in the page (tools.js): only the direction letters are passed on.
             "hush-gesture" => {

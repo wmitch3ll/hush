@@ -172,7 +172,7 @@ window.HushMsg = function (A) {
     onSync: f => hooks.sync.push(f), syncSend: o => { if (!sk) return false; try { wrapTo([], K_SYNC, JSON.stringify(o).slice(0, 60000)); return true; } catch { return false; } }, hasId: () => !!sk,
     editPhoto: f => editPhoto(f),
     parseId: s => parseId(s),
-    sendTo: (key, text) => { if (!sk || !key) return false; sendText(key, String(text).slice(0, 4000), null); return true; },
+    sendTo: (key, text) => { if (!sk || !key) return false; if (key === me) key = 'self';   /* the developer reporting to themselves lands in Notes to self */ sendText(key, String(text).slice(0, 4000), null); return true; },
     lockNow: () => { unlockedAt = 0; if (view.open) { A.close && A.close(); } },
     friends: () => { const c = contacts(); return Object.keys(c).filter(k => !c[k].blocked && !c[k].request && !c[k].auto); }, openChat: pk => { if (view.el) openChat(pk); } };
 

@@ -495,7 +495,7 @@ const torSite=h=>listHas('tor_sites',h.replace(/^www\./,'')),jsSite=h=>listHas('
 async function toggleList(k,site){const l=(pref(k)||'').split(',').filter(Boolean);await setPref(k,(l.includes(site)?l.filter(x=>x!=site):[...l,site]).join(','))}
 // Groq's key page handed over a new key (harden.js): connect the assistant, close that tab, open the assistant.
 T.event.listen('groq-key',({payload:p})=>{toast('🔑 Checking your key through Tor…');HX.ai.connectGroq(p.key).then(()=>{if(tabs.length>1&&tab(p.tab))closeTab(p.tab);toast('✓ '+HX.aiName()+' is ready — powered by Groq');openPanel('ai')}).catch(e=>toast(String(e&&e.message||e)))});
-T.event.listen('popup-blocked',({payload:p})=>{HX.bump('pop');if(p.tab==cur)toast('🚫 Blocked a popup ad — you stayed on the page')});
+T.event.listen('favicon',({payload:p})=>HX.favSet(p.host,p.data));T.event.listen('popup-blocked',({payload:p})=>{HX.bump('pop');if(p.tab==cur)toast('🚫 Blocked a popup ad — you stayed on the page')});
 T.event.listen('tab-url',({payload:p})=>{const t=tab(p.tab);if(!t)return;t.url=p.url;
   // Always-through-Tor sites: a normal tab that lands on one is reopened as a Tor tab.
   if(p.state=='started'&&!t.tor&&!t.priv&&/^https?:/.test(p.url)&&torSite(hostOf(p.url))){const id=t.id;openTab(p.url,{tor:true}).then(()=>closeTab(id,true));toast('🧅 Opened through Tor — you set this site to always use Tor');return}
@@ -773,7 +773,7 @@ async function renderHistory(){const p=$('#panel'),on=pref('history')=='on';
 
 function renderBookmarks(){const p=$('#panel'),list=state.bookmarks.filter(b=>b.folder!='reading');
   p.innerHTML=`<h2>Bookmarks ${closeBtn}</h2><input class=txt id=bm-q placeholder="Search bookmarks" style="margin:0 0 10px"><div id=bm-l></div>`;
-  const paint=q=>{q=(q||'').toLowerCase();$('#bm-l').innerHTML=list.filter(b=>!q||(b.title+b.url).toLowerCase().includes(q)).map(b=>`<div class=row><div style="cursor:pointer;flex:1;min-width:0" data-u="${esc(b.url)}"><b>${esc(b.title||hostOf(b.url))}</b><small>${esc(b.url)}</small></div><button class=btn data-rm="${esc(b.url)}">Remove</button></div>`).join('')||'<div class=empty>No bookmarks yet. Ctrl+D saves the page you’re on.</div>';
+  const paint=q=>{q=(q||'').toLowerCase();$('#bm-l').innerHTML=list.filter(b=>!q||(b.title+b.url).toLowerCase().includes(q)).map(b=>`<div class=row><i style="${HX.favStyle(b.url)};width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font:700 14px system-ui;font-style:normal;flex:none;margin-right:10px;border:1px solid transparent">${esc((hostOf(b.url).replace(/^www\./,'')[0]||'?').toUpperCase())}</i><div style="cursor:pointer;flex:1;min-width:0" data-u="${esc(b.url)}"><b>${esc(b.title||hostOf(b.url))}</b><small>${esc(b.url)}</small></div><button class=btn data-rm="${esc(b.url)}">Remove</button></div>`).join('')||'<div class=empty>No bookmarks yet. Ctrl+D saves the page you’re on.</div>';
     $('#bm-l').querySelectorAll('[data-u]').forEach(r=>r.onclick=()=>openTab(r.dataset.u));
     $('#bm-l').querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{await inv('bookmark_remove',{url:b.dataset.rm});await loadState();renderBookmarks()})};
   paint('');$('#bm-q').oninput=e=>paint(e.target.value);$('#bm-q').focus();wire(p)}
@@ -960,7 +960,7 @@ async function loadStats(){clearTimeout(statsT);try{if(!$('#stats'))return;const
 async function loadState(first){try{state=await inv('get_state');state.settings.ui=state.settings.ui||{};allow=new Set(state.allow_sites);
   const box=$('#bms');box.textContent='';
   state.bookmarks.filter(b=>b.folder!='reading').slice(0,12).forEach(b=>{const a=document.createElement('button');a.className='bm';const h=hostOf(b.url).replace(/^www\./,'');
-    a.innerHTML='<i></i><span></span>';a.querySelector('i').textContent=h[0]||'•';a.querySelector('span').textContent=b.title||h;a.title=b.url+'\nRight-click to remove';
+    a.innerHTML='<i></i><span></span>';a.querySelector('i').textContent=h[0]||'•';a.querySelector('i').style.cssText=HX.favStyle(b.url);a.querySelector('span').textContent=b.title||h;a.title=b.url+'\nRight-click to remove';
     a.onclick=()=>openTab(b.url);a.oncontextmenu=async e=>{e.preventDefault();if(confirm('Remove bookmark '+(b.title||h)+'?')){await inv('bookmark_remove',{url:b.url});loadState()}};box.append(a)});
   layout(true);draw();if(!$('#home').hidden&&!document.activeElement?.closest?.('.hx-home'))renderHome();
   if(first&&pref('restore')=='on'&&state.session?.length&&!tabs.length){for(const t of state.session){const ess=(t.ws||'').startsWith('★'),w=ess?t.ws.slice(1):t.ws;await openTab(t.url,{ws:wsList().includes(w)?w:curWs(),quiet:true,background:true});if(ess&&tabs.length)tabs[tabs.length-1].ess=true}

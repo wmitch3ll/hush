@@ -390,7 +390,7 @@ $("#reload").onclick=()=>{const t=T();if(t&&t.native){progress(true);inv("nav",{
 window.__hushEvent=(name,d)=>{
   // Groq's key page handed over a new key (harden.js): connect the assistant, close that tab, open the assistant.
   if(name==="groqKey"){toast("🔑 Checking your key through Tor…");HX.ai.connectGroq(d.key).then(()=>{const t=tabs.find(x=>x.native===d.id);if(t&&inWs().length>1)closeTab(t.id);toast("✓ "+HX.aiName()+" is ready — powered by Groq");openAssistant()}).catch(e=>toast(String(e&&e.message||e)));return}
-  if(name==="blocked"){HX.siteHit(d.host,+d.n||0);return}
+  if(name==="floatEnded"){if(floating===d.id)floating=null;return}if(name==="favicon"){HX.favSet(d.host,d.data);return}if(name==="blocked"){HX.siteHit(d.host,+d.n||0);return}
   if(name==="popupBlocked"){HX.bump("pop");toast("🚫 Blocked a popup ad — you stayed on the page");return}
   if(name==="linkTab"){const u=d.url;if(!/^https?:/.test(u))return;const keep=cur,t=newTab(false,true);t.url=u;cur=keep;inv("open_tab",{input:u,space:spaceOf(t.ws)}).then(id=>{t.native=id;inv("switch_tab",{label:T().native||"none"});render()});toast("Opened in a background tab");return}
   if(name==="tabUrl"){const t=tabs.find(x=>x.native===d.id);if(!t)return;t.url=d.url;t.title=d.title||t.title;t.canBack=d.canBack;t.canFwd=d.canFwd;
@@ -471,7 +471,7 @@ function openGuide(){$("#xs").innerHTML='<div id="guidex" style="padding:14px 10
 // Split screen (2–4 tabs): tap a pane for its sound + highlight; videos fill their pane with full controls.
 const splitSet=new Set();
 function splitMode(){native("splitMode",{mode:pref("split_mode")==="spot"?"spot":"grid",awake:pref("split_awake")!=="false"}).catch(()=>{})}
-async function splitToggle(id){const t=tabs.find(x=>x.id===id);if(!t||!t.native)return;
+async function splitToggle(id){const t=tabs.find(x=>x.id===id);if(!t||!t.native)return;if(floating===t.native)floating=null;
   try{const r=await native("splitTab",{id:t.native});if(splitSet.has(id))splitSet.delete(id);else splitSet.add(id);splitWith=splitSet.size?[...splitSet][0]:null;splitMode();show(null);
     toast(splitSet.size?`Split screen · ${(r&&r.count)||splitSet.size+1} tabs — tap one for its sound`:"Split screen closed")}catch(e){toast(String(e&&e.message||e))}}
 function splitClose(){splitSet.clear();splitWith=null;native("splitTab",{id:""}).catch(()=>{});show(null)}

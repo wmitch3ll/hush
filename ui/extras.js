@@ -61,7 +61,7 @@ window.HushX = function (A) {
       ${clock ? '<div class=hx-time><div class=hx-clock></div><div class=hx-date></div></div>' : ''}
       <div class=hx-brand>${opts.top || ''}</div>
       <div class="hx-grid ${editing ? 'hx-edit' : ''}">${bms.slice(0, 24).map(b => { const ic = opts.icon && opts.icon(b.url);
-        return `<div class=hx-tile draggable=${editing} data-u="${esc(b.url)}" title="${esc(b.title || host(b.url))}"><i ${ic ? `style="background-image:url('${esc(ic)}');color:transparent"` : ''}>${esc((host(b.url) || '?')[0].toUpperCase())}</i><span>${esc(b.title || host(b.url))}</span><b class=hx-x data-rm="${esc(b.url)}">✕</b></div>` }).join('')}</div>
+        return `<div class=hx-tile draggable=${editing} data-u="${esc(b.url)}" title="${esc(b.title || host(b.url))}"><i style="${favStyle(b.url)}">${esc((host(b.url) || '?')[0].toUpperCase())}</i><span>${esc(b.title || host(b.url))}</span><b class=hx-x data-rm="${esc(b.url)}">✕</b></div>` }).join('')}</div>
       ${editing ? `<form class=hx-add><input name=u placeholder="Add a site — example.com" autocomplete=off><button class=hx-b>Add</button></form>` : ''}
       ${notes ? `<textarea class=hx-notes placeholder="Quick notes — saved on this device">${esc(LS.get('notes', ''))}</textarea>` : ''}
       ${customizing ? customizer() : ''}
@@ -662,6 +662,22 @@ window.HushX = function (A) {
       box.querySelector('.pv-all')?.addEventListener('click', async () => { for (const x of list) await o.resetPerm(x.host); privacyReport(el, o); }); }).catch(() => {});
   }
 
+
+  // ---------------- Site icons (favicons) ----------------
+  // Icons are captured from the pages you actually visit (nothing is fetched on the side) and kept on this device.
+  const FAVK = 'hush.fav';
+  const favAll = () => { try { return JSON.parse(localStorage.getItem(FAVK) || '{}'); } catch { return {}; } };
+  function favSet(h, data) {
+    h = String(h || '').replace(/^www\./, '').toLowerCase(); if (!h || !/^data:image\/png;base64,[A-Za-z0-9+\/=]{20,16000}$/.test(data || '')) return;
+    const m = favAll(); m[h] = [data, Date.now()];
+    const ks = Object.keys(m); if (ks.length > 250) ks.sort((a, b) => m[a][1] - m[b][1]).slice(0, ks.length - 250).forEach(k => delete m[k]);
+    try { localStorage.setItem(FAVK, JSON.stringify(m)); } catch {}
+  }
+  const fav = u => { const h = host(u); const e = h && favAll()[h]; return e ? e[0] : ''; };
+  const tileBg = h => { let n = 0; for (const c of h || '?') n = (n * 31 + c.charCodeAt(0)) >>> 0; const a = n % 360; return `linear-gradient(135deg,hsl(${a} 55% 38%),hsl(${(a + 40) % 360} 60% 24%))`; };
+  // style for a round/rounded icon box: the site's own icon on a soft tile, or its colored letter tile
+  const favStyle = u => { const ic = fav(u); return ic ? `background:#fff center/62% no-repeat url('${ic}');color:transparent;border-color:transparent` : `background:${tileBg(host(u))};color:#fff;border-color:transparent`; };
+
   // ---------------- Device sync (PC <-> phone) ----------------
   // Rides on Murmur: encrypted messages from your Hush ID to itself, through Tor. Link the two devices once
   // (Murmur -> Your Hush ID -> Link another device) and they share bookmarks, the reading list, and "send this page".
@@ -710,6 +726,6 @@ window.HushX = function (A) {
     M.onSync((j, at) => syncOnMsg(j, at));
     setTimeout(syncTick, 4000); SY.timer = setInterval(syncTick, 6000);
   }
-  return { syncInit, syncSendTab, syncInbox, siteHit, privacyReport, ai, aiName, aiRename, assistant, reportForm, devId: () => DEV_ID, errLog: () => errLog.slice(), settingsSearch, tour, TOR_INFO, mediaPrompt, LEAVE, SEC, bump, report, tabNote, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
+  return { fav, favSet, favStyle, syncInit, syncSendTab, syncInbox, siteHit, privacyReport, ai, aiName, aiRename, assistant, reportForm, devId: () => DEV_ID, errLog: () => errLog.slice(), settingsSearch, tour, TOR_INFO, mediaPrompt, LEAVE, SEC, bump, report, tabNote, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
     destructSweep, destructLabel, DESTRUCT, watchAdd, watchSweep, watchPanel, watchCount, syncLink, LS };
 };

@@ -38,7 +38,7 @@ const FI = { play: '<svg viewBox="0 0 24 24" width="20" height="20"><path fill="
   const ui = document.createElement("hush-float"); ui.id = "hush-float";
   const sh = ui.attachShadow({ mode: "closed" });
   sh.innerHTML = `<style>:host{all:initial}.o{position:fixed;inset:0;z-index:2147483647;cursor:grab;touch-action:none}
-    .b{position:absolute;display:flex;gap:4px;opacity:0;transition:opacity .15s}.o:hover .b,.o.t .b{opacity:1}
+    .b{position:absolute;display:flex;gap:4px;opacity:0;pointer-events:none;transition:opacity .15s}.o:hover .b,.o.t .b{opacity:1;pointer-events:auto}
     .tl{left:6px;top:6px}.tr{right:6px;top:6px}.c{left:50%;top:50%;transform:translate(-50%,-50%)}
     button{all:unset;cursor:pointer;width:32px;height:32px;border-radius:50%;background:rgba(18,18,22,.5);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.14);color:#fff;display:grid;place-items:center;font:600 14px system-ui}
     .c button{width:52px;height:52px}.g{position:absolute;right:0;bottom:0;width:26px;height:26px;cursor:nwse-resize;touch-action:none;background:linear-gradient(135deg,transparent 55%,#fff8 55%,#fff8 62%,transparent 62%,transparent 72%,#fff8 72%,#fff8 79%,transparent 79%);opacity:0;transition:opacity .15s}.o:hover .g,.o.t .g{opacity:1}button:hover{background:rgba(18,18,22,.75)}button:active{transform:scale(.94)}</style>
