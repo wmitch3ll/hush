@@ -161,7 +161,17 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
             if (t == null || w == null) { i.reject("no tab"); return@runOnUiThread }
             floatId?.takeIf { it != a.id }?.let { unfloat(it, false) }
             floatId = a.id; floatX = a.x; floatY = a.y; floatW = if (a.w > 0) a.w else (act.resources.displayMetrics.widthPixels * 0.62).toInt(); dragId = -1
-            w.evaluateJavascript(Native.floatJs() + ";__hushFloat(true);window.__hushMediaSet&&__hushMediaSet({on:true,mute:null,keep:true});", null); render(); i.resolve() } }
+            w.evaluateJavascript(Native.floatJs() + ";__hushFloat(true);window.__hushMediaSet&&__hushMediaSet({on:true,mute:null,keep:true});", null)
+            w.onResume(); w.resumeTimers(); render(); i.resolve() } }
+    /** Problem reports: what happened to the videos in the mini player / current tab (events, sizes, focus) — no URLs. */
+    @Command fun mediaLog(i: Invoke) { act.runOnUiThread {
+        val ids = listOfNotNull(floatId, active).distinct() + panes().filter { it != active }
+        ids.forEach { id -> tabs[id]?.wv?.evaluateJavascript("window.__hushMediaCollect&&__hushMediaCollect()", null) }
+        act.window.decorView.postDelayed({ val out = JSObject(); var left = ids.size
+            if (left == 0) { i.resolve(out); return@postDelayed }
+            ids.forEach { id -> val role = if (id == floatId) "mini" else if (id == active) "tab" else "pane"
+                val w = tabs[id]?.wv; if (w == null) { if (--left == 0) i.resolve(out); return@forEach }
+                w.evaluateJavascript("(window.__hushMediaOut||[]).join(' || ').slice(0,3000)") { r -> out.put(role, r ?: ""); if (--left == 0) i.resolve(out) } } }, 600) } }
     @Command fun floatClose(i: Invoke) { val stop = i.parseArgs(FloatArgs::class.java).stop
         act.runOnUiThread { floatId?.let { unfloat(it, stop) }; i.resolve() } }
     private fun unfloat(id: String, stop: Boolean) {

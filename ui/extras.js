@@ -580,7 +580,7 @@ window.HushX = function (A) {
       el.querySelector('[data-send]').onclick = async () => {
         const t = el.querySelector('#rp-t').value.trim(); if (t.length < 5) return A.toast('Tell us a little about what happened');
         const lines = ['🐞 Hush report — ' + (REPORT_KINDS.find(x => x[0] === kind) || [0, kind])[1], '', t];
-        if (el.querySelector('#rp-dev')?.checked) { const i = o.info() || {}; lines.push('', '— Device —', ...Object.entries(i).map(([k, v]) => k + ': ' + v)); }
+        if (el.querySelector('#rp-dev')?.checked) { const i = (await Promise.resolve(o.info()).catch(() => ({}))) || {}; lines.push('', '— Device —', ...Object.entries(i).map(([k, v]) => k + ': ' + v)); }
         if (el.querySelector('#rp-site')?.checked) lines.push('', 'Site: ' + o.site());
         if (el.querySelector('#rp-err')?.checked && errLog.length) lines.push('', '— Recent errors —', ...errLog.slice(-10));
         const b = el.querySelector('[data-send]'); b.textContent = 'Sending through Tor…'; b.style.opacity = '.7';

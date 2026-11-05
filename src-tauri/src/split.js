@@ -66,6 +66,7 @@ window.__hushSplit = window.__hushSplit || (() => {
   const ICON = { play: "M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z",
     pause: "M7 5h3.2v14H7zM13.8 5H17v14h-3.2z", full: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" };
   let api_native = () => false;
+  window.__hushSplitBar = v => on && focus && v === cur && !api_native();
   const bar = (() => { let host = null, root = null, hideT = 0, shown = false;
     const fmt = t => { t = Math.max(0, Math.floor(t || 0)); const h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s2 = String(t % 60).padStart(2, "0"); return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + s2; };
     const build = () => { host = document.createElement("hush-split-ctl"); host.setAttribute("popover", "manual");

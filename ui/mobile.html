@@ -488,6 +488,8 @@ function splitMenu(){const sc=scenes(),on=splitSet.size>0,spot=pref("split_mode"
     ...(sc.length?[["🗑 Delete a scene",async()=>{const n=prompt("Scene name to delete:\n"+sc.map(x=>x.name).join("\n"));if(n)await setPref("scenes",JSON.stringify(sc.filter(x=>x.name!==n.trim())))}]]:[])])}
 function openMsgs(chat){native("bubble",{show:false}).catch(()=>{});show("msgs");HM.open($("#msgs"),typeof chat==="string"?chat:null)}
 const EC=HushEcho({haptic:vibe,M:HM.api,toast,mobile:true,page:()=>{const t=T();return t&&t.native&&!t.priv&&/^https?:/.test(t.url)?{url:t.url}:null},open:u=>{show(null);newTab(false,true);go(u)},close:()=>{EC.close();show(null)},openMurmur:pk=>{EC.close();openMsgs(pk||null)},badge:n=>{}});
+// Problem reports: add what happened to the videos (mini player / tab / split panes) — events only, no addresses.
+const withMedia=o=>native("mediaLog").then(m=>{for(const k in m||{}){const v=String(m[k]||"").replace(/^"|"$/g,"");if(v)o["Video log ("+k+")"]=v}return o}).catch(()=>o);
 function openEcho(){show("echos");EC.open($("#echos"))}
 // Side panel: Murmur, Echo or your Notes in the bottom half while the page stays usable above it.
 function openDock(kind){const id=kind==="echo"?"echos":"msgs";if(dock&&dock!==id){$("#"+dock).classList.remove("dock");dock=null}
@@ -660,7 +662,7 @@ function drawSite(){const el=$("#site"),t=T(),h=hostOf(t.url),off=allow.has(h),s
 function openReport(){const x=$("#xs");x.innerHTML="";x.style.padding="0";const d=document.createElement("div");d.style.cssText="flex:1;min-height:0;overflow:auto;padding-top:env(safe-area-inset-top,0px)";x.append(d);
   const obs=new MutationObserver(()=>{if(!x.classList.contains("on")){x.style.padding="";obs.disconnect()}});obs.observe(x,{attributes:true,attributeFilter:["class"]});
   HX.reportForm(d,{close:()=>show(null),site:()=>{const t=T();return t&&/^https?:/.test(t.url)&&!t.priv?hostOf(t.url):null},
-    info:()=>({"Hush":"build "+(window.__hushBuild||"?")+" (Android)",Device:navigator.userAgent.replace(/^.*?\(|\).*$/g,"").slice(0,80),Screen:innerWidth+"×"+innerHeight+" @"+devicePixelRatio+"x",Tor:torOn?"on":"off","Split screen":splitSet.size?(splitSet.size+1)+" tabs, "+(pref("split_mode")||"grid"):"off",Tabs:tabs.length,"Background play":pref("bg_play")!=="false"?"on":"off"}),
+    info:()=>withMedia({"Hush":"build "+(window.__hushBuild||"?")+" (Android)",Device:navigator.userAgent.replace(/^.*?\(|\).*$/g,"").slice(0,80),Screen:innerWidth+"×"+innerHeight+" @"+devicePixelRatio+"x",Tor:torOn?"on":"off","Split screen":splitSet.size?(splitSet.size+1)+" tabs, "+(pref("split_mode")||"grid"):"off",Tabs:tabs.length,"Background play":pref("bg_play")!=="false"?"on":"off"}),
     send:async t=>{const dev=HM.api.parseId(HX.devId());if(!dev){toast("Reporting isn’t set up in this build yet");return false}
       if(!(await HM.api.ready())){toast("First, make your free Hush ID — it takes 10 seconds");openMsgs();return "setup"}return HM.api.sendTo(dev,t)}});show("xs")}
 function openAssistant(run){const x=$("#xs");x.innerHTML="";x.style.padding="0";const d=document.createElement("div");d.style.cssText="flex:1;min-height:0;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)";x.append(d);

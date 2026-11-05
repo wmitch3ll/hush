@@ -69,7 +69,14 @@
     let st = { on: false, mute: false, keep: false }, touched = 0;
     // st.mute: true/false = force it, null = leave the sound alone. st.sw: when the sound last moved between panes —
     // for 2.5s after that, ANY pause is the system reacting to the switch, so it's undone. st.pause: stop everything.
-    const apply = () => document.querySelectorAll("video,audio").forEach(m => { if (st.pause) m.pause(); else if (st.on && st.mute !== null && st.mute !== undefined && m.muted !== st.mute) m.muted = st.mute; });
+    // While Hush keeps a video going (mini player, split, background), the page — and every player frame in it —
+    // is told it's visible and focused, so players that pause on "blur" / "hidden" keep playing.
+    const spoof = () => { if (window.__hushVis) return; window.__hushVis = 1; try {
+      Object.defineProperty(document, "visibilityState", { get: () => "visible" }); Object.defineProperty(document, "hidden", { get: () => false });
+      document.hasFocus = () => true;
+      for (const k of ["visibilitychange", "webkitvisibilitychange", "blur", "pagehide", "freeze"]) { const f = x => { if (st.keep) x.stopImmediatePropagation(); }; addEventListener(k, f, true); document.addEventListener(k, f, true); }
+    } catch (_) {} };
+    const apply = () => (st.keep && spoof(), document.querySelectorAll("video,audio")).forEach(m => { if (st.pause) m.pause(); else if (st.on && st.mute !== null && st.mute !== undefined && m.muted !== st.mute) m.muted = st.mute; });
     const relay = d => { for (const f of document.querySelectorAll("iframe,frame")) try { f.contentWindow.postMessage(d, "*"); } catch (_) {} };
     // Split screen, inside a player frame of the pane WITHOUT the sound: the first tap only selects the pane (the
     // player never sees it, so it doesn't pause/play); it's reported to the top page, which moves the sound here.
@@ -86,6 +93,33 @@
     const forced = () => st.on && st.mute !== null && st.mute !== undefined;
     document.addEventListener("volumechange", e => { if (forced() && e.target.muted !== st.mute) e.target.muted = st.mute; }, true);
     document.addEventListener("play", e => { if (forced()) e.target.muted = st.mute; }, true);
+    // Play/pause pulse: when YOU play or pause a video (a tap a moment before), a soft round icon flashes in the
+    // middle of the video for half a second — on every site, inside player frames too.
+    const IC = { play: "M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z", pause: "M7 5h3.2v14H7zM13.8 5H17v14h-3.2z" };
+    let pz = null, pzT = 0;
+    const pulse = (v, kind) => { try { const r = v.getBoundingClientRect(); if (r.width < 120 || r.height < 68) return;
+      if (!pz) { pz = document.createElement("hush-pulse"); pz.setAttribute("popover", "manual");
+        const sr = pz.attachShadow({ mode: "closed" }); sr.innerHTML = '<style>i{display:grid;place-items:center;width:64px;height:64px;border-radius:50%;background:rgba(18,18,22,.5);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);animation:p .6s ease-out forwards}svg{width:30px;height:30px;fill:#fff}@keyframes p{0%{opacity:0;transform:scale(.7)}25%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.25)}}</style><i><svg viewBox="0 0 24 24"><path/></svg></i>';
+        pz.__sr = sr; }
+      const sr = pz.__sr; sr.querySelector("path").setAttribute("d", IC[kind]);
+      const i = sr.querySelector("i"); i.style.animation = "none"; void i.offsetWidth; i.style.animation = "";
+      pz.style.cssText = "all:initial;position:fixed;margin:0;padding:0;border:0;background:transparent;overflow:visible;pointer-events:none;z-index:2147483647;width:64px;height:64px;left:" + (r.left + r.width / 2 - 32) + "px;top:" + (r.top + r.height / 2 - 32) + "px";
+      if (!pz.isConnected) document.documentElement.append(pz);
+      try { if (pz.matches(":popover-open")) pz.hidePopover(); pz.showPopover(); } catch (_) {}
+      clearTimeout(pzT); pzT = setTimeout(() => { try { pz.hidePopover(); } catch (_) {} }, 650); } catch (_) {} };
+    for (const k of ["play", "pause"]) document.addEventListener(k, e => { const v = e.target;
+      if (v.tagName === "VIDEO" && !v.ended && Date.now() - touched < 1200 && !(window.__hushSplitBar && window.__hushSplitBar(v))) pulse(v, k); }, true);
+    // Video diary for problem reports: the last few things that happened to the videos on this page (no URLs).
+    const log = window.__hushMediaLog = [];
+    const note = (k, v) => { try { log.push([Math.round(performance.now()), k, v ? Math.round(v.clientWidth) + "x" + Math.round(v.clientHeight) + (v.paused ? " paused" : " playing") + (v.muted ? " muted" : "") : "", document.visibilityState, document.hasFocus() ? "focus" : "nofocus", innerWidth + "x" + innerHeight, Date.now() - touched < 1500 ? "touched" : ""].join(" ")); if (log.length > 40) log.shift(); } catch (_) {} };
+    for (const k of ["play", "pause", "waiting", "stalled", "emptied", "ended"]) document.addEventListener(k, e => note(k, e.target), true);
+    for (const k of ["visibilitychange", "blur", "focus", "resize", "pagehide"]) addEventListener(k, () => note(k), true);
+    // Report: the top page gathers the diary from every player frame too (they answer by message).
+    addEventListener("message", e => { const d = e.data; if (!d) return;
+      if (d.__hushAsk && window !== top && e.source === parent) { try { top.postMessage({ __hushDump: window.__hushMediaDump() }, "*"); } catch (_) {} relay(d); }
+      if (d.__hushDump && window === top && window.__hushMediaOut) window.__hushMediaOut.push(String(d.__hushDump).slice(0, 1500)); });
+    if (window === top) window.__hushMediaCollect = () => { window.__hushMediaOut = [window.__hushMediaDump()]; relay({ __hushAsk: 1 }); };
+    window.__hushMediaDump = () => (window === top ? "" : "[frame " + location.host + "] ") + log.slice(-15).join(" | ");
     const switching = () => st.sw && Date.now() - st.sw < 2500;
     document.addEventListener("pause", e => { const v = e.target; if (!st.on || v.ended || (!st.keep && !switching()) || (!switching() && Date.now() - touched < 4000)) return;
       const r = n => setTimeout(() => { if (!st.on || !v.paused || v.ended || (!st.keep && !switching()) || (!switching() && Date.now() - touched < 4000)) return;
