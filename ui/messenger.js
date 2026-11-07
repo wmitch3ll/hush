@@ -879,9 +879,10 @@ window.HushMsg = function (A) {
     fi.onchange = async () => { const fs = [...fi.files].slice(0, 10), once = view.once; view.once = false; fi.value = '';
       if (fs.length === 1 && /^image\/(jpeg|png|webp)$/.test(fs[0].type)) { const ed = await editPhoto(fs[0]); if (ed) sendFile(key, ed, once ? { once: true } : {}); return; }
       fs.forEach(f => sendFile(key, f, once ? { once: true } : {})); };
-    view.el.querySelector('#hm-plus').onclick = e => menu(e.clientX, e.clientY - 120, `<button class=i data-a=file>Photo or file</button>${A.page && A.page() ? '<button class=i data-a=page>Share this page</button>' : ''}<button class=i data-a=poll>Poll</button>${key !== 'self' && !isGroup(key) && window.HUSH_GAMES ? '<button class=i data-a=game>Play a game</button>' : ''}<button class=i data-a=once>View-once photo</button>${key !== 'self' && A.media && A.page && A.page() ? '<button class=i data-a=tog>Watch this page together</button>' : ''}${A.ai && A.ai.ready() && key !== 'self' ? '<button class=i data-a=ai>Suggest a reply</button>' : ''}${key !== 'self' ? `<button class=i data-a=loc>${liveLoc.active(key) ? 'Stop sharing location' : 'Share live location'}</button>` : ''}<button class=i data-a=self>✎ Notes to self</button>`, (m, done) => m.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { done();
+    view.el.querySelector('#hm-plus').onclick = e => menu(e.clientX, e.clientY - 120, `<button class=i data-a=file>Photo or file</button>${A.page && A.page() ? '<button class=i data-a=page>Share this page</button>' : ''}<button class=i data-a=cam>Take photo or video</button><button class=i data-a=poll>Poll</button>${key !== 'self' && !isGroup(key) && window.HUSH_GAMES ? '<button class=i data-a=game>Play a game</button>' : ''}<button class=i data-a=once>View-once photo</button>${key !== 'self' && A.media && A.page && A.page() ? '<button class=i data-a=tog>Watch this page together</button>' : ''}${A.ai && A.ai.ready() && key !== 'self' ? '<button class=i data-a=ai>Suggest a reply</button>' : ''}${key !== 'self' ? `<button class=i data-a=loc>${liveLoc.active(key) ? 'Stop sharing location' : 'Share live location'}</button>` : ''}<button class=i data-a=self>✎ Notes to self</button>`, (m, done) => m.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { done();
       if (b.dataset.a === 'ai') { const ta2 = view.el.querySelector('textarea'), recent = (chats()[key] || []).filter(x => x.text && !x.sys).slice(-8).map(x => (x.from === 'me' ? 'Me' : first(x.from)) + ': ' + x.text.slice(0, 300)).join('\n');
         ta2.value = '…'; A.ai.ask(`Write one short, friendly reply I could send next in this chat. Reply with only the message text.\n\n${recent}`, t => { ta2.value = t; }).then(t => { ta2.value = t; ta2.oninput && ta2.oninput(); ta2.focus(); }).catch(e => { ta2.value = ''; A.toast(e.message); }); return; }
+      if (b.dataset.a === 'cam') return cameraCapture(key);
       if (b.dataset.a === 'game') return HUSH_GAMES.pick(key);
       if (b.dataset.a === 'loc') return liveLoc.active(key) ? liveLoc.stop(key) : liveLoc.pick(key);
       if (b.dataset.a === 'tog') { const p = A.page(); if (p) { sendText(key, 'Watch together: ' + p.url, null, { tog: p.url }); together.join(key, p.url, true); } return; }
@@ -930,6 +931,66 @@ window.HushMsg = function (A) {
   // ---------------------------------------------------------------- recording: hold to record, release to send,
   // slide left to cancel, slide up to lock (hands-free). A quick tap also locks. Voice: Opus ~24 kbps. Video message: 480×480, ≤ 60 s.
   let rec = null;
+  // In-app camera: take a photo or record a video and send it, without leaving the chat. Nothing is saved to the gallery or kept after sending.
+  async function cameraCapture(key) {
+    if (!LS.get('avOk', false)) return avNotice('vmsg');
+    if (!document.getElementById('hm-cam-css')) { const st = document.createElement('style'); st.id = 'hm-cam-css'; st.textContent = `
+.hmc{position:fixed;inset:0;z-index:80;background:#000;display:flex;flex-direction:column;color:#fff;font:14px system-ui;touch-action:none;user-select:none;-webkit-user-select:none}
+.hmc video{flex:1;min-height:0;width:100%;object-fit:cover;background:#000}.hmc video.mir{transform:scaleX(-1)}
+.hmc .top{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;padding:calc(12px + env(safe-area-inset-top,0px)) 14px 0;z-index:2}
+.hmc .bot{position:absolute;bottom:0;left:0;right:0;padding:0 0 calc(18px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;align-items:center;gap:14px;background:linear-gradient(transparent,#0009);z-index:2}
+.hmc .rb{width:44px;height:44px;border-radius:50%;background:#0006;border:0;color:#fff;display:grid;place-items:center;cursor:pointer;font-size:20px}.hmc .rb svg{width:22px;height:22px;fill:none;stroke:#fff;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.hmc .modes{display:flex;gap:18px;font-weight:600}.hmc .modes button{all:unset;cursor:pointer;opacity:.6;padding:4px 6px}.hmc .modes button.on{opacity:1;border-bottom:2px solid #fff}
+.hmc .row{display:flex;align-items:center;justify-content:center;gap:34px;width:100%}
+.hmc .sh{width:74px;height:74px;border-radius:50%;border:4px solid #fff;background:transparent;display:grid;place-items:center;cursor:pointer;padding:0}.hmc .sh i{width:56px;height:56px;border-radius:50%;background:#fff;transition:.15s}.hmc.vid .sh i{background:#e5392b}.hmc.rec .sh i{width:28px;height:28px;border-radius:7px}
+.hmc .tm{position:absolute;top:calc(20px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);background:#e5392b;padding:3px 10px;border-radius:99px;font:600 13px ui-monospace,monospace;z-index:3;display:none}.hmc.rec .tm{display:block}
+.hmc .pv{position:absolute;inset:0;background:#000;display:flex;flex-direction:column;z-index:4}.hmc .pv img,.hmc .pv video{flex:1;min-height:0;width:100%;object-fit:contain}
+.hmc .pv .acts{display:flex;gap:10px;padding:12px 14px calc(14px + env(safe-area-inset-bottom,0px))}.hmc .pv .acts button{all:unset;cursor:pointer;flex:1;text-align:center;padding:13px;border-radius:12px;background:#ffffff26;font-weight:600}.hmc .pv .acts button.go{background:#fff;color:#000}`; document.head.append(st); }
+    const v = document.createElement('div'); v.className = 'hmc';
+    v.innerHTML = `<video playsinline muted autoplay></video><div class=tm>0:00</div>
+      <div class=top><button class=rb data-x aria-label="Close">${I.x}</button><button class=rb data-flip aria-label="Switch camera"><svg viewBox="0 0 24 24"><path d="M4 8h12l-3-3M20 16H8l3 3"/></svg></button></div>
+      <div class=bot><div class=modes><button data-m=photo class=on>Photo</button><button data-m=video>Video</button></div><div class=row><button class=sh data-sh aria-label="Capture"><i></i></button></div></div>`;
+    document.body.append(v);
+    const vid = v.querySelector('video'); let st = null, facing = 'environment', mode = 'photo', mr = null, chunks = [], t0 = 0, tick = 0, withAudio = true, closed = false;
+    const stopStream = () => { if (st) st.getTracks().forEach(t => t.stop()); st = null; };
+    const close = () => { closed = true; clearInterval(tick); try { if (mr && mr.state !== 'inactive') { mr.onstop = null; mr.stop(); } } catch {} stopStream(); v.remove(); };
+    async function open() {
+      stopStream();
+      const vc = { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1080 } };
+      try { st = await navigator.mediaDevices.getUserMedia({ video: vc, audio: true }); withAudio = true; }
+      catch { try { st = await navigator.mediaDevices.getUserMedia({ video: vc }); withAudio = false; } catch { close(); return A.toast('Hush needs the camera to take a picture — allow it and try again'); } }
+      if (closed) return stopStream(); vid.srcObject = st; vid.classList.toggle('mir', facing === 'user'); try { await vid.play(); } catch {}
+    }
+    const preview = (kind, blob) => { const pv = document.createElement('div'); pv.className = 'pv'; const url = URL.createObjectURL(blob);
+      pv.innerHTML = (kind === 'photo' ? `<img src="${url}" alt="">` : `<video src="${url}" controls playsinline loop autoplay></video>`) + `<div class=acts><button data-re>Retake</button><button class=go data-use>${kind === 'photo' ? 'Edit and send' : 'Send'}</button></div>`;
+      v.append(pv);
+      pv.querySelector('[data-re]').onclick = () => { pv.remove(); URL.revokeObjectURL(url); };
+      pv.querySelector('[data-use]').onclick = async () => { URL.revokeObjectURL(url); close();
+        if (kind === 'photo') { const f = new File([blob], 'Photo.jpg', { type: 'image/jpeg' }), ed = await editPhoto(f); if (ed) sendFile(key, ed, {}); }
+        else sendFile(key, new File([blob], 'Video.' + (blob.type.includes('mp4') ? 'mp4' : 'webm'), { type: blob.type }), {}); }; };
+    function shoot() {
+      const w = vid.videoWidth, h = vid.videoHeight; if (!w) return A.toast('Camera is not ready yet');
+      const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); if (facing === 'user') { g.translate(w, 0); g.scale(-1, 1); } g.drawImage(vid, 0, 0, w, h);
+      vid.pause(); c.toBlob(b => { vid.play().catch(() => {}); if (b) preview('photo', b); }, 'image/jpeg', 0.9);
+      try { navigator.vibrate && navigator.vibrate(15); } catch {}
+    }
+    function startRec() {
+      const mt = ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'], mime = mt.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
+      if (!window.MediaRecorder) return A.toast('Recording isn’t supported here');
+      chunks = []; try { mr = new MediaRecorder(st, { mimeType: mime || undefined, videoBitsPerSecond: 1400000, audioBitsPerSecond: 48000 }); } catch { return A.toast('Couldn’t start recording'); }
+      mr.ondataavailable = e => e.data.size && chunks.push(e.data);
+      mr.onstop = () => { clearInterval(tick); v.classList.remove('rec'); const type = (mr.mimeType || mime || 'video/webm').split(';')[0], b = new Blob(chunks, { type });
+        if ((Date.now() - t0) < 700) return A.toast('Too short — tap again to record'); if (b.size > 90 * 1048576) return A.toast('That video is too big'); preview('video', b); };
+      mr.start(500); t0 = Date.now(); v.classList.add('rec'); const tm = v.querySelector('.tm');
+      tick = setInterval(() => { const s = (Date.now() - t0) / 1000; tm.textContent = (s / 60 | 0) + ':' + String(Math.floor(s % 60)).padStart(2, '0'); if (s >= 120) stopRec(); }, 250);
+    }
+    function stopRec() { try { if (mr && mr.state !== 'inactive') mr.stop(); } catch {} }
+    v.querySelector('[data-x]').onclick = close;
+    v.querySelector('[data-flip]').onclick = async () => { if (mr && mr.state === 'recording') return; facing = facing === 'user' ? 'environment' : 'user'; await open(); };
+    v.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { if (mr && mr.state === 'recording') return; mode = b.dataset.m; v.classList.toggle('vid', mode === 'video'); v.querySelectorAll('[data-m]').forEach(x => x.classList.toggle('on', x === b)); });
+    v.querySelector('[data-sh]').onclick = () => { if (mode === 'photo') return shoot(); if (mr && mr.state === 'recording') stopRec(); else startRec(); };
+    await open();
+  }
   function recorder(btn, kind, key) {
     if (!btn) return;
     btn.onpointerdown = async e => { e.preventDefault(); if (rec) return;
@@ -1196,9 +1257,9 @@ window.HushMsg = function (A) {
     const v = overlay(`<h3>Reading list</h3><p>Links shared in ${esc(chatName(key))}.</p>${items.reverse().slice(0, 100).map(x => { let h = x.u; try { h = new URL(x.u).hostname.replace(/^www\./, ''); } catch {} return `<button class=hm-row data-rl="${esc(x.u)}" style="width:100%;${done[x.u] ? 'opacity:.55' : ''}"><div class=t><b>${done[x.u] ? '✓ ' : ''}${esc(h)}</b><span>${esc(x.u.slice(0, 80))}</span></div><em>${esc(x.from === 'me' ? 'You' : first(x.from))}<br>${short(x.at)}</em></button>`; }).join('') || '<p>No links shared yet.</p>'}`);
     v.querySelectorAll('[data-rl]').forEach(b => b.onclick = () => { const d = LS.get('readDone', {}); d[b.dataset.rl] = Date.now(); LS.set('readDone', d); v.remove(); A.open(b.dataset.rl); }); }
   // Photo editor (before sending a photo or posting to Echo): crop square, rotate, add text, blur faces/details with a finger.
-  function editPhoto(file) { return new Promise(res => { const img = new Image(), url = URL.createObjectURL(file); img.onerror = () => res(file); img.onload = () => {
+  function editPhoto(file) { return new Promise(res => { const img = {}; img.onload = () => {
     const MAX = 1600, k = Math.min(1, MAX / Math.max(img.width, img.height)); let W = Math.round(img.width * k), H = Math.round(img.height * k);
-    let base = document.createElement('canvas'); base.width = W; base.height = H; base.getContext('2d').drawImage(img, 0, 0, W, H); URL.revokeObjectURL(url);
+    let base = document.createElement('canvas'); base.width = W; base.height = H; base.getContext('2d').drawImage(img.el, 0, 0, W, H);
     let texts = [], tool = 'blur';
     const v = document.createElement('div'); v.className = 'hm-view'; v.style.flexDirection = 'column';
     v.innerHTML = `<canvas style="max-width:94vw;max-height:70vh;touch-action:none;border-radius:8px;background:#000"></canvas><div class=bar style="flex-wrap:wrap;justify-content:center">
@@ -1221,7 +1282,7 @@ window.HushMsg = function (A) {
       if (t === 'rot') { snap(); const c = document.createElement('canvas'); c.width = base.height; c.height = base.width; const cg = c.getContext('2d'); cg.translate(c.width, 0); cg.rotate(Math.PI / 2); cg.drawImage(base, 0, 0); base = c; texts = []; draw(); }
       if (t === 'crop') { snap(); const m = Math.min(base.width, base.height), c = document.createElement('canvas'); c.width = c.height = m; c.getContext('2d').drawImage(base, (base.width - m) / 2, (base.height - m) / 2, m, m, 0, 0, m, m); base = c; texts = []; draw(); }
       if (t === 'done') { draw(); cv.toBlob(b => { v.remove(); res(b ? new File([b], (file.name || 'photo').replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }) : file); }, 'image/jpeg', 0.85); } };
-    draw(); }; img.src = url; }); }
+    draw(); }; loadImg(file).then(L => { img.el = L.img; img.width = L.w; img.height = L.h; img.onload(); }, () => res(file)); }); }
   function overlay(html) { A.haptic && A.haptic(); const v = document.createElement('div'); v.className = 'hm-view'; v.innerHTML = `<div class=hm-card style="width:min(420px,92vw);color:var(--ink);max-height:90vh;overflow:auto">${html}</div>`;
     document.body.append(v); v.onclick = e => { if (e.target === v || e.target.closest('[data-x]')) v.remove(); }; return v; }
   async function linkShow() {

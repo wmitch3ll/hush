@@ -41,7 +41,7 @@
   const isHost = g => g.host === me();
   const other = (g, pk) => pk === me() ? g.key : me();
 
-  G.init = host => { H = host; S = null; };
+  G.init = host => { H = host; S = null; try { css(); } catch {} };
   G.reset = () => { S = null; try { H && H.set({}); } catch {} document.querySelector('.gm-ov')?.remove(); };
   G.get = id => load()[id];
   G.active = key => Object.values(load()).filter(g => g.key === key && (g.status === 'play' || g.status === 'invite'));
@@ -277,6 +277,7 @@
     return { line: '', hot: false };
   };
   G.card = id => {
+    css();
     const g = G.get(id); const s = G.summary(g);
     if (!g) return `<div class="gm-card"><div class="gm-ci">${GICON.chess}</div><div class="gm-ct"><b>Game</b><span>${esc(s.line)}</span></div></div>`;
     const btns = s.ask ? `<div class="gm-cb"><button data-ga="acc" data-gid="${id}" class="gm-b pri">Accept</button><button data-ga="dec" data-gid="${id}" class="gm-b">Decline</button></div>`
@@ -292,6 +293,7 @@
 
   // ---------------------------------------------------------------- picker
   G.pick = key => {
+    css();
     document.querySelector('.gm-sheet')?.remove();
     const el = document.createElement('div'); el.className = 'gm-sheet';
     let secs = 180;
