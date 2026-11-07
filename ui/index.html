@@ -168,6 +168,9 @@ kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:
 <link rel="stylesheet" href="apps.css">
 <link rel="stylesheet" href="desk.css">
 <script src="vendor/nostr.js"></script>
+<script src="games-core.js"></script>
+<script src="wordlist.js"></script>
+<script src="games.js"></script>
 <script src="messenger.js"></script>
 <script src="echo.js"></script>
 
@@ -551,7 +554,7 @@ const RENDER={privacy:()=>{const p=$('#panel');p.innerHTML=`<h2>Privacy report $
 const HX=HushX({dlOpen:d=>inv('download_open',{path:d.path}).catch(e=>toast(String(e))),dlShow:d=>inv('download_reveal',{path:d.path}).catch(e=>toast(String(e))),inv,pref,setPref,toast,open:u=>openTab(u),state:()=>state,reload:()=>loadState(),mobile:false,act:id=>runAction(id),
   watchPick:()=>{if(!tab(cur))return toast('Open the page you want to watch first');closePanel();inv('start_picker',{mode:'watch'});toast('Click the price or text to watch')},
   zap:()=>{closePanel();inv('start_picker');toast('Click an element to remove it from this site · Esc to cancel')}});
-function renderHome(){const el=$('#home');HX.home(el,{top:`<h1 class="wordmark">hush.</h1>${pref('sp_stats')!='off'?'<div class=stats id=stats></div>':''}`,
+function renderHome(){const el=$('#home');HX.home(el,{top:`<h1 class="wordmark">hush<i class=wm-dot>.</i></h1>${pref('sp_stats')!='off'?'<div class=stats id=stats></div>':''}`,
   bottom:'<p class=hint style="color:var(--mute);font-size:12px">Ctrl+K for everything · Shift-click a link to peek · Ctrl+Shift+S full-page screenshot</p>',after:loadStats})}
 let listening=false,lRate=1,lPaused=false;
 function listenUI(){$('#lctl').classList.toggle('on',listening);$('#listen').style.display=listening?'none':'';$('#l-rate').textContent=lRate+'×';

@@ -57,7 +57,7 @@ body.bottom #tools{order:-1}
 #tools .tb:disabled{opacity:.3}#tools svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 #tb-tabs span{min-width:20px;height:20px;padding:0 3px;border:1.8px solid currentColor;border-radius:6px;font:700 11px/17px system-ui;text-align:center;box-sizing:border-box}
 .home{display:grid;place-items:center;text-align:center;padding:12vh 18px 40px}
-.home .wordmark{font:300 62px/1 ui-serif,"Times New Roman",Times,Georgia,serif;letter-spacing:-2px;margin:0 auto 12px}.home p{color:var(--mute)}
+.home .wordmark,.wordmark{position:relative;width:fit-content;padding-right:.04em}.wm-dot{position:absolute;left:100%;bottom:0;font-style:normal;margin-left:-.04em}.home .wordmark{font:300 62px/1 ui-serif,"Times New Roman",Times,Georgia,serif;letter-spacing:-2px;margin:0 auto 12px}.home p{color:var(--mute)}
 .home .stats{font-size:12px;margin-top:8px;font-variant-numeric:tabular-nums}.home .stats b{color:var(--ink)}
 .home.priv .wordmark{opacity:.85}
 .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px 10px;margin-top:30px;width:100%;max-width:420px}
@@ -173,6 +173,9 @@ body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
 <link rel="stylesheet" href="apps.css">
 <link rel="stylesheet" href="mobile.css">
 <script src="vendor/nostr.js"></script>
+<script src="games-core.js"></script>
+<script src="wordlist.js"></script>
+<script src="games.js"></script>
 <script src="messenger.js"></script>
 <script src="echo.js"></script>
 <script>
@@ -201,7 +204,7 @@ let ICONS={};try{if(!localStorage.getItem("hush-icons-v2")){localStorage.removeI
 const icon=u=>ICONS[bare(u)]||"";
 function saveIcon(host,data){host=host.replace(/^www\./,"");if(!host||ICONS[host]===data)return;ICONS[host]=data;const k=Object.keys(ICONS);if(k.length>300)delete ICONS[k[0]];
   try{localStorage.setItem("hush-icons",JSON.stringify(ICONS))}catch(e){}try{HX.favSet(host,data)}catch(e){}}
-const WORDMARK=`<div class="wordmark">hush.</div>`;
+const WORDMARK=`<div class="wordmark">hush<i class=wm-dot>.</i></div>`;
 let state={settings:{search:"duckduckgo",ui:{}},bookmarks:[],allow_sites:[],site_dark:{},session:[]}, allow=new Set();
 // tabs: {id, native (label of the native WebView; null = not opened yet), url, title, priv, ws, canBack, canFwd}
 let tabs=[], cur=null, nid=1, sheet=null, downloads=[], typing=false, finding=false;
@@ -879,7 +882,7 @@ function drawFocus(){const el=$("#focus"),left=focusLeft(),sites=pref("focus_sit
   $("#f-addb").onclick=async()=>{const v=bare("https://"+$("#f-add").value.trim().replace(/^https?:\/\//,""));if(v&&!sites.includes(v)){await setPref("focus_sites",[...sites,v].join(","));drawFocus()}}}
 
 async function drawAbout(){const el=$("#about");let info={build:"?"};try{info=await inv("app_info")}catch(e){}
-  el.innerHTML=head("About Hush")+`<div style="text-align:center;margin:8px 0 4px"><div class="wordmark" style="font:300 44px ui-serif,'Times New Roman',Georgia,serif">hush.</div>
+  el.innerHTML=head("About Hush")+`<div style="text-align:center;margin:8px 0 4px"><div class="wordmark" style="font:300 44px ui-serif,'Times New Roman',Georgia,serif">hush<i class=wm-dot>.</i></div>
     <small style="color:var(--mute)">Test build ${esc(info.build)} · Android</small></div>
    <button class="item" id="a-upd"><div>Check for updates<small id="a-updt">Looks for a newer test build on GitHub</small></div></button>
    <button class="item" id="a-def"><div>Make Hush your default browser<small id="a-deft">Links from other apps open here</small></div></button>

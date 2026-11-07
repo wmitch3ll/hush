@@ -221,6 +221,11 @@ window.HushMsg = function (A) {
       const f = tag('hush-file');
       if (f.length) return receiveChunk(key, r, f);
       if (list.some(x => x.id === r.id)) return;
+      const gmT = tag('hush-game');
+      if (gmT.length) { if (isGroup(key) || !window.HUSH_GAMES) return; const gres = HUSH_GAMES.recv(key, mine ? me : r.pubkey, String(r.content).slice(0, 6000), mine); if (!gres) return;
+        if (gres.card) list.push({ id: r.id, from: mine ? 'me' : r.pubkey, game: gmT[1], text: '', at: r.created_at * 1000, status: 'sent' });
+        if (!mine && gres.notify && now() - r.created_at < 600) return arrived(key, r, list, all, gres.notify);
+        all[key] = list; LS.set('chats', all); if (view.open) repaint(); return; }
       const who = mine ? 'me' : r.pubkey, ed = tag('hush-edit')[1], un = tag('hush-unsend')[1], pin = tag('hush-pin'), ttlSet = tag('hush-ttlset');
       if (ed) { const m = list.find(x => x.id === ed && x.from === who); if (m) { m.text = String(r.content).slice(0, 20000); m.edited = true; all[key] = list; LS.set('chats', all); if (view.open) repaint(); } return; }
       if (un) { const i = list.findIndex(x => x.id === un && x.from === who); if (i >= 0) { list[i] = { ...list[i], text: '', file: null, poll: null, unsent: true }; all[key] = list; LS.set('chats', all); if (view.open) repaint(); } return; }
@@ -332,6 +337,9 @@ window.HushMsg = function (A) {
     for (const w of wraps) for (const u of spread) send(u, ['EVENT', w]);
     return { rumor, wrapId: wraps[0]?.id };
   }
+  if (window.HUSH_GAMES) HUSH_GAMES.init({ me: () => me, get: () => LS.get('games', {}), set: v => LS.set('games', v), name: pk => nameOf(pk), toast: t => A.toast(t), repaint: () => { if (view.open) repaint(); },
+    send: (key, obj) => { const { rumor, wrapId } = publish(key, 14, JSON.stringify(obj), [['hush-game', obj.g]]);
+      if (obj.k === 'inv') addLocal(key, { id: rumor.id, from: 'me', game: obj.g, text: '', at: Date.now(), status: 'sending' }, wrapId); } });
   function addLocal(key, m, wrapId) {
     const all = chats(), list = all[key] || (all[key] = []); list.push(m); all[key] = list; LS.set('chats', all);
     if (wrapId) { pending[wrapId] = { chat: key, msgId: m.id }; setTimeout(() => { if (pending[wrapId]) mark(key, m.id, 'failed'); }, 60000); }
@@ -723,7 +731,7 @@ window.HushMsg = function (A) {
   const avatar = avatarHTML;
   function hydrate(el) { (el || document).querySelectorAll('img[data-av]:not([data-ok])').forEach(async im => { im.dataset.ok = 1;
     try { const u = await mediaUrl(JSON.parse(im.dataset.av)); if (u) { im.src = u; im.onload = () => im.style.opacity = 1; } } catch {} }); }
-  const preview = m => m.loc ? 'Live location' : m.file ? (m.file.kind === 'voice' ? 'Voice message' : m.file.kind === 'vmsg' ? 'Video message' : m.file.mime.startsWith('image/') ? 'Photo' : m.file.mime.startsWith('video/') ? 'Video' : '' + m.file.name) : m.text;
+  const preview = m => m.game ? 'Game' : m.loc ? 'Live location' : m.file ? (m.file.kind === 'voice' ? 'Voice message' : m.file.kind === 'vmsg' ? 'Video message' : m.file.mime.startsWith('image/') ? 'Photo' : m.file.mime.startsWith('video/') ? 'Video' : '' + m.file.name) : m.text;
   function paintStatus() { const e = view.el && view.el.querySelector('.hm-st'); if (!e) return;
     if (view.screen === 'chat' && typingNames().length) return paintTyping();
     const s = status.startsWith('error') ? 'error' : status; e.className = 'hm-st ' + s;
@@ -795,6 +803,7 @@ window.HushMsg = function (A) {
     const q = m.reply && list.find(x => x.id === m.reply);
     const rx = m.react && Object.entries(m.react).filter(([, w]) => w.length).map(([e, w]) => e + (w.length > 1 ? w.length : '')).join(' ');
     const who = m.from === 'me' ? 'me' : 'them', showName = isGroup(key) && who === 'them' && (!prev || prev.from !== m.from);
+    if (m.game && window.HUSH_GAMES) return `<div class="hm-m ${who} img" data-m="${m.id}" style="background:none;padding:0;box-shadow:none">${HUSH_GAMES.card(m.game)}<span class=tm style="display:block;text-align:${who === 'me' ? 'right' : 'left'}">${time(m.at)}</span></div>`;
     let body = '';
     let cls = '';
     if (m.file) { const f = m.file, img = f.mime.startsWith('image/'), vid = f.mime.startsWith('video/'), icon = f.kind === 'voice' ? '♪' : f.kind === 'vmsg' ? '▶' : '↧';
@@ -870,9 +879,10 @@ window.HushMsg = function (A) {
     fi.onchange = async () => { const fs = [...fi.files].slice(0, 10), once = view.once; view.once = false; fi.value = '';
       if (fs.length === 1 && /^image\/(jpeg|png|webp)$/.test(fs[0].type)) { const ed = await editPhoto(fs[0]); if (ed) sendFile(key, ed, once ? { once: true } : {}); return; }
       fs.forEach(f => sendFile(key, f, once ? { once: true } : {})); };
-    view.el.querySelector('#hm-plus').onclick = e => menu(e.clientX, e.clientY - 120, `<button class=i data-a=file>Photo or file</button>${A.page && A.page() ? '<button class=i data-a=page>Share this page</button>' : ''}<button class=i data-a=poll>Poll</button><button class=i data-a=once>View-once photo</button>${key !== 'self' && A.media && A.page && A.page() ? '<button class=i data-a=tog>Watch this page together</button>' : ''}${A.ai && A.ai.ready() && key !== 'self' ? '<button class=i data-a=ai>Suggest a reply</button>' : ''}${key !== 'self' ? `<button class=i data-a=loc>${liveLoc.active(key) ? 'Stop sharing location' : 'Share live location'}</button>` : ''}<button class=i data-a=self>✎ Notes to self</button>`, (m, done) => m.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { done();
+    view.el.querySelector('#hm-plus').onclick = e => menu(e.clientX, e.clientY - 120, `<button class=i data-a=file>Photo or file</button>${A.page && A.page() ? '<button class=i data-a=page>Share this page</button>' : ''}<button class=i data-a=poll>Poll</button>${key !== 'self' && !isGroup(key) && window.HUSH_GAMES ? '<button class=i data-a=game>Play a game</button>' : ''}<button class=i data-a=once>View-once photo</button>${key !== 'self' && A.media && A.page && A.page() ? '<button class=i data-a=tog>Watch this page together</button>' : ''}${A.ai && A.ai.ready() && key !== 'self' ? '<button class=i data-a=ai>Suggest a reply</button>' : ''}${key !== 'self' ? `<button class=i data-a=loc>${liveLoc.active(key) ? 'Stop sharing location' : 'Share live location'}</button>` : ''}<button class=i data-a=self>✎ Notes to self</button>`, (m, done) => m.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { done();
       if (b.dataset.a === 'ai') { const ta2 = view.el.querySelector('textarea'), recent = (chats()[key] || []).filter(x => x.text && !x.sys).slice(-8).map(x => (x.from === 'me' ? 'Me' : first(x.from)) + ': ' + x.text.slice(0, 300)).join('\n');
         ta2.value = '…'; A.ai.ask(`Write one short, friendly reply I could send next in this chat. Reply with only the message text.\n\n${recent}`, t => { ta2.value = t; }).then(t => { ta2.value = t; ta2.oninput && ta2.oninput(); ta2.focus(); }).catch(e => { ta2.value = ''; A.toast(e.message); }); return; }
+      if (b.dataset.a === 'game') return HUSH_GAMES.pick(key);
       if (b.dataset.a === 'loc') return liveLoc.active(key) ? liveLoc.stop(key) : liveLoc.pick(key);
       if (b.dataset.a === 'tog') { const p = A.page(); if (p) { sendText(key, 'Watch together: ' + p.url, null, { tog: p.url }); together.join(key, p.url, true); } return; }
       if (b.dataset.a === 'file') { fi.accept = ''; fi.multiple = true; fi.click(); return; }
@@ -899,6 +909,7 @@ window.HushMsg = function (A) {
     view.el.querySelector('#hm-cm').onclick = e => chatMenu(e.clientX, e.clientY, key);
     view.el.querySelectorAll('[data-u]').forEach(a => a.onclick = e => { e.preventDefault(); e.stopPropagation(); A.open(a.dataset.u); });
     view.el.querySelectorAll('[data-img]').forEach(async im => { const u = await fileUrl(im.dataset.img); if (u) im.src = u; im.onclick = e => { e.stopPropagation(); viewer(im.dataset.img, false, chatSet(key).protect); }; });
+    if (window.HUSH_GAMES) HUSH_GAMES.wire(view.el);
     view.el.querySelectorAll('[data-fetch]').forEach(d => d.onclick = e => { e.stopPropagation(); fetchRemote(key, d.dataset.fetch); });
     view.el.querySelectorAll('[data-vid]').forEach(async v => { const u = await fileUrl(v.dataset.vid); if (u) v.src = u; });
     view.el.querySelectorAll('[data-voice]').forEach(v => voicePlayer(v, list.find(x => x.file?.id === v.dataset.voice), key));
@@ -1332,8 +1343,8 @@ window.HushMsg = function (A) {
     view.el.querySelector('#hm-bn').onchange = e => pic(e.target, 1500, 500, 'banner');
     view.el.querySelector('#hm-card').onclick = () => hushCard();
     view.el.querySelector('#hm-reset').onclick = async () => { if (!confirm('Delete your Hush ID and all messages, photos and files on this device? This can’t be undone.')) return;
-      for (const k of ['key', 'contacts', 'chats', 'groups', 'unread', 'seen', 'since', 'profile', 'readSent', 'verified']) localStorage.removeItem('hush.msg.' + k);
-      try { await A.secret.del('murmur-key'); await A.secret.del('murmur-lock'); } catch {} lockCfg = null; hooks.reset.forEach(f => { try { f(); } catch {} });
+      for (const k of ['key', 'contacts', 'chats', 'groups', 'unread', 'seen', 'since', 'profile', 'readSent', 'verified', 'games']) localStorage.removeItem('hush.msg.' + k);
+      try { await A.secret.del('murmur-key'); await A.secret.del('murmur-lock'); } catch {} lockCfg = null; try { HUSH_GAMES.reset(); } catch {} hooks.reset.forEach(f => { try { f(); } catch {} });
       try { (await db()).close(); dbp = null; indexedDB.deleteDatabase('hush-msg'); } catch {}
       Object.values(conns).forEach(c => c.id && A.inv('msg_ws_close', { id: c.id }).catch(() => {})); sk = null; me = ''; started = false; view.screen = 'welcome'; badge(); repaint(); };
   }
