@@ -157,6 +157,35 @@ pub async fn public_feed(app: AppHandle, url: String) -> Result<String, String> 
     if !(200..300).contains(&st) { return Err(format!("feed error ({st})")); }
     String::from_utf8(body).map_err(|_| "bad reply".into())
 }
+/// Live scores for the start-page widget. Read-only GET of ESPN's public scoreboard (no account, no key). Unlike the
+/// messenger this goes direct (not over Tor) so scores stay fast, so ESPN can see your IP; the widget is off unless you turn it on.
+/// Only a fixed list of leagues and a plain YYYYMMDD date are accepted, so this can't be used to fetch anything else.
+pub fn scores_url(league: &str, date: Option<&str>) -> Option<String> {
+    let (sport, lg, extra) = match league {
+        "nfl" => ("football", "nfl", ""), "cfb" => ("football", "college-football", "&groups=80"),
+        "nba" => ("basketball", "nba", ""), "cbb" => ("basketball", "mens-college-basketball", "&groups=50"), "wcbb" => ("basketball", "womens-college-basketball", "&groups=50"),
+        "nhl" => ("hockey", "nhl", ""), "mlb" => ("baseball", "mlb", ""), "mls" => ("soccer", "usa.1", ""), _ => return None };
+    let d = match date { Some(d) if d.len() == 8 && d.bytes().all(|b| b.is_ascii_digit()) => format!("&dates={d}"), Some(_) => return None, None => String::new() };
+    Some(format!("https://site.api.espn.com/apis/site/v2/sports/{sport}/{lg}/scoreboard?limit=300{extra}{d}"))
+}
+#[tauri::command]
+pub async fn scores_get(league: String, date: Option<String>) -> Result<String, String> {
+    let url = scores_url(&league, date.as_deref()).ok_or("not a supported league")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        match ureq::get(&url).set("Accept", "application/json").timeout(std::time::Duration::from_secs(10)).call() {
+            Ok(r) => r.into_string().map_err(|_| "bad reply".to_string()),
+            Err(ureq::Error::Status(st, _)) => Err(format!("scores error ({st})")),
+            Err(_) => Err("couldn't reach the scores service".to_string()) } }).await.map_err(|e| e.to_string())?
+}
+#[cfg(test)] mod scores_tests {
+    #[test] fn only_known_leagues_and_dates() {
+        assert!(super::scores_url("nfl", None).unwrap().starts_with("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"));
+        assert!(super::scores_url("nba", Some("20261107")).unwrap().ends_with("&dates=20261107"));
+        assert!(super::scores_url("evil", None).is_none());
+        assert!(super::scores_url("nfl", Some("2026/../x")).is_none());
+        assert!(super::scores_url("nfl", Some("2026110a")).is_none());
+    }
+}
 /// Cloud assistant (Groq, with the user's own free key). path = "chat/completions" (POST body) or "models" (GET).
 /// Tries Tor first (Groq never sees your IP); Groq's firewall often blocks Tor, so on any refusal it goes direct.
 /// Returns {"via":"tor"|"direct","body":"…"}. Only ever talks to api.groq.com/openai/v1; the key goes only to Groq.

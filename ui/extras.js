@@ -57,6 +57,7 @@ window.HushX = function (A) {
   function home(el, opts = {}) {
     const st = A.state(), bms = (st.bookmarks || []).filter(b => b.folder !== 'reading'), bg = wallStyle(), priv = !!opts.priv;
     const gm = ['buddy', 'pet'].includes(A.pref('ghost_mode')) && window.HUSH_GHOST ? A.pref('ghost_mode') : 'off';
+    const scoresOn = A.pref('sp_scores') === 'on' && !priv && !!window.HUSH_SCORES;
     const clock = A.pref('sp_clock') !== 'off', notes = A.pref('sp_notes') === 'on' && !priv;
     el.innerHTML = `<div class="hx-home ${bg && !priv ? 'walled' : ''}" style="${bg && !priv ? 'background:' + esc(bg) + ';background-size:cover;background-position:center' : ''}">
       ${clock ? '<div class=hx-time><div class=hx-clock></div><div class=hx-date></div></div>' : ''}
@@ -64,6 +65,7 @@ window.HushX = function (A) {
       <div class="hx-grid ${editing ? 'hx-edit' : ''}">${bms.slice(0, 24).map(b => { const ic = opts.icon && opts.icon(b.url);
         return `<div class=hx-tile draggable=${editing} data-u="${esc(b.url)}" title="${esc(b.title || host(b.url))}"><i style="${favStyle(b.url)}">${esc((host(b.url) || '?')[0].toUpperCase())}</i><span>${esc(b.title || host(b.url))}</span><b class=hx-x data-rm="${esc(b.url)}">✕</b></div>` }).join('')}</div>
       ${gm !== 'off' && !priv ? '<div class=hx-ghost></div>' : ''}
+      ${scoresOn ? '<div class=hx-scores style="width:100%;display:flex;justify-content:center"></div>' : ''}
       ${editing ? `<form class=hx-add><input name=u placeholder="Add a site — example.com" autocomplete=off><button class=hx-b>Add</button></form>` : ''}
       ${notes ? `<textarea class=hx-notes placeholder="Quick notes — saved on this device">${esc(LS.get('notes', ''))}</textarea>` : ''}
       ${customizing ? customizer() : ''}
@@ -95,9 +97,12 @@ window.HushX = function (A) {
         t.onpointerup = () => { t.onpointermove = t.onpointerup = null; t.classList.remove('hx-drag'); tiles.forEach(x => x.classList.remove('hx-over')); if (over && over !== t) order(t.dataset.u, over.dataset.u); }; });
     });
     if (customizing) wireCustomizer(el, redraw);
+    if (scoresOn) HUSH_SCORES.mount(el.querySelector('.hx-scores'), A); else if (window.HUSH_SCORES) HUSH_SCORES.stop();
     if (gm !== 'off' && !priv) HUSH_GHOST.mount(el.querySelector('.hx-ghost'), gm); else if (window.HUSH_GHOST) HUSH_GHOST.stop();
     if (opts.after) opts.after();
   }
+  const leagueList = () => String(A.pref('sp_leagues') || 'nfl,nba,nhl').split(',').filter(Boolean);
+  const leagueOn = k => leagueList().includes(k);
   function customizer() {
     const w = A.pref('sp_bg') || 'none';
     return `<div class=hx-pop><div class=hx-lbl>Background</div><div class=hx-row style="justify-content:flex-start">
@@ -107,13 +112,15 @@ window.HushX = function (A) {
       <div class=hx-lbl>Hush the ghost</div><div class=hx-seg>${[['off', 'Off'], ['buddy', 'Buddy'], ['pet', 'Pocket pet']].map(([v, l]) => `<button class="hx-b ${(A.pref('ghost_mode') || 'off') === v ? 'on' : ''}" data-gm="${v}">${l}</button>`).join('')}</div>
       <div class=hx-lbl>Show</div><div class=hx-seg>
       <button class="hx-b ${A.pref('sp_clock') !== 'off' ? 'on' : ''}" data-t=sp_clock>Clock</button><button class="hx-b ${A.pref('sp_notes') === 'on' ? 'on' : ''}" data-t=sp_notes>Quick notes</button>
-      <button class="hx-b ${A.pref('sp_stats') !== 'off' ? 'on' : ''}" data-t=sp_stats>Blocked count</button></div></div>`;
+      <button class="hx-b ${A.pref('sp_stats') !== 'off' ? 'on' : ''}" data-t=sp_stats>Blocked count</button><button class="hx-b ${A.pref('sp_scores') === 'on' ? 'on' : ''}" data-t=sp_scores>Sports scores</button></div>
+      ${A.pref('sp_scores') === 'on' && window.HUSH_SCORES ? `<div class=hx-lbl>Leagues</div><div class=hx-seg style="flex-wrap:wrap">${Object.entries(HUSH_SCORES.LEAGUES).map(([k, v]) => `<button class="hx-b ${leagueOn(k) ? 'on' : ''}" data-lg2="${k}">${v}</button>`).join('')}</div><div class=hint style="margin-top:6px">Scores come from ESPN, so ESPN can see your IP address when the widget loads.</div>` : ''}</div>`;
   }
   function wireCustomizer(el, redraw) {
     el.querySelectorAll('[data-w]').forEach(s => s.onclick = async () => { await A.setPref('sp_bg', s.dataset.w); redraw(); });
     el.querySelectorAll('[data-gm]').forEach(b => b.onclick = async () => { await A.setPref('ghost_mode', b.dataset.gm); redraw(); });
+    el.querySelectorAll('[data-lg2]').forEach(b => b.onclick = async () => { const k = b.dataset.lg2, l = leagueList(), n = l.includes(k) ? l.filter(x => x !== k) : l.concat(k); await A.setPref('sp_leagues', (n.length ? n : [k]).join(',')); redraw(); });
     const c = el.querySelector('[data-c]'); if (c) c.onchange = async () => { await A.setPref('sp_bg', c.value); redraw(); };
-    el.querySelectorAll('[data-t]').forEach(b => b.onclick = async () => { const k = b.dataset.t, on = k === 'sp_notes' ? A.pref(k) === 'on' : A.pref(k) !== 'off';
+    el.querySelectorAll('[data-t]').forEach(b => b.onclick = async () => { const k = b.dataset.t, on = k === 'sp_notes' || k === 'sp_scores' ? A.pref(k) === 'on' : A.pref(k) !== 'off';
       await A.setPref(k, on ? 'off' : 'on'); redraw(); });
     const f = el.querySelector('[data-img]'); if (f) f.onchange = () => { const file = f.files[0]; if (!file) return;
       const img = new Image(); img.onload = async () => { const s = Math.min(1, 1920 / Math.max(img.width, img.height)), cv = document.createElement('canvas');
