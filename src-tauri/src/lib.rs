@@ -293,7 +293,7 @@ const BANGS: &[(&str, &str)] = &[
     ("m", "https://www.openstreetmap.org/search?query=%s"), ("i", "https://duckduckgo.com/?q=%s&ia=images&iax=images"),
     ("n", "https://duckduckgo.com/?q=%s&ia=news&iar=news"), ("imdb", "https://www.imdb.com/find/?q=%s"),
     ("so", "https://stackoverflow.com/search?q=%s"), ("wa", "https://www.wolframalpha.com/input?i=%s"),
-    ("e", "https://www.ebay.com/sch/i.html?_nkw=%s"), ("maps", "https://www.google.com/maps/search/%s"),
+    ("hf", "https://hyperfeast.com"), ("e", "https://www.ebay.com/sch/i.html?_nkw=%s"), ("maps", "https://www.google.com/maps/search/%s"),
 ];
 pub fn bang(s: &store::Settings, t: &str) -> Option<String> {
     let words: Vec<&str> = t.split_whitespace().collect();
@@ -306,11 +306,30 @@ pub fn bang(s: &store::Settings, t: &str) -> Option<String> {
     let enc: String = url::form_urlencoded::byte_serialize(q.as_bytes()).collect();
     Some(if tpl.contains("%s") { tpl.replace("%s", &enc) } else { tpl })
 }
+/// One-word names people type meaning "the actual site" (espn, usatoday). Anything not listed is searched, so ordinary words are never hijacked.
+const SITES: &str = "espn usatoday cnn bbc nbcnews cbsnews abcnews foxnews msnbc nytimes washingtonpost wsj reuters apnews npr bloomberg forbes cnbc theguardian  newsweek politico axios huffpost buzzfeed vox theverge wired engadget techcrunch arstechnica gizmodo mashable \
+ youtube google gmail facebook instagram twitter reddit tiktok snapchat pinterest linkedin tumblr twitch discord whatsapp telegram netflix hulu disneyplus hbomax  peacocktv paramountplus spotify soundcloud pandora imdb rottentomatoes amazon ebay etsy walmart  costco bestbuy homedepot lowes ikea wayfair macys nordstrom kohls chewy  aliexpress shein temu zappos \
+ apple microsoft github gitlab stackoverflow medium wikipedia quora duckduckgo yahoo bing  aol protonmail outlook hotmail icloud dropbox  zoom slack notion trello asana figma canva adobe openai anthropic nvidia intel amd samsung sony nintendo playstation xbox  epicgames roblox minecraft ign gamespot kotaku polygon \
+ nfl nba mlb nhl mls ncaa wnba ufc wwe pga nascar cbssports nbcsports foxsports bleacherreport theathletic sportsillustrated golfdigest yardbarker deadspin hyperfeast \
+ paypal venmo cashapp chase wellsfargo bankofamerica  capitalone  americanexpress fidelity schwab vanguard robinhood coinbase binance kraken \
+  accuweather wunderground webmd mayoclinic nih cdc irs usps  fedex dhl dmv  whitehouse  \
+ uber lyft doordash grubhub ubereats instacart airbnb vrbo expedia booking kayak tripadvisor   southwest jetblue yelp zillow redfin realtor trulia craigslist indeed glassdoor \
+ craigslist autotrader  carvana carmax edmunds kbb tesla ford toyota honda \
+ coursera udemy khanacademy duolingo chegg quizlet grammarly wix squarespace shopify wordpress godaddy cloudflare";
+fn site_for(word: &str) -> Option<String> {
+    let w = word.to_ascii_lowercase();
+    if w.len() < 2 || !w.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit()) { return None; }
+    let tld = match w.as_str() { "npr" | "nih" | "cdc" | "ncaa" => "org", "whitehouse" | "congress" | "irs" | "usa" | "nih_" => "gov", "wikipedia" => "org", "hyperfeast" => "com", _ => "com" };
+    let host = match w.as_str() { "congress" => "congress.gov".to_string(), "usa" => "usa.gov".to_string(), "irs" => "irs.gov".to_string(), "cdc" => "cdc.gov".to_string(), "nih" => "nih.gov".to_string(),
+        "whitehouse" => "whitehouse.gov".to_string(), "dmv" => "dmv.org".to_string(), "ncaa" => "ncaa.com".to_string(), "disneyplus" => "disneyplus.com".to_string(), "max" => "max.com".to_string(), _ => format!("{w}.{tld}") };
+    SITES.split_whitespace().any(|x| x == w).then(|| format!("https://www.{host}")).map(|u| u.replacen("www.hyperfeast", "hyperfeast", 1))
+}
 pub fn resolve_with(s: &store::Settings, input: &str) -> String {
     let t = input.trim();
     if t.contains('!') { if let Some(u) = bang(s, t) { return u; } }
     if let Ok(u) = url::Url::parse(t) { if u.has_host() && (u.scheme() == "http" || u.scheme() == "https") { return t.replacen("http://", "https://", 1); } }
     if t.contains('.') && !t.contains(' ') && !t.contains("://") { return format!("https://{t}"); }
+    if let Some(u) = site_for(t) { return u; }
     let q: String = url::form_urlencoded::byte_serialize(t.as_bytes()).collect();
     s.search_template().replace("%s", &q)
 }
@@ -642,6 +661,15 @@ mod security_tests {
         let csp = conf["app"]["security"]["csp"].as_str().unwrap_or("");
         assert!(csp.contains("default-src 'self'"), "chrome UI must not load remote code");
         assert!(!csp.replace("'wasm-unsafe-eval'", "").contains("unsafe-eval"), "only WebAssembly compile is allowed, never JS eval");
+    }
+    #[test] fn bare_site_names_and_hf_shortcut() {
+        let s = store::Settings::default();
+        assert_eq!(resolve_with(&s, "espn"), "https://www.espn.com");
+        assert_eq!(resolve_with(&s, "USAToday"), "https://www.usatoday.com");
+        assert_eq!(resolve_with(&s, "!hf"), "https://hyperfeast.com");
+        assert_eq!(resolve_with(&s, "npr"), "https://www.npr.org");
+        assert!(!resolve_with(&s, "pizza").contains("pizza.com"));
+        assert!(!resolve_with(&s, "espn scores").starts_with("https://www.espn.com"));
     }
     #[test] fn address_bar_never_produces_dangerous_schemes() {
         let s = store::Settings::default();

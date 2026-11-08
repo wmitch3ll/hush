@@ -269,47 +269,122 @@
 
   // ------------------------------------------------------------------ the computer's chess
   const ChessAI = (() => {
-    const V = { p: 100, n: 320, b: 335, r: 500, q: 900, k: 0 };
-    // gentle centre/advance bonuses so it develops pieces and pushes pawns instead of shuffling
-    const cen = i => { const r = i >> 3, c = i & 7; return 6 - (Math.abs(3.5 - r) + Math.abs(3.5 - c)) * 1.6; };
+    const V = { p: 100, n: 320, b: 335, r: 500, q: 920, k: 0 };
+    // Piece-square tables (white's view, row 0 = rank 8). Black reads them mirrored.
+    const T = {
+      p: [0,0,0,0,0,0,0,0, 50,50,50,50,50,50,50,50, 10,10,20,30,30,20,10,10, 5,5,10,25,25,10,5,5, 0,0,0,20,20,0,0,0, 5,-5,-10,0,0,-10,-5,5, 5,10,10,-20,-20,10,10,5, 0,0,0,0,0,0,0,0],
+      n: [-50,-40,-30,-30,-30,-30,-40,-50, -40,-20,0,0,0,0,-20,-40, -30,0,10,15,15,10,0,-30, -30,5,15,20,20,15,5,-30, -30,0,15,20,20,15,0,-30, -30,5,10,15,15,10,5,-30, -40,-20,0,5,5,0,-20,-40, -50,-40,-30,-30,-30,-30,-40,-50],
+      b: [-20,-10,-10,-10,-10,-10,-10,-20, -10,0,0,0,0,0,0,-10, -10,0,5,10,10,5,0,-10, -10,5,5,10,10,5,5,-10, -10,0,10,10,10,10,0,-10, -10,10,10,10,10,10,10,-10, -10,5,0,0,0,0,5,-10, -20,-10,-10,-10,-10,-10,-10,-20],
+      r: [0,0,0,0,0,0,0,0, 5,10,10,10,10,10,10,5, -5,0,0,0,0,0,0,-5, -5,0,0,0,0,0,0,-5, -5,0,0,0,0,0,0,-5, -5,0,0,0,0,0,0,-5, -5,0,0,0,0,0,0,-5, 0,0,0,5,5,0,0,0],
+      q: [-20,-10,-10,-5,-5,-10,-10,-20, -10,0,0,0,0,0,0,-10, -10,0,5,5,5,5,0,-10, -5,0,5,5,5,5,0,-5, 0,0,5,5,5,5,0,-5, -10,5,5,5,5,5,0,-10, -10,0,5,0,0,0,0,-10, -20,-10,-10,-5,-5,-10,-10,-20],
+      k: [-30,-40,-40,-50,-50,-40,-40,-30, -30,-40,-40,-50,-50,-40,-40,-30, -30,-40,-40,-50,-50,-40,-40,-30, -30,-40,-40,-50,-50,-40,-40,-30, -20,-30,-30,-40,-40,-30,-30,-20, -10,-20,-20,-20,-20,-20,-20,-10, 20,20,0,0,0,0,20,20, 20,30,10,0,0,10,30,20],
+      ke: [-50,-40,-30,-20,-20,-30,-40,-50, -30,-20,-10,0,0,-10,-20,-30, -30,-10,20,30,30,20,-10,-30, -30,-10,30,40,40,30,-10,-30, -30,-10,30,40,40,30,-10,-30, -30,-10,20,30,30,20,-10,-30, -30,-30,0,0,0,0,-30,-30, -50,-30,-30,-30,-30,-30,-30,-50]
+    };
+    // Static evaluation from White's point of view: material + placement + pawn structure + bishop pair + rooks + king safety.
     function evalPos(s) {
-      let sc = 0; for (let i = 0; i < 64; i++) { const p = s.b[i]; if (p === ' ') continue; const w = Chess.white(p), k = p.toLowerCase(), r = i >> 3;
-        let v = V[k] + (k === 'k' ? 0 : k === 'p' ? (w ? (6 - r) : (r - 1)) * 6 + cen(i) * .6 : cen(i)); sc += w ? v : -v; }
-      return sc;
-    }
-    const order = (s, ms) => ms.map(m => ({ m, k: (s.b[m.t] !== ' ' ? 10 * V[s.b[m.t].toLowerCase()] - V[s.b[m.f].toLowerCase()] / 10 : 0) + (m.p ? 800 : 0) + (m.castle ? 30 : 0) })).sort((a, b) => b.k - a.k).map(x => x.m);
-    function search(s, d, al, be, deadline) {
-      if (Date.now() > deadline) throw 'time';
-      const ms = Chess.legal(s); if (!ms.length) return Chess.inCheck(s) ? (s.t === 'w' ? -100000 - d : 100000 + d) : 0;
-      if (d === 0) return quiesce(s, al, be, 0);
-      const maxi = s.t === 'w'; let best = maxi ? -1e9 : 1e9;
-      for (const m of order(s, ms)) { const v = search(Chess.make(s, m), d - 1, al, be, deadline); if (maxi) { if (v > best) best = v; if (v > al) al = v; } else { if (v < best) best = v; if (v < be) be = v; } if (be <= al) break; }
-      return best;
-    }
-    function quiesce(s, al, be, q) {
-      const st = evalPos(s), maxi = s.t === 'w'; if (q > 3) return st;
-      let best = st; if (maxi) { if (st >= be) return st; if (st > al) al = st; } else { if (st <= al) return st; if (st < be) be = st; }
-      for (const m of order(s, Chess.legal(s).filter(m => s.b[m.t] !== ' ' || m.ep))) { const v = quiesce(Chess.make(s, m), al, be, q + 1);
-        if (maxi) { if (v > best) best = v; if (v > al) al = v; } else { if (v < best) best = v; if (v < be) be = v; } if (be <= al) break; }
-      return best;
-    }
-    // lvl 1 easy, 2 medium, 3 hard. Returns a legal move object.
-    function pick(s, lvl, rand = Math.random) {
-      const ms = Chess.legal(s); if (!ms.length) return null; if (ms.length === 1) return ms[0];
-      const maxi = s.t === 'w', cap = lvl === 1 ? 1 : lvl === 2 ? 2 : 4, budget = lvl === 1 ? 250 : lvl === 2 ? 900 : 2200, deadline = Date.now() + budget;
-      let best = order(s, ms), bestMove = best[0];
-      for (let d = 1; d <= cap; d++) {
-        let scored = []; try { let alpha = -1e9, beta = 1e9;
-          for (const m of best) { const v = search(Chess.make(s, m), d - 1, alpha, beta, deadline); scored.push({ m, v }); if (maxi) alpha = Math.max(alpha, v); else beta = Math.min(beta, v); }
-        } catch (e) { break; }
-        scored.sort((a, b) => maxi ? b.v - a.v : a.v - b.v); bestMove = scored[0].m; best = scored.map(x => x.m);
-        if (lvl === 1 && d === 1) { // easy: often plays a decent-but-not-best move
-          const top = scored.slice(0, 4); const w = top[Math.floor(rand() * Math.min(top.length, rand() < .5 ? 1 : 4))]; bestMove = w.m; }
-        if (Math.abs(scored[0].v) > 90000) break;
+      const b = s.b; let sc = 0, mat = 0; const pawns = { w: [0,0,0,0,0,0,0,0], b: [0,0,0,0,0,0,0,0] }, pr = { w: [], b: [] }, bish = { w: 0, b: 0 }, rooks = [], kings = {};
+      for (let i = 0; i < 64; i++) { const p = b[i]; if (p === ' ') continue; const k = p.toLowerCase(); if (k !== 'p' && k !== 'k') mat += V[k]; }
+      const endg = mat < 2600;
+      for (let i = 0; i < 64; i++) {
+        const p = b[i]; if (p === ' ') continue; const w = p === p.toUpperCase(), k = p.toLowerCase(), j = w ? i : (7 - (i >> 3)) * 8 + (i & 7), sg = w ? 1 : -1;
+        let v = V[k] + (k === 'k' ? (endg ? T.ke[j] : T.k[j]) : T[k][j]);
+        if (k === 'p') { pawns[w ? 'w' : 'b'][i & 7]++; pr[w ? 'w' : 'b'].push(i); }
+        else if (k === 'b') bish[w ? 'w' : 'b']++;
+        else if (k === 'r') rooks.push(i); else if (k === 'k') kings[w ? 'w' : 'b'] = i;
+        sc += sg * v;
       }
-      return bestMove;
+      if (bish.w > 1) sc += 35; if (bish.b > 1) sc -= 35;
+      for (const side of ['w', 'b']) { const sg = side === 'w' ? 1 : -1, foe = side === 'w' ? 'b' : 'w', P = side === 'w' ? 'P' : 'p', FP = side === 'w' ? 'p' : 'P';
+        for (let f = 0; f < 8; f++) { const n = pawns[side][f]; if (n > 1) sc -= sg * 14 * (n - 1); if (n && !(f > 0 && pawns[side][f - 1]) && !(f < 7 && pawns[side][f + 1])) sc -= sg * 12 * n; }
+        for (const i of pr[side]) { const f = i & 7, r = i >> 3; let passed = true;
+          for (let rr = side === 'w' ? r - 1 : r + 1; rr >= 0 && rr < 8 && passed; rr += side === 'w' ? -1 : 1) for (let ff = Math.max(0, f - 1); ff <= Math.min(7, f + 1); ff++) if (b[rr * 8 + ff] === FP) { passed = false; break; }
+          if (passed) { const adv = side === 'w' ? 6 - r : r - 1; sc += sg * (10 + adv * adv * 4 + (endg ? adv * 6 : 0)); } }
+        const ki = kings[side];
+        if (ki != null && !endg) { const kr = ki >> 3, kf = ki & 7, dr = side === 'w' ? -1 : 1; let sh = 0;
+          for (let ff = Math.max(0, kf - 1); ff <= Math.min(7, kf + 1); ff++) { const r1 = kr + dr, r2 = kr + 2 * dr; if (r1 >= 0 && r1 < 8 && b[r1 * 8 + ff] === P) sh += 10; else if (r2 >= 0 && r2 < 8 && b[r2 * 8 + ff] === P) sh += 5; else sh -= 8; }
+          sc += sg * sh; }
+        // king in the middle with no castling rights left and the centre open is a liability
+        void foe;
+      }
+      for (const i of rooks) { const w = b[i] === 'R', f = i & 7, own = pawns[w ? 'w' : 'b'][f], opp = pawns[w ? 'b' : 'w'][f]; const bonus = !own ? (!opp ? 18 : 9) : 0; sc += w ? bonus : -bonus;
+        if ((i >> 3) === (w ? 1 : 6)) sc += w ? 12 : -12; }
+      if (endg && kings.w != null && kings.b != null) { // when ahead, push the enemy king to the edge and bring ours close
+        const d = Math.abs((kings.w >> 3) - (kings.b >> 3)) + Math.abs((kings.w & 7) - (kings.b & 7)), edge = k => Math.max(Math.abs(3.5 - (k >> 3)), Math.abs(3.5 - (k & 7)));
+        if (sc > 150) sc += (edge(kings.b) * 14) + (14 - d) * 4; else if (sc < -150) sc -= (edge(kings.w) * 14) + (14 - d) * 4; }
+      return Math.round(sc);
     }
-    return { pick, evalPos };
+    const nullMove = s => ({ b: s.b, t: s.t === 'w' ? 'b' : 'w', c: s.c, ep: -1, hm: s.hm + 1, fm: s.fm });
+    const MATE = 100000;
+    let tt = new Map(), hist = new Map(), killers = [], nodes = 0;
+    const tkey = s => s.b + s.t + s.c + s.ep;
+    const mkey = m => m.f * 64 + m.t;
+    function orderMoves(s, ms, ttm, ply) {
+      const kl = killers[ply] || [];
+      return ms.map(m => { let k = 0; const tgt = s.b[m.t];
+        if (ttm && mkey(m) === ttm) k = 1e6;
+        else if (tgt !== ' ' || m.ep) k = 10000 + 10 * V[(m.ep ? 'p' : tgt).toLowerCase()] - V[s.b[m.f].toLowerCase()] / 10;
+        else if (m.p) k = 9000; else if (kl[0] === mkey(m)) k = 8000; else if (kl[1] === mkey(m)) k = 7900; else k = (hist.get(mkey(m)) || 0) + (m.castle ? 30 : 0);
+        return { m, k }; }).sort((a, b) => b.k - a.k).map(x => x.m);
+    }
+    function quiesce(s, al, be, q, deadline) {
+      if ((++nodes & 511) === 0 && Date.now() > deadline) throw 'time';
+      const sg = s.t === 'w' ? 1 : -1, st = sg * evalPos(s); if (q > 6) return st; if (st >= be) return st; if (st > al) al = st;
+      const ms = Chess.legal(s).filter(m => s.b[m.t] !== ' ' || m.ep || m.p);
+      for (const m of orderMoves(s, ms, 0, 0)) { const v = -quiesce(Chess.make(s, m), -be, -al, q + 1, deadline); if (v >= be) return v; if (v > al) al = v; }
+      return al;
+    }
+    function search(s, d, al, be, ply, deadline, canNull, path) {
+      if ((++nodes & 511) === 0 && Date.now() > deadline) throw 'time';
+      if (s.hm >= 100) return 0;
+      const k = tkey(s); if (ply > 0 && path.has(k)) return 0;
+      const inChk = Chess.inCheck(s); if (inChk) d++;
+      if (d <= 0) return quiesce(s, al, be, 0, deadline);
+      const e = tt.get(k), al0 = al; let ttm = 0;
+      if (e) { ttm = e.m; if (e.d >= d && ply > 0) { if (e.f === 0) return e.v; if (e.f === 1 && e.v >= be) return e.v; if (e.f === 2 && e.v <= al) return e.v; } }
+      const sg = s.t === 'w' ? 1 : -1;
+      if (canNull && !inChk && d >= 3 && /[NBRQnbrq]/.test(s.b) && sg * evalPos(s) >= be) { const v = -search(nullMove(s), d - 3, -be, -be + 1, ply + 1, deadline, false, path); if (v >= be) return v; }
+      const ms = Chess.legal(s); if (!ms.length) return inChk ? -MATE + ply : 0;
+      let best = -1e9, bm = 0, i = 0; path.add(k);
+      try {
+        for (const m of orderMoves(s, ms, ttm, ply)) {
+          const quiet = s.b[m.t] === ' ' && !m.ep && !m.p, n = Chess.make(s, m); let v;
+          if (i > 3 && d >= 3 && quiet && !inChk) { v = -search(n, d - 2, -al - 1, -al, ply + 1, deadline, true, path); if (v > al) v = -search(n, d - 1, -be, -al, ply + 1, deadline, true, path); }
+          else v = -search(n, d - 1, -be, -al, ply + 1, deadline, true, path);
+          i++;
+          if (v > best) { best = v; bm = mkey(m); } if (v > al) al = v;
+          if (al >= be) { if (quiet) { const kl = killers[ply] || (killers[ply] = []); if (kl[0] !== mkey(m)) { kl[1] = kl[0]; kl[0] = mkey(m); } hist.set(mkey(m), (hist.get(mkey(m)) || 0) + d * d); } break; }
+        }
+      } finally { path.delete(k); }
+      if (tt.size > 250000) tt.clear();
+      tt.set(k, { v: best, d, m: bm, f: best <= al0 ? 2 : best >= be ? 1 : 0 });
+      return best;
+    }
+    // A few sound opening moves, so games do not all start the same way.
+    const BOOK_W = ['e2e4', 'd2d4', 'g1f3', 'c2c4', 'e2e4'], BOOK_B = { e2e4: ['e7e5', 'c7c5', 'e7e6', 'c7c6'], d2d4: ['d7d5', 'g8f6', 'e7e6'], g1f3: ['d7d5', 'g8f6', 'c7c5'], c2c4: ['e7e5', 'g8f6', 'c7c5'] };
+    // lvl 1 easy, 2 medium, 3 hard. Returns a legal move object. hist = earlier position keys (for repetition).
+    function pick(s, lvl, rand = Math.random, seen) {
+      const ms = Chess.legal(s); if (!ms.length) return null; if (ms.length === 1) return ms[0];
+      if (s.fm === 1 && lvl > 1) {
+        if (s.t === 'w') { const m = Chess.parse(s, BOOK_W[Math.floor(rand() * BOOK_W.length)]); if (m) return m; }
+        else for (const [u, rep] of Object.entries(BOOK_B)) { const w1 = Chess.parse(Chess.init(), u); if (w1 && Chess.make(Chess.init(), w1).b === s.b) { const m = Chess.parse(s, rep[Math.floor(rand() * rep.length)]); if (m) return m; } }
+      }
+      const cap = lvl === 1 ? 2 : lvl === 2 ? 5 : 8, budget = lvl === 1 ? 300 : lvl === 2 ? 1000 : 2000, deadline = Date.now() + budget;
+      tt = new Map(); hist = new Map(); killers = []; nodes = 0;
+      const path = new Set(seen || []); path.delete(tkey(s));
+      let order = orderMoves(s, ms, 0, 0), bestMove = order[0], scored = [];
+      for (let d = 1; d <= cap; d++) {
+        const cur = []; let alpha = -1e9; try {
+          for (const m of order) { const n = Chess.make(s, m); const v = -search(n, d - 1, -1e9, -alpha, 1, deadline, true, path); cur.push({ m, v }); if (v > alpha) alpha = v; }
+        } catch (e) { if (e !== 'time') throw e; if (cur.length > 1) { cur.sort((a, b) => b.v - a.v); if (cur[0].v > (scored[0] ? scored[0].v : -1e9) - 60) { const rest = order.filter(m => !cur.some(c => c.m === m)); scored = cur.concat(rest.map(m => ({ m, v: -1e9 }))); } } break; }
+        cur.sort((a, b) => b.v - a.v); scored = cur; order = cur.map(x => x.m);
+        if (Math.abs(cur[0].v) > MATE - 200) break;
+      }
+      if (!scored.length) return bestMove;
+      if (lvl === 1) { const top = scored.slice(0, 4), w = top[Math.floor(rand() * Math.min(top.length, rand() < .5 ? 1 : 4))]; return w.m; }
+      if (lvl === 2 && scored.length > 1 && rand() < .3 && scored[0].v - scored[1].v < 25) return scored[1].m;
+      return scored[0].m;
+    }
+    return { pick, evalPos, tkey };
   })();
 
   // ------------------------------------------------------------------ the computer's Battleship

@@ -311,6 +311,8 @@ async function closeTab(id){const t=tabs.find(x=>x.id===id);const back=t&&!t.pri
   if(back)toast("Tab closed",["Undo",()=>{if(back.ws!==curWs())setPref("ws",back.ws);newTab();go(back.url)}])}
 function step(d){const w=inWs();if(w.length<2){toast(d>0?"No tab to the right":"No tab to the left");return}const i=w.findIndex(t=>t.id===cur),j=i+d;
   if(j<0||j>=w.length){toast(d>0?"Last tab":"First tab");return}vibe();select(w[j].id,d>0?"sl":"sr");toast(bare(w[j].url)||"New tab")}
+function goHome(){const t=T();if(!t||!t.native)return;inv("close_tab",{label:t.native}).catch(()=>{});t.native=null;t.url="";t.title="";t.canBack=false;t.canFwd=false;show(null);syncNative();render();saveSession()}
+function goBack(){const t=T();if(t&&t.native&&!t.canBack&&!splitSet.size)goHome();else inv("nav",{action:"back"})}
 async function go(v){
   v=v.trim();if(!v)return;const t=T();typing=false;$("#url").blur();
   if(/^!h(ome|ush)?$/i.test(v)){$("#url").value="";newTab(!!t.priv,true);show(null);render();return}
@@ -322,10 +324,10 @@ async function go(v){
 function render(){
   const t=T(), h=t?hostOf(t.url):"", live=!!(t&&t.native);
   document.body.classList.toggle("priv",!!t?.priv);
-  if(document.activeElement!==$("#url"))$("#url").value=live?bare(t.url):"";
+  if(document.activeElement!==$("#url"))$("#url").value=live?t.url:"";
   $("#url").placeholder=t?.priv?"Private — nothing is saved":"Search or enter address";
   $("#shield").classList.toggle("off",allow.has(h));$("#shield").classList.toggle("priv",!!t?.priv);
-  $("#tabs-btn span").textContent=inWs().length;$("#tb-tabs span").textContent=inWs().length;$("#tb-back").disabled=!(live&&t.canBack);$("#tb-fwd").disabled=!(live&&t.canFwd);
+  $("#tabs-btn span").textContent=inWs().length;$("#tb-tabs span").textContent=inWs().length;$("#tb-back").disabled=!live;$("#tb-fwd").disabled=!(live&&t.canFwd);
   const snd=$("#snd");snd.style.display=live&&(t.audio||t.muted)&&!typing?"grid":"none";snd.innerHTML=t?.muted?MUT:SPK;snd.setAttribute("aria-label",t?.muted?"Unmute this tab":"Mute this tab");
   npDraw();$("#tb-tabs").classList.toggle("playing",tabs.some(x=>x.id!==cur&&x.audio&&!x.muted));$("#tabs-btn").classList.toggle("playing",tabs.some(x=>x.id!==cur&&x.audio&&!x.muted));
   if(typing){renderSuggest();syncNative();return}
@@ -363,7 +365,7 @@ gesture($("#top"),{left:()=>step(1),right:()=>step(-1),
 let tabsT=0;
 gesture($("#tb-tabs"),{tap:()=>{if(tabsT){clearTimeout(tabsT);tabsT=0;if(prevTab&&tabs.some(x=>x.id===prevTab)){select(prevTab);toast("Back to your previous tab")}else openSwitcher();return}
     tabsT=setTimeout(()=>{tabsT=0;openSwitcher()},260)},long:()=>{if(T()?.native){vibe();inv("page_action",{action:"wheel"}).catch(()=>{})}}});
-gesture($("#tb-back"),{tap:()=>inv("nav",{action:"back"}),long:()=>{drawHistory();show("history")}});$("#tb-fwd").onclick=()=>inv("nav",{action:"fwd"});gesture($("#tb-new"),{tap:()=>newTab(),long:()=>actions("New tab",[["Paste and go",pasteGo],["New private tab",()=>newTab(true)],["New tab",()=>newTab()]])});
+gesture($("#tb-back"),{tap:goBack,long:()=>{drawHistory();show("history")}});$("#tb-fwd").onclick=()=>inv("nav",{action:"fwd"});gesture($("#tb-new"),{tap:()=>newTab(),long:()=>actions("New tab",[["Paste and go",pasteGo],["New private tab",()=>newTab(true)],["New tab",()=>newTab()]])});
 // Paste and go: open whatever link (or search) you just copied, in a new tab.
 async function pasteGo(){let t="";try{t=((await native("clipText"))||{}).text||""}catch(e){}t=t.trim();
   if(!t)return toast("Nothing copied yet — copy a link first");newTab();go(t.slice(0,2000))}
@@ -460,7 +462,7 @@ window.__hushEvent=(name,d)=>{
       ["Allow this time",()=>native("permissionReply",{allow:true,remember:false})],["Block",()=>native("permissionReply",{allow:false,remember:true})]]);
     $("#scrim").onclick=()=>{closeActions();native("permissionReply",{allow:false,remember:false});$("#scrim").onclick=closeActions}}
   else if(name==="back"){if(document.querySelector(".act.on"))closeActions();else if(finding)findMode(false);else if(sheet)show(null);else if(typing)$("#url").blur();
-    else if(inWs().length>1)closeTab(cur)}
+    else if(T()&&T().native&&!splitSet.size)goHome();else if(inWs().length>1)closeTab(cur)}
 };
 
 // ---------- action sheet (long-press menus) ----------
@@ -647,7 +649,7 @@ function drawSwitcher(dir){const el=$("#switcher"),list=inWs();
   gesture(el.querySelector(".chips"),{left:()=>i<ws.length-1&&switchWs(ws[i+1]),right:()=>i>0&&switchWs(ws[i-1])});
 }
 function drawMenu(){const el=$("#menu"),t=T(),live=!!(t&&t.native);
-  el.innerHTML=head("Menu")+`<div class="row"><button class="btn" id="m-back" ${live&&t.canBack?"":"disabled"}>‹ Back</button><button class="btn" id="m-fwd" ${live&&t.canFwd?"":"disabled"}>Forward ›</button></div>
+  el.innerHTML=head("Menu")+`<div class="row"><button class="btn" id="m-back" ${live?"":"disabled"}>‹ Back</button><button class="btn" id="m-fwd" ${live&&t.canFwd?"":"disabled"}>Forward ›</button></div>
    <div class="row"><button class="btn" id="m-find" ${live?"":"disabled"}>Find</button><button class="btn" id="m-read" ${live?"":"disabled"}>Reader</button><button class="btn" id="m-qr" ${live?"":"disabled"}>QR</button></div>
    <div class="row"><button class="btn" id="m-later" ${live?"":"disabled"}>Read later</button><button class="btn" id="m-pdf" ${live?"":"disabled"}>Save as PDF</button><button class="btn" id="m-pip" ${live?"":"disabled"}>Pop-out video</button></div>
    ${live?`<div class="row"><button class="btn" id="m-listen">${listenSt?"■ Stop reading":"▶ Listen"}</button><button class="btn" id="m-boost">Boosts</button><button class="btn" id="m-shot">Screenshot</button><button class="btn" id="m-shotfull">Whole page</button></div>`:""}
@@ -672,7 +674,7 @@ function drawMenu(){const el=$("#menu"),t=T(),live=!!(t&&t.native);
    <button class="item" id="m-set"><div>Settings<small>layout · color · dark mode · search · privacy</small></div></button>
    <button class="item" id="m-about"><div>About Hush<small>updates · default browser · privacy · licenses</small></div></button>`;
   wire(el);
-  $("#m-back").onclick=()=>{show(null);inv("nav",{action:"back"})};$("#m-fwd").onclick=()=>{show(null);inv("nav",{action:"fwd"})};
+  $("#m-back").onclick=()=>{show(null);goBack()};$("#m-fwd").onclick=()=>{show(null);inv("nav",{action:"fwd"})};
   $("#m-find").onclick=()=>{show(null);findMode(true)};$("#m-read").onclick=()=>{show(null);inv("page_action",{action:"reader"})};$("#m-qr").onclick=()=>qrSheet(t.url);
   $("#m-new").onclick=()=>newTab(true);$("#m-cmd").onclick=openCmd;$("#m-hist").onclick=()=>{drawHistory();show("history")};
   $("#m-bm").onclick=async()=>{try{await inv("bookmark_add",{title:t.title||bare(t.url),url:t.url});await loadState();show(null);toast("Bookmarked")}catch(e){toast("Couldn’t save")}};

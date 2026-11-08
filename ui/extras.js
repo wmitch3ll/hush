@@ -101,7 +101,7 @@ window.HushX = function (A) {
     if (gm !== 'off' && !priv) HUSH_GHOST.mount(el.querySelector('.hx-ghost'), gm); else if (window.HUSH_GHOST) HUSH_GHOST.stop();
     if (opts.after) opts.after();
   }
-  const leagueList = () => String(A.pref('sp_leagues') || 'nfl,nba,nhl').split(',').filter(Boolean);
+  const leagueList = () => String(A.pref('sp_leagues') || 'nfl,cfb,nba,cbb,nhl').split(',').filter(Boolean);
   const leagueOn = k => leagueList().includes(k);
   function customizer() {
     const w = A.pref('sp_bg') || 'none';

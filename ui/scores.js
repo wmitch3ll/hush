@@ -46,7 +46,7 @@ window.HUSH_SCORES = (function () {
 .hx-sc .sc-nav{display:flex;align-items:center;justify-content:space-between;padding:0 2px 6px;font:600 12px system-ui;color:var(--mute)}.hx-home.walled .sc-nav{color:#ffffffbb}
 .hx-sc .sc-nav button{padding:3px 10px;font-size:15px;line-height:1}
 .hx-sc .sc-g{display:grid;grid-template-columns:1fr auto 84px;gap:2px 10px;align-items:center;padding:8px 6px;border-top:1px solid var(--line);border-radius:6px}.hx-home.walled .sc-g{border-color:#ffffff22}
-.hx-sc .sc-g[data-l]{cursor:pointer}.hx-sc .sc-g[data-l]:active{background:var(--glow)}
+.hx-sc .sc-g[data-l]{cursor:pointer}.hx-sc .sc-g[data-l]:active{background:var(--glow)}.hx-sc .sc-g.arm{background:var(--glow)}
 .hx-sc .sc-t{display:flex;align-items:center;gap:8px;min-width:0}.hx-sc .sc-t i{width:9px;height:9px;border-radius:50%;flex:none}
 .hx-sc .sc-t b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hx-sc .sc-t em{font:11px system-ui;font-style:normal;color:var(--mute)}.hx-home.walled .sc-t em{color:#ffffffaa}
 .hx-sc .sc-t.l b{font-weight:500;opacity:.7}.hx-sc .sc-s{font:700 15px ui-monospace,Menlo,monospace;min-width:26px;text-align:right}.hx-sc .sc-s.l{opacity:.55;font-weight:500}
@@ -60,7 +60,7 @@ window.HUSH_SCORES = (function () {
   // el: container; A: host adapter (inv, pref, open). Returns nothing; call stop() when the page is replaced.
   function mount(el, A) {
     css(); stop(); const my = ++token;
-    const all = Object.keys(LEAGUES), enabled = String(A.pref('sp_leagues') || 'nfl,nba,nhl').split(',').filter(l => LEAGUES[l]);
+    const all = Object.keys(LEAGUES), enabled = String(A.pref('sp_leagues') || 'nfl,cfb,nba,cbb,nhl').split(',').filter(l => LEAGUES[l]);
     const leagues = enabled.length ? enabled : ['nfl'];
     const st = { lg: LS.get('lg', leagues[0]), off: 0, mine: false, games: null, err: '' };
     if (!leagues.includes(st.lg) && st.lg !== 'mine') st.lg = leagues[0];
@@ -88,7 +88,8 @@ window.HUSH_SCORES = (function () {
       box.querySelectorAll('[data-nav]').forEach(b => b.onclick = () => { st.off += +b.dataset.nav; refresh(true); });
       box.querySelectorAll('[data-retry]').forEach(b => b.onclick = () => refresh(true));
       box.querySelectorAll('[data-pin]').forEach(b => b.onclick = e => { e.stopPropagation(); const k = b.dataset.pin, p = pins(); LS.set('pins', p.includes(k) ? p.filter(x => x !== k) : p.concat(k).slice(-40)); paint(); });
-      box.querySelectorAll('[data-l]').forEach(r => r.onclick = () => A.open(r.dataset.l));
+      let lastTap = 0, lastEl = null;
+      box.querySelectorAll('[data-l]').forEach(r => r.onclick = () => { const n = Date.now(); if (lastEl === r && n - lastTap < 600) { lastTap = 0; lastEl = null; A.open(r.dataset.l); } else { lastEl = r; lastTap = n; r.classList.add('arm'); setTimeout(() => r.classList.remove('arm'), 600); if (!st.hinted) { st.hinted = 1; A.toast('Double-tap a game to open it'); } } });
     }
     async function refresh(show) {
       if (my !== token) return; st.err = '';

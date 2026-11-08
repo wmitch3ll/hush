@@ -364,7 +364,7 @@ function draw(){
   $('#ws').textContent=curWs()[0].toUpperCase();$('#ws').title='Workspace: '+curWs()+' — click to switch';
   const t=tab(cur), live=t&&t.ws==curWs(), h=live?hostOf(t.url):'';document.body.classList.toggle('tor',!!(live&&t.tor&&!panel));
   // Domain-only address bar (Settings › Show full address to turn off): the site's name is what matters — look-alike tricks stand out.
-  if(document.activeElement!==$('#bar')) $('#bar').value=panel||!live?'':(pref('full_url')=='on'||!/^https:/.test(t.url)?t.url:(t.tor?'':'')+hostOf(t.url).replace(/^www\./,''));
+  if(document.activeElement!==$('#bar')) $('#bar').value=panel||!live?'':(pref('full_url')!='off'||!/^https:/.test(t.url)?t.url:(t.tor?'':'')+hostOf(t.url).replace(/^www\./,''));
   applyToolbar();
   const showHome=!live&&!panel;if(showHome&&$('#home').hidden!==false||showHome&&!$('#home').firstChild)renderHome();$('#home').hidden=!showHome;$('#home').style.display=showHome?'block':'none';
   $('#panel').hidden=!panel;
@@ -877,7 +877,7 @@ function renderSettings(){
   ${row('Tab previews','Live page snapshots in the tab bar',seg('previews',[['large','Large'],['small','Small'],['off','Titles only']]))}
   ${row('Page zoom','Default size for new tabs · Ctrl+= / Ctrl+− / Ctrl+0 per tab',seg('zoom',[['90','90%'],['100','100%'],['110','110%'],['125','125%'],['150','150%']]))}
   <h3>Appearance</h3>
-  ${row('Show full address','Off: the address bar shows just the site name until you click it',`<button class="sw ${pref('full_url')=='on'?'on':''}" data-sw=full_url></button>`)}
+  ${row('Show full address','Off: the address bar shows just the site name until you click it',`<button class="sw ${pref('full_url')!='off'?'on':''}" data-sw=full_url></button>`)}
   ${row('Theme','True black saves battery on OLED screens',seg('theme',[['system','System'],['light','Light'],['dark','Dark'],['black','True black']]))}
   ${row('Browser color','Tints the whole browser',`<div class=swatches>${Object.entries(COLORS).map(([k,v])=>`<button data-color=${k} title=${k} class="${pref('color')==k?'on':''}" style="background:${v?`hsl(${v[0]} ${v[1]}% 55%)`:'#555'}"></button>`).join('')}
     <label class=btn style="position:relative;overflow:hidden;height:26px;padding:0 10px">Custom<input type=color id=s-color value="${/^#/.test(pref('color'))?pref('color'):'#3b82f6'}" style="position:absolute;inset:0;opacity:0;cursor:pointer"></label></div>`)}
