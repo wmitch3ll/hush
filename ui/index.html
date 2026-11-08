@@ -552,7 +552,7 @@ const RENDER={privacy:()=>{const p=$('#panel');p.innerHTML=`<h2>Privacy report $
   watch:()=>{const p=$('#panel');p.innerHTML=`<h2>Change watch ${closeBtn}</h2><div id=wx></div>`;HX.watchPanel($('#wx'),u=>openTab(u));wire(p)},
   shot:()=>{$('#panel').innerHTML='<p style="color:var(--mute);padding:40px;text-align:center">Screenshot editor</p>'}};
 // ---------- start page, Listen, Peek, screenshots, auto-archive (shared code in extras.js) ----------
-const HX=HushX({dlOpen:d=>inv('download_open',{path:d.path}).catch(e=>toast(String(e))),dlShow:d=>inv('download_reveal',{path:d.path}).catch(e=>toast(String(e))),inv,pref,setPref,toast,open:u=>openTab(u),state:()=>state,reload:()=>loadState(),mobile:false,act:id=>runAction(id),
+const HX=HushX({alert:(t,x)=>{try{if(Notification.permission==='granted'&&document.visibilityState==='hidden'){new Notification(t,{body:x});return}}catch(e){}toast(t+': '+x)},askNotify:()=>{try{Notification.requestPermission()}catch(e){}},dlOpen:d=>inv('download_open',{path:d.path}).catch(e=>toast(String(e))),dlShow:d=>inv('download_reveal',{path:d.path}).catch(e=>toast(String(e))),inv,pref,setPref,toast,open:u=>openTab(u),state:()=>state,reload:()=>loadState(),mobile:false,act:id=>runAction(id),
   watchPick:()=>{if(!tab(cur))return toast('Open the page you want to watch first');closePanel();inv('start_picker',{mode:'watch'});toast('Click the price or text to watch')},
   zap:()=>{closePanel();inv('start_picker');toast('Click an element to remove it from this site · Esc to cancel')}});
 function renderHome(){const el=$('#home');HX.home(el,{top:`<h1 class="wordmark">hush<i class=wm-dot>.</i></h1>${pref('sp_stats')!='off'?'<div class=stats id=stats></div>':''}`,

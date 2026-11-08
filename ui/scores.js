@@ -113,5 +113,35 @@ window.HUSH_SCORES = (function () {
     paint(); refresh(true);
   }
   function stop() { token++; clearTimeout(timer); }
-  return { mount, stop, parse, LEAGUES, _ymd: ymd };
+
+  // Game alerts for the teams you starred. Runs whenever Hush is running (not only on the start page); it only talks to the
+  // scores service while "Game alerts" is on and at least one team is starred. First sight of a game sets a baseline, so you
+  // are never alerted about a game that was already under way.
+  let wtimer = 0, wtok = 0;
+  function unwatch() { wtok++; clearTimeout(wtimer); }
+  function watch(A) {
+    unwatch(); const my = wtok;
+    if (A.pref('sp_scores') !== 'on' || A.pref('sp_alerts') !== 'on') return;
+    const tick = async () => {
+      if (my !== wtok) return; let live = false;
+      try {
+        const pins = LS.get('pins', []); const lgs = [...new Set(pins.map(x => String(x).split(':')[0]))].filter(l => LEAGUES[l]);
+        const seen = LS.get('alert', {}); let changed = false;
+        for (const lg of lgs) {
+          let games = []; try { games = await load(A, lg, null, true); } catch { continue; }
+          for (const g of games) {
+            if (!pins.includes(lg + ':' + g.a.id) && !pins.includes(lg + ':' + g.h.id)) continue;
+            const k = lg + ':' + g.id, prev = seen[k]; if (g.state === 'in') live = true;
+            if (prev !== g.state) { seen[k] = g.state; changed = true;
+              if (prev === 'pre' && g.state === 'in') A.alert('Game on', g.a.name + ' at ' + g.h.name + ' just started');
+              else if ((prev === 'pre' || prev === 'in') && g.state === 'post') A.alert('Final', g.a.name + ' ' + g.a.score + ', ' + g.h.name + ' ' + g.h.score + (g.a.win ? ' - ' + g.a.name + ' win' : g.h.win ? ' - ' + g.h.name + ' win' : '')); }
+          }
+        }
+        const ks = Object.keys(seen); if (ks.length > 300) { for (const k of ks.slice(0, ks.length - 200)) delete seen[k]; changed = true; } if (changed) LS.set('alert', seen);
+      } catch {}
+      if (my === wtok) wtimer = setTimeout(tick, live ? 60000 : 300000);
+    };
+    wtimer = setTimeout(tick, 4000);
+  }
+  return { mount, stop, watch, unwatch, parse, LEAGUES, _ymd: ymd };
 })();

@@ -224,7 +224,7 @@ window.HushMsg = function (A) {
       const gmT = tag('hush-game');
       if (gmT.length) { if (isGroup(key) || !window.HUSH_GAMES) return; const gres = HUSH_GAMES.recv(key, mine ? me : r.pubkey, String(r.content).slice(0, 6000), mine); if (!gres) return;
         if (gres.card) list.push({ id: r.id, from: mine ? 'me' : r.pubkey, game: gmT[1], text: '', at: r.created_at * 1000, status: 'sent' });
-        if (!mine && gres.notify && now() - r.created_at < 600) return arrived(key, r, list, all, gres.notify);
+        if (!mine && gres.notify && now() - r.created_at < 21600) return arrived(key, r, list, all, gres.notify);
         all[key] = list; LS.set('chats', all); if (view.open) repaint(); return; }
       const who = mine ? 'me' : r.pubkey, ed = tag('hush-edit')[1], un = tag('hush-unsend')[1], pin = tag('hush-pin'), ttlSet = tag('hush-ttlset');
       if (ed) { const m = list.find(x => x.id === ed && x.from === who); if (m) { m.text = String(r.content).slice(0, 20000); m.edited = true; all[key] = list; LS.set('chats', all); if (view.open) repaint(); } return; }

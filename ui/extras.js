@@ -116,7 +116,7 @@ window.HushX = function (A) {
       <div class=hx-lbl>Hush the ghost</div><div class=hx-seg>${[['off', 'Off'], ['buddy', 'Buddy'], ['pet', 'Pocket pet']].map(([v, l]) => `<button class="hx-b ${(A.pref('ghost_mode') || 'off') === v ? 'on' : ''}" data-gm="${v}">${l}</button>`).join('')}</div>
       <div class=hx-lbl>Show</div><div class=hx-seg>
       <button class="hx-b ${A.pref('sp_clock') !== 'off' ? 'on' : ''}" data-t=sp_clock>Clock</button><button class="hx-b ${A.pref('sp_notes') === 'on' ? 'on' : ''}" data-t=sp_notes>Quick notes</button>
-      <button class="hx-b ${A.pref('sp_stats') !== 'off' ? 'on' : ''}" data-t=sp_stats>Blocked count</button><button class="hx-b ${A.pref('sp_scores') === 'on' ? 'on' : ''}" data-t=sp_scores>Sports scores</button></div>
+      <button class="hx-b ${A.pref('sp_stats') !== 'off' ? 'on' : ''}" data-t=sp_stats>Blocked count</button><button class="hx-b ${A.pref('sp_scores') === 'on' ? 'on' : ''}" data-t=sp_scores>Sports scores</button>${A.pref('sp_scores') === 'on' ? `<button class="hx-b ${A.pref('sp_alerts') === 'on' ? 'on' : ''}" data-t=sp_alerts>Game alerts</button>` : ''}</div>
       ${A.pref('sp_scores') === 'on' && window.HUSH_SCORES ? `<div class=hx-lbl>Leagues</div><div class=hx-seg style="flex-wrap:wrap">${Object.entries(HUSH_SCORES.LEAGUES).map(([k, v]) => `<button class="hx-b ${leagueOn(k) ? 'on' : ''}" data-lg2="${k}">${v}</button>`).join('')}</div><div class=hint style="margin-top:6px">Scores come from ESPN, so ESPN can see your IP address when the widget loads.</div>` : ''}</div>`;
   }
   function wireCustomizer(el, redraw) {
@@ -124,8 +124,8 @@ window.HushX = function (A) {
     el.querySelectorAll('[data-gm]').forEach(b => b.onclick = async () => { await A.setPref('ghost_mode', b.dataset.gm); redraw(); });
     el.querySelectorAll('[data-lg2]').forEach(b => b.onclick = async () => { const k = b.dataset.lg2, l = leagueList(), n = l.includes(k) ? l.filter(x => x !== k) : l.concat(k); await A.setPref('sp_leagues', (n.length ? n : [k]).join(',')); redraw(); });
     const c = el.querySelector('[data-c]'); if (c) c.onchange = async () => { await A.setPref('sp_bg', c.value); redraw(); };
-    el.querySelectorAll('[data-t]').forEach(b => b.onclick = async () => { const k = b.dataset.t, on = k === 'sp_notes' || k === 'sp_scores' ? A.pref(k) === 'on' : A.pref(k) !== 'off';
-      await A.setPref(k, on ? 'off' : 'on'); redraw(); });
+    el.querySelectorAll('[data-t]').forEach(b => b.onclick = async () => { const k = b.dataset.t, on = k === 'sp_notes' || k === 'sp_scores' || k === 'sp_alerts' ? A.pref(k) === 'on' : A.pref(k) !== 'off';
+      await A.setPref(k, on ? 'off' : 'on'); if (k === 'sp_alerts' && !on) { try { A.askNotify && A.askNotify(); } catch {} A.toast('Tap the star on a team to follow it. You get an alert when its game starts and ends.'); } if (window.HUSH_SCORES && /^sp_(scores|alerts)$/.test(k)) HUSH_SCORES.watch(A); redraw(); });
     const f = el.querySelector('[data-img]'); if (f) f.onchange = () => { const file = f.files[0]; if (!file) return;
       const img = new Image(); img.onload = async () => { const s = Math.min(1, 1920 / Math.max(img.width, img.height)), cv = document.createElement('canvas');
         cv.width = img.width * s; cv.height = img.height * s; cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
@@ -836,6 +836,8 @@ window.HushX = function (A) {
     M.onSync((j, at) => syncOnMsg(j, at));
     setTimeout(syncTick, 4000); SY.timer = setInterval(syncTick, 6000);
   }
+  if (!A.alert) A.alert = (t, x) => A.toast(t + ': ' + x);
+  if (window.HUSH_SCORES) setTimeout(() => { try { HUSH_SCORES.watch(A); } catch (e) {} }, 6000);
   return { dl: { items: DL.items, event: dlEvent, list: dlList, drop: o => { DL.o = o; }, active: () => dlActive().length, get all() { return DL.items; } }, fav, favSet, favStyle, syncInit, syncSendTab, syncInbox, siteHit, privacyReport, ai, aiName, aiRename, assistant, reportForm, devId: () => DEV_ID, errLog: () => errLog.slice(), settingsSearch, tour, TOR_INFO, mediaPrompt, LEAVE, SEC, bump, report, tabNote, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
     destructSweep, destructLabel, DESTRUCT, watchAdd, watchSweep, watchPanel, watchCount, syncLink, LS };
 };

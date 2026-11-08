@@ -67,7 +67,24 @@
   let validSet = null;
   const isWord = w => { if (!validSet) { validSet = new Set(); const W = window.HUSH_WORDS; for (const s of [W.a, W.v]) for (let i = 0; i < s.length; i += 5) validSet.add(s.slice(i, i + 5)); } return validSet.has(w); };
 
-  function finish(g, why, winner) { g.status = 'done'; g.end = { why, w: winner || null, at: now() }; g.upd = now(); }
+  function finish(g, why, winner) { g.status = 'done'; g.end = { why, w: winner || null, at: now() }; g.upd = now(); if (S && g === S[g.id] && !g.rec) { g.rec = 1; try { record(g); } catch {} } }
+
+  // ---------------------------------------------------------------- records (kept apart from the games so old games can be cleared)
+  // REC.p[key][type] = { w, l, d, s (streak: + wins / - losses), at }. key is a friend's id, or cpu1 / cpu2 / cpu3 for the computer. REC.b = personal bests.
+  const RK = 'hush.gm.rec'; let REC = null;
+  const recGet = () => { if (!REC) { try { REC = JSON.parse(localStorage.getItem(RK)) || {}; } catch { REC = {}; } if (!REC.p) REC.p = {}; if (!REC.b) REC.b = {}; } return REC; };
+  const recSave = () => { try { localStorage.setItem(RK, JSON.stringify(REC)); } catch {} };
+  function record(g) {
+    const w = g.end && g.end.w, res = !w ? 'd' : w === me() ? 'w' : 'l', R = recGet(), key = g.key === 'cpu' ? 'cpu' + (g.lvl || 2) : g.key;
+    const e = R.p[key] || (R.p[key] = {}), t = e[g.type] || (e[g.type] = { w: 0, l: 0, d: 0, s: 0 });
+    t[res]++; t.s = res === 'w' ? (t.s > 0 ? t.s : 0) + 1 : res === 'l' ? (t.s < 0 ? t.s : 0) - 1 : 0; t.at = now();
+    const bests = R.b, bt = bests[g.type] || (bests[g.type] = {});
+    if (isGolf(g.type) && g.mine.holes.length === Golf.HOLES) { const tot = g.mine.holes.reduce((a, b) => a + b, 0); if (!bt.best || tot < bt.best) bt.best = tot; }
+    if (g.type === 'word' && g.mine.fin && g.mine.fin.solved) { const f = g.mine.fin; if (!bt.ms || f.ms < bt.ms) bt.ms = f.ms; if (!bt.n || f.n < bt.n) bt.n = f.n; }
+    recSave();
+  }
+  const sumRec = (e, type) => { const o = { w: 0, l: 0, d: 0, s: 0, at: 0 }; for (const ty in e || {}) { if (type && ty !== type) continue; const t = e[ty]; o.w += t.w; o.l += t.l; o.d += t.d; if (!type || Math.abs(t.s) > Math.abs(o.s)) o.s = t.s; o.at = Math.max(o.at, t.at || 0); } return o; };
+  G.record = (key, type) => { const e = recGet().p[key]; return e ? sumRec(e, type) : { w: 0, l: 0, d: 0, s: 0, at: 0 }; };
 
   // Apply one message from `from` to game g. Returns null if the message is not allowed, otherwise a short note ('' if nothing to tell the user).
   function apply(g, from, k, d) {
@@ -141,7 +158,7 @@
       if (g.turn !== from || g.await || !Array.isArray(d) || d.length !== need || need < 1) return null;
       if (!d.every(i => Number.isInteger(i) && i >= 0 && i < 100 && !L.includes(i)) || new Set(d).size !== d.length) return null;
       const prior = L.slice(); d.forEach(i => L.push(i)); g.await = { by: from, s: d.slice() }; g.upd = now();
-      if (!mine) { const r = salvo(g.me.board, prior, d); setTimeout(() => { try { G._answer(g, d, r); } catch {} }, 0); return ''; }
+      if (!mine) { const r = salvo(g.me.board, prior, d); setTimeout(() => { try { G._answer(g, d, r); } catch {} }, 0); return 'Battleship Blitz: ' + nm(from) + ' fired a salvo at your fleet'; }
       return '';
     }
     if (k === 'rs') {
@@ -369,6 +386,35 @@
   };
   G.solos = () => Object.values(load()).filter(g => g.key === 'cpu' && g.status === 'play').sort((a, b) => b.upd - a.upd);
 
+  // ---------------------------------------------------------------- leaderboard
+  const ago = t => { if (!t) return ''; const d = (now() - t) / 864e5; return d < 1 ? 'today' : d < 2 ? 'yesterday' : Math.floor(d) + ' days ago'; };
+  G.board = tab => {
+    css(); document.querySelector('.gm-sheet')?.remove(); const el = document.createElement('div'); el.className = 'gm-sheet'; tab = tab || 'all';
+    const R = recGet(), TABS = [['all', 'All games'], ...Object.entries(TYPES)];
+    const pct = o => o.w + o.l + o.d ? Math.round(100 * (o.w + o.d / 2) / (o.w + o.l + o.d)) : 0;
+    const line = o => `${o.w}-${o.l}${o.d ? '-' + o.d : ''}`;
+    const bar = o => { const n = o.w + o.l + o.d || 1; return `<i class="gm-lb"><b class="w" style="width:${100 * o.w / n}%"></b><b class="d" style="width:${100 * o.d / n}%"></b><b class="l" style="width:${100 * o.l / n}%"></b></i>`; };
+    const streak = o => o.s > 1 ? `<em class="st w">W${o.s}</em>` : o.s < -1 ? `<em class="st l">L${-o.s}</em>` : '';
+    const row = (name, o, rank, key) => `<button class="gm-lr" ${key ? `data-k="${esc(key)}"` : ''}>${rank ? `<span class="rk">${rank}</span>` : ''}<span class="nm"><b>${esc(name)}</b><small>${line(o)} &middot; ${pct(o)}%${o.at ? ' &middot; ' + ago(o.at) : ''}</small>${bar(o)}</span>${streak(o)}</button>`;
+    const draw = () => {
+      const keys = Object.keys(R.p), tot = { w: 0, l: 0, d: 0, s: 0, at: 0 }, friends = [], cpu = [];
+      for (const k of keys) { const o = sumRec(R.p[k], tab === 'all' ? null : tab); if (!o.w && !o.l && !o.d) continue; if (/^cpu\d$/.test(k)) cpu.push([k, o]); else friends.push([k, o]); tot.w += o.w; tot.l += o.l; tot.d += o.d; }
+      const rate = ([, a], [, b]) => pct(b) - pct(a) || (b.w + b.l + b.d) - (a.w + a.l + a.d) || b.w - a.w; friends.sort(rate); cpu.sort((a, b) => a[0].localeCompare(b[0]));
+      const bt = tab === 'all' ? null : R.b[tab], best = !bt ? '' : isGolf(tab) ? (bt.best ? `Best round: <b>${bt.best}</b> ${tab === 'disc' ? 'throws' : 'strokes'}` : '') : tab === 'word' ? (bt.ms ? `Fastest solve: <b>${(bt.ms / 1000).toFixed(1)}s</b> &middot; fewest guesses: <b>${bt.n}</b>` : '') : '';
+      const LV = { cpu1: 'Computer - Easy', cpu2: 'Computer - Medium', cpu3: 'Computer - Hard' };
+      el.innerHTML = `<div class="gm-sc"><div class="gm-sh"><b>Leaderboard</b><button class="gm-x" aria-label="Close">&times;</button></div>
+        <div class="gm-tabs">${TABS.map(([k, v]) => `<button data-t="${k}" class="${tab === k ? 'on' : ''}">${k === 'all' ? v : v.replace('Battleship Blitz', 'Blitz')}</button>`).join('')}</div>
+        <div class="gm-lt"><div class="gm-ls"><b>${tot.w + tot.l + tot.d ? line(tot) : '0-0'}</b><small>${tab === 'all' ? 'Your record, everyone' : 'Your record'} &middot; ${pct(tot)}% wins</small>${bar(tot)}</div>${best ? `<div class="gm-bs">${best}</div>` : ''}</div>
+        ${friends.length ? `<div class="gm-sub">Friends</div>${friends.map(([k, o], i) => row(nm(k), o, i + 1, k)).join('')}` : ''}
+        ${cpu.length ? `<div class="gm-sub">Computer</div>${cpu.map(([k, o]) => row(LV[k] || 'Computer', o, '', '')).join('')}` : ''}
+        ${!friends.length && !cpu.length ? `<div class="gm-sub" style="padding:18px 4px">Nothing here yet. Finish a game against a friend or the computer and your record shows up.</div>` : '<div class="gm-sub">Tap a friend to challenge them.</div>'}</div>`;
+      el.querySelector('.gm-x').onclick = () => el.remove();
+      el.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { tab = b.dataset.t; draw(); });
+      el.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { const k = b.dataset.k; el.remove(); G.pick(k); });
+    };
+    document.body.append(el); el.onclick = e => { if (e.target === el) el.remove(); }; draw();
+  };
+
   // ---------------------------------------------------------------- picker
   // key: a chat to challenge, or null for the Games hub (computer only).
   G.pick = key => {
@@ -377,13 +423,14 @@
     const rows = [['chess', 'Chess', 'Full rules. Take your time.'], ['sea', 'Battleship Blitz', 'Hidden fleets. Plan 3 shots, fire together, sink them all.'], ['word', 'Word race', 'Same secret word, six guesses, beat the clock.'], ['ball', 'Mini golf', 'Three holes with walls, sand and water. Fewest strokes wins.'], ['disc', 'Disc golf', 'Curve your throws around the trees. Fewest throws wins.']];
     const solos = G.solos();
     const draw = () => {
-      el.innerHTML = `<div class="gm-sc"><div class="gm-sh"><b>${key ? 'Play with ' + esc(nm(key)) : 'Games'}</b><button class="gm-x" aria-label="Close">&times;</button></div>
+      el.innerHTML = `<div class="gm-sc"><div class="gm-sh"><b>${key ? 'Play with ' + esc(nm(key)) : 'Games'}</b><span><button class="gm-lbb" data-lb>Leaderboard</button><button class="gm-x" aria-label="Close">&times;</button></span></div>
+        ${key ? (() => { const r = G.record(key); return r.w + r.l + r.d ? `<div class="gm-sub">Your record with ${esc(nm(key))}: <b>${r.w}-${r.l}${r.d ? '-' + r.d : ''}</b>${r.s > 1 ? ' &middot; ' + r.s + ' wins in a row' : r.s < -1 ? ' &middot; ' + -r.s + ' losses in a row' : ''}</div>` : ''; })() : ''}
         ${key ? `<div class="gm-seg2" data-g="mode"><button data-v="friend" class="${mode === 'friend' ? 'on' : ''}">${esc(nm(key))}</button><button data-v="cpu" class="${mode === 'cpu' ? 'on' : ''}">Computer</button></div>` : '<div class="gm-sub">Play against the computer, offline. Open a chat to challenge a friend.</div>'}
         ${mode === 'cpu' ? `<div class="gm-seg2" data-g="lvl"><button data-v="1" class="${lvl === 1 ? 'on' : ''}">Easy</button><button data-v="2" class="${lvl === 2 ? 'on' : ''}">Medium</button><button data-v="3" class="${lvl === 3 ? 'on' : ''}">Hard</button></div>` : ''}
         ${rows.map(r => `<button class="gm-opt" data-t="${r[0]}"><span class="gm-oi">${GICON[r[0]]}</span><span><b>${r[1]}</b><small>${r[2]}</small></span></button>`).join('')}
         <div class="gm-seg" aria-label="Word race time"><span>Word race time</span><button data-s="120" class="${secs === 120 ? 'on' : ''}">2 min</button><button data-s="180" class="${secs === 180 ? 'on' : ''}">3 min</button><button data-s="300" class="${secs === 300 ? 'on' : ''}">5 min</button></div>
         ${mode === 'cpu' && solos.length ? `<div class="gm-sub" style="margin-top:4px">Continue</div>${solos.map(g => `<button class="gm-opt gm-res" data-r="${g.id}"><span class="gm-oi">${GICON[g.type]}</span><span><b>${TYPES[g.type]}</b><small>${esc(G.summary(g).line)}</small></span></button>`).join('')}` : ''}</div>`;
-      el.querySelector('.gm-x').onclick = () => el.remove();
+      el.querySelector('.gm-x').onclick = () => el.remove(); el.querySelector('[data-lb]').onclick = () => { el.remove(); G.board(); };
       el.querySelectorAll('[data-g=mode] button').forEach(b => b.onclick = () => { mode = b.dataset.v; draw(); });
       el.querySelectorAll('[data-g=lvl] button').forEach(b => b.onclick = () => { lvl = +b.dataset.v; draw(); });
       el.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { secs = +b.dataset.s; draw(); });
@@ -891,6 +938,12 @@
 .gm-tb{width:100%;border-collapse:collapse;font-size:13px}.gm-tb th{font:600 11px system-ui;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);text-align:center;padding:4px}.gm-tb td{text-align:center;padding:6px;border-top:1px solid var(--line)}.gm-tb tr.tot td{font-weight:700}
 .gm-seg2{display:flex;gap:4px;padding:3px;border-radius:12px;background:var(--card);border:1px solid var(--line)}.gm-seg2 button{flex:1;text-align:center;padding:8px 6px;border-radius:9px;font:600 13px system-ui;color:var(--mute)}.gm-seg2 button.on{background:var(--ink);color:var(--bg)}
 .gm-sub{font-size:12.5px;color:var(--mute);padding:0 4px}.gm-sc{max-height:92vh;overflow-y:auto}.gm-res .gm-oi{opacity:.85}
+.gm-sh span{display:flex;align-items:center;gap:6px}.gm-lbb{font:600 12.5px system-ui;padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.gm-tabs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px 0}.gm-tabs::-webkit-scrollbar{display:none}.gm-tabs button{flex:none;padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:var(--card);font:600 12.5px system-ui;color:var(--mute)}.gm-tabs button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.gm-lt{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border-radius:14px;background:var(--card);border:1px solid var(--line)}.gm-ls b{font:700 30px system-ui;letter-spacing:-.02em;display:block}.gm-ls small{color:var(--mute);font-size:12px}.gm-bs{font-size:12.5px;color:var(--mute)}.gm-bs b{color:var(--ink)}
+.gm-lr{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:14px;border:1px solid var(--line);background:var(--card);text-align:left;width:100%}.gm-lr .rk{font:700 15px system-ui;width:22px;text-align:center;color:var(--mute)}.gm-lr .nm{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}.gm-lr .nm b{font:650 14.5px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.gm-lr .nm small{font-size:11.5px;color:var(--mute)}
+.gm-lb{display:flex;height:5px;border-radius:5px;overflow:hidden;background:var(--line)}.gm-lb b{display:block;height:100%}.gm-lb .w{background:#3e9b5a}.gm-lb .d{background:#9aa0a8}.gm-lb .l{background:#d4483b}
+.gm-lr em.st{font:700 11px system-ui;padding:3px 7px;border-radius:999px;font-style:normal;color:#fff}.gm-lr em.st.w{background:#3e9b5a}.gm-lr em.st.l{background:#d4483b}
 @media (prefers-reduced-motion:reduce){.gm-ov,.gm-sc,.gm-sheet{animation:none}}
 `;
 

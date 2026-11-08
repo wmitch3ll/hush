@@ -581,7 +581,7 @@ async function setTor(on){show(null);try{
   if(on){toast("Connecting to Tor… the first time can take ~20 s");const port=await inv("tor_start");await native("torMode",{on:true,port});toast("Tor mode on — sites can’t see your IP")}
   else{await native("torMode",{on:false});toast("Tor mode off")}
   torOn=on;document.body.classList.toggle("tor",on);render()}catch(e){toast(String(e))}}
-const HX=HushX({dlOpen:d=>native("downloadOpen",{id:d.id}).catch(e=>toast(String(e&&e.message||e))),dlCancel:d=>native("downloadCancel",{id:d.id}).catch(()=>{}),inv,pref,setPref,toast,open:u=>{show(null);go(u)},state:()=>state,reload:()=>loadState(),mobile:true,act:id=>runAction(id),
+const HX=HushX({alert:(t,x)=>{if(document.visibilityState==="hidden")native("notify",{key:"hush-scores",title:t,text:x,count:1}).catch(()=>{});else toast(t+": "+x)},askNotify:()=>native("notifPerm").catch(()=>{}),dlOpen:d=>native("downloadOpen",{id:d.id}).catch(e=>toast(String(e&&e.message||e))),dlCancel:d=>native("downloadCancel",{id:d.id}).catch(()=>{}),inv,pref,setPref,toast,open:u=>{show(null);go(u)},state:()=>state,reload:()=>loadState(),mobile:true,act:id=>runAction(id),
   watchPick:()=>{if(!T()?.native)return toast("Open the page you want to watch first");show(null);setTimeout(()=>native("pick",{mode:"watch"}),200);toast("Tap the price or text to watch")},
   zap:()=>{show(null);setTimeout(()=>native("pick"),200);toast("Tap the thing to remove")}});
 function renderHome(t){const v=$("#view");HX.home(v,{priv:!!t?.priv,icon,long:true,
@@ -855,7 +855,7 @@ function toast(m,act){const e=$("#toast");e.textContent=m;e.style.pointerEvents=
   e.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>{e.classList.remove("on");e.style.pointerEvents=""},act?5000:1800)}
 // ---------- links from other apps, shares, widget, tile, hush: imports ----------
 async function handleIncoming(){let u="";try{u=(await native("takeIntent")).url||""}catch(e){}if(!u)return;
-  if(u.startsWith("hush:chat:")){openMsgs(u.slice(10));return}if(u==="hush:private")return newTab(true);if(u==="hush:search")return newTab();if(u==="hush:voice"){newTab(false,true);render();return voice()}
+  if(u==="hush:chat:hush-scores")return;if(u.startsWith("hush:chat:")){openMsgs(u.slice(10));return}if(u==="hush:private")return newTab(true);if(u==="hush:search")return newTab();if(u==="hush:voice"){newTab(false,true);render();return voice()}
   if(/^hush:(\/\/)?add/i.test(u)){const pk=await HM.addFromLink(u);if(pk){openMsgs(pk);toast("Contact added — say hi")}else{openMsgs();toast("Set up Murmur first, then scan again")}return}
   if(u.startsWith("hush://import")||u.startsWith("hush:import")){try{const raw=u.split("#")[1]||"",j=JSON.parse(decodeURIComponent(escape(atob(raw.replace(/-/g,"+").replace(/_/g,"/")))));
     const items=(j.b||[]).map(x=>({title:String(x[0]||""),url:String(x[1]||""),folder:String(x[2]||"")})).filter(x=>/^https?:\/\//.test(x.url));
