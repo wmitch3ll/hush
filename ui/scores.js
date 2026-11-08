@@ -65,8 +65,16 @@ window.HUSH_SCORES = (function () {
     const st = { lg: LS.get('lg', leagues[0]), off: 0, mine: false, games: null, err: '' };
     if (!leagues.includes(st.lg) && st.lg !== 'mine') st.lg = leagues[0];
     const pins = () => LS.get('pins', []), isPin = (lg, id) => pins().includes(lg + ':' + id);
-    const dateFor = () => { if (!st.off) return null; const d = new Date(); d.setDate(d.getDate() + st.off * (WEEKLY[st.lg] ? 7 : 1)); return ymd(d); };
-    const label = () => { if (!st.off) return WEEKLY[st.lg] ? 'This week' : 'Today'; const d = new Date(); d.setDate(d.getDate() + st.off * (WEEKLY[st.lg] ? 7 : 1)); return (WEEKLY[st.lg] ? 'Week of ' : '') + d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }); };
+    // ESPN rolls its daily scoreboard over at 9am Pacific, so until then "today" still means last night's games.
+    const ptNow = () => new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', hour12: false }).formatToParts(new Date()).reduce((o, x) => (o[x.type] = +x.value, o), {});
+    const ptDay = () => { const p = ptNow(), d = new Date(p.year, p.month - 1, p.day, 12); return { d, late: (p.hour % 24) < 9 }; };
+    const dayFor = off => { const { d, late } = ptDay(); d.setDate(d.getDate() + off - (late ? 1 : 0)); return d; };
+    const dateFor = (lg = st.lg) => WEEKLY[lg] ? (st.off ? (() => { const d = new Date(); d.setDate(d.getDate() + st.off * 7); return ymd(d); })() : null) : ymd(dayFor(st.off));
+    const label = () => {
+      if (WEEKLY[st.lg]) { if (!st.off) return 'This week'; const d = new Date(); d.setDate(d.getDate() + st.off * 7); return 'Week of ' + d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }); }
+      const { d: t0, late } = ptDay(), d = dayFor(st.off), diff = Math.round((d - t0) / 864e5);
+      return diff === 0 ? 'Today' : diff === -1 ? (st.off === 0 && late ? 'Last night' : 'Yesterday') : diff === 1 ? 'Tomorrow' : d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    };
     el.innerHTML = '<div class="hx-sc"></div>'; const box = el.firstChild;
     const rowHtml = (g, lg) => { const fin = g.state === 'post', aw = fin && g.a.win, hw = fin && g.h.win;
       const team = (t, lose) => `<div class="sc-t ${lose ? 'l' : ''}"><button class="sc-star ${isPin(lg, t.id) ? 'on' : ''}" data-pin="${esc(lg + ':' + t.id)}" aria-label="Follow ${esc(t.name)}">${STAR}</button><i style="background:${t.color}"></i><b>${t.rank ? '<em>' + t.rank + '</em> ' : ''}${esc(t.name || t.ab)}</b>${g.state === 'pre' && t.rec ? `<em>${esc(t.rec)}</em>` : ''}</div>`;
@@ -94,9 +102,9 @@ window.HUSH_SCORES = (function () {
     async function refresh(show) {
       if (my !== token) return; st.err = '';
       const lgs = st.lg === 'mine' ? leagues : [st.lg];
-      if (show) { st.games = null; const c = lgs.map(l => LS.get('last.' + l + '|' + (dateFor() || 'now'), null)).filter(Boolean); if (c.length === lgs.length) { st.games = c.flatMap((x, i) => x.games.map(g => ({ ...g, lg: lgs[i] }))); st.at = Math.min(...c.map(x => x.at)); } paint(); }
+      if (show) { st.games = null; const c = lgs.map(l => LS.get('last.' + l + '|' + (dateFor(l) || 'now'), null)).filter(Boolean); if (c.length === lgs.length) { st.games = c.flatMap((x, i) => x.games.map(g => ({ ...g, lg: lgs[i] }))); st.at = Math.min(...c.map(x => x.at)); } paint(); }
       try {
-        const res = await Promise.all(lgs.map(async l => (await load(A, l, st.lg === 'mine' ? null : dateFor(), show)).map(g => ({ ...g, lg: l }))));
+        const res = await Promise.all(lgs.map(async l => (await load(A, l, dateFor(l), show)).map(g => ({ ...g, lg: l }))));
         if (my !== token) return; st.games = res.flat(); st.at = Date.now();
       } catch (e) { if (my !== token) return; if (!st.games) st.err = 'Scores are unavailable right now.'; }
       paint(); schedule();

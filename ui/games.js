@@ -9,7 +9,7 @@
   let S = null;           // { [gameId]: game }
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const now = () => Date.now();
-  const TYPES = { chess: 'Chess', sea: 'Battleship', word: 'Word race', ball: 'Mini golf', disc: 'Disc golf' };
+  const TYPES = { chess: 'Chess', sea: 'Battleship Blitz', word: 'Word race', ball: 'Mini golf', disc: 'Disc golf' };
   const isGolf = t => t === 'ball' || t === 'disc';
   const nm = pk => pk === 'cpu' ? 'Computer' : H.name(pk);
 
@@ -35,7 +35,7 @@
   const rnd = (n = 16) => { const a = new Uint8Array(n); crypto.getRandomValues(a); return Array.from(a, x => x.toString(16).padStart(2, '0')).join(''); };
 
   // ---------------------------------------------------------------- store
-  function load() { if (!S) { S = H.get() || {}; const cut = now() - 60 * 864e5; for (const id in S) if (S[id].status !== 'play' && S[id].status !== 'invite' && S[id].upd < cut) delete S[id]; } return S; }
+  function load() { if (!S) { S = H.get() || {}; const cut = now() - 60 * 864e5; for (const id in S) if (S[id].status !== 'play' && S[id].status !== 'invite' && S[id].upd < cut) delete S[id]; for (const id in S) { const a = S[id].await; if (S[id].type === 'sea' && a && !a.s) S[id].await = { by: a.by, s: [a.i] }; } } return S; }
   const save = () => { try { H.set(S); } catch {} };
   const me = () => H.me();
   const opp = g => g.key;
@@ -120,37 +120,47 @@
       if (rec && (rec.r !== r.r || (r.r === 'sunk' && rec.n !== r.n))) return false; seen.push(i); }
     return true;
   }
+  const SALVO = 3;
+  // Answer a salvo against a fleet, shot by shot (a ship hit earlier in the same salvo counts for the next shot).
+  function salvo(board, prior, cells) {
+    const seen = prior.slice(), out = [];
+    for (const i of cells) { const r = Sea.shoot(board, seen, i); out.push(r.r === 'sunk' ? { r: 'sunk', n: r.n } : { r: r.r }); seen.push(i); }
+    return { r: out, over: board.every((v, k) => v < 0 || seen.includes(k)) };
+  }
   function applySea(g, from, k, d) {
     const mine = from === me();
     if (k === 'rdy') {
       if (g.phase !== 'place' || !ok.hex(d && d.h, 64)) return null; const t = mine ? g.me : g.they; if (t.ready) return null;
       if (mine && !(g.me.board && Sea.valid(g.me.board))) return null; t.h = d.h; t.ready = true;
-      if (g.me.ready && g.they.ready) { g.phase = 'battle'; g.turn = g.host; return g.turn === me() ? 'Battleship: fleets are set - you fire first' : 'Battleship: fleets are set'; }
+      if (g.me.ready && g.they.ready) { g.phase = 'battle'; g.turn = g.host; return g.turn === me() ? 'Battleship Blitz: fleets are set - you fire first' : 'Battleship: fleets are set'; }
       return mine ? '' : nm(from) + ' has placed their fleet';
     }
     if (g.phase !== 'battle' && k !== 'rv') return null;
-    if (k === 'sh') {
-      if (g.turn !== from || g.await || !Number.isInteger(d) || d < 0 || d > 99) return null; const L = g.shots[from] || (g.shots[from] = []); if (L.includes(d)) return null;
-      L.push(d); g.await = { by: from, i: d }; g.upd = now();
-      if (!mine) { const r = Sea.shoot(g.me.board, g.shots[from].slice(0, -1), d); setTimeout(() => { try { G._answer(g, d, r); } catch {} }, 0); return ''; }
+    if (k === 'sh') {   // a salvo: three shots, all planned first and fired together
+      const L = g.shots[from] || (g.shots[from] = []), need = Math.min(SALVO, 100 - L.length);
+      if (g.turn !== from || g.await || !Array.isArray(d) || d.length !== need || need < 1) return null;
+      if (!d.every(i => Number.isInteger(i) && i >= 0 && i < 100 && !L.includes(i)) || new Set(d).size !== d.length) return null;
+      const prior = L.slice(); d.forEach(i => L.push(i)); g.await = { by: from, s: d.slice() }; g.upd = now();
+      if (!mine) { const r = salvo(g.me.board, prior, d); setTimeout(() => { try { G._answer(g, d, r); } catch {} }, 0); return ''; }
       return '';
     }
     if (k === 'rs') {
-      if (!g.await || g.await.by === from || !d || d.i !== g.await.i || !['miss', 'hit', 'sunk'].includes(d.r)) return null;
-      const by = g.await.by; if (d.r === 'sunk' && (!Number.isInteger(d.n) || d.n < 0 || d.n > 4 || (g.sunk[by] || []).includes(d.n))) return null;
-      const cnt = (g.sunk[by] || []).length + (d.r === 'sunk' ? 1 : 0), over = cnt === 5; if (!!d.end !== over) return null;
-      (g.res[by] || (g.res[by] = {}))[d.i] = { r: d.r, n: d.r === 'sunk' ? d.n : undefined };
-      if (d.r === 'sunk') (g.sunk[by] || (g.sunk[by] = [])).push(d.n);
-      g.await = null; g.upd = now();
+      if (!g.await || g.await.by === from || !d || !Array.isArray(d.s) || d.s.join() !== g.await.s.join() || !Array.isArray(d.r) || d.r.length !== d.s.length) return null;
+      const by = g.await.by, sunkNow = (g.sunk[by] || []).slice(), fresh = [];
+      for (const x of d.r) { if (!x || !['miss', 'hit', 'sunk'].includes(x.r)) return null;
+        if (x.r === 'sunk') { if (!Number.isInteger(x.n) || x.n < 0 || x.n > 4 || sunkNow.includes(x.n)) return null; sunkNow.push(x.n); fresh.push(x.n); } }
+      const over = sunkNow.length === 5; if (!!d.end !== over) return null;
+      const R = g.res[by] || (g.res[by] = {}); d.s.forEach((i, k2) => { R[i] = { r: d.r[k2].r, n: d.r[k2].r === 'sunk' ? d.r[k2].n : undefined }; });
+      g.sunk[by] = sunkNow; g.await = null; g.upd = now(); g.last = { by, c: d.s.slice() }; g.seq = (g.seq || 0) + 1;
+      const hits = d.r.filter(x => x.r !== 'miss').length;
       if (over) {
         if (by === me()) { const good = checkFleet(g, from, d.b, d.sa); if (!good) g.cheat = from; }
         finish(g, g.cheat ? 'cheat' : 'fleet', by); g.turn = null; g.revealed = true;
         if (by === me() && g === S[g.id]) setTimeout(() => { try { sendMsg(g, 'rv', { b: g.me.board, sa: g.me.salt }); } catch {} }, 60);
-        return by === me() ? '' : 'Battleship: ' + nm(from) + ' sank your last ship - ' + nm(by) + ' wins';
+        return by === me() ? '' : 'Battleship Blitz: ' + nm(from) + ' sank your last ship - ' + nm(by) + ' wins';
       }
       g.turn = from;
-      const msg = d.r === 'sunk' ? 'sank your ' + Sea.SHIPS[d.n].n.toLowerCase() : d.r;
-      return by === me() ? (from === me() ? '' : '') : 'Battleship: ' + nm(by) + ' fired - ' + (d.r === 'miss' ? 'a miss' : d.r === 'hit' ? 'a hit' : 'they sank your ' + Sea.SHIPS[d.n].n.toLowerCase()) + '. Your turn';
+      return by === me() ? '' : 'Battleship Blitz: ' + nm(by) + ' fired a salvo - ' + (fresh.length ? 'you lost your ' + fresh.map(n => Sea.SHIPS[n].n.toLowerCase()).join(' and ') : hits ? hits + ' hit' + (hits > 1 ? 's' : '') : 'all missed') + '. Your turn';
     }
     if (k === 'rv') {
       if (!(g.status === 'done' && g.end && g.end.w === from) || g.revealed2) return null; g.revealed2 = true;
@@ -160,8 +170,8 @@
     return null;
   }
   // The defending phone answers a shot automatically.
-  G._answer = (g, i, r) => {
-    const out = { i, r: r.r }; if (r.r === 'sunk') out.n = r.n;
+  G._answer = (g, cells, r) => {
+    const out = { s: cells, r: r.r };
     if (r.over) { out.end = 1; out.b = g.me.board; out.sa = g.me.salt; }
     sendMsg(g, 'rs', out);
   };
@@ -289,7 +299,7 @@
     if (g.type === 'chess') { const my = colorOf(g, me()) === g.st.t; return { line: my ? (Chess.inCheck(g.st) ? 'Check - your move' : 'Your move') : 'Waiting for ' + who, hot: my }; }
     if (g.type === 'sea') {
       if (g.phase === 'place') return g.me.ready ? { line: 'Waiting for ' + who + ' to place their fleet', hot: false } : { line: 'Place your fleet', hot: true };
-      return g.turn === me() ? { line: 'Your shot', hot: true } : { line: 'Waiting for ' + who, hot: false };
+      return g.turn === me() ? { line: 'Your salvo', hot: true } : { line: 'Waiting for ' + who, hot: false };
     }
     if (isGolf(g.type)) {
       const n = g.mine.holes.length; if (n < Golf.HOLES) return { line: n ? 'Hole ' + (n + 1) + ' of ' + Golf.HOLES + ' - your turn to play' : 'Ready - ' + Golf.HOLES + ' holes', hot: true };
@@ -329,10 +339,11 @@
     } else if (g.type === 'sea') {
       if (g.phase !== 'battle') return;
       if (g.await && g.await.by === me()) { busy.add(g.id);
-        setTimeout(() => { busy.delete(g.id); if (!g.await || g.await.by !== me()) return; const i = g.await.i, r = Sea.shoot(g.cpu.board, (g.shots[me()] || []).slice(0, -1), i), out = { i, r: r.r }; if (r.r === 'sunk') out.n = r.n; if (r.over) { out.end = 1; out.b = g.cpu.board; out.sa = g.cpu.salt; }
-          cpuApply(g, 'rs', out); cpuTurn(g); }, 500); }
+        setTimeout(() => { busy.delete(g.id); if (!g.await || g.await.by !== me()) return; const cells = g.await.s, prior = (g.shots[me()] || []).slice(0, -cells.length), r = salvo(g.cpu.board, prior, cells), out = { s: cells, r: r.r };
+          if (r.over) { out.end = 1; out.b = g.cpu.board; out.sa = g.cpu.salt; } cpuApply(g, 'rs', out); cpuTurn(g); }, 800); }
       else if (g.turn === 'cpu' && !g.await) { busy.add(g.id);
-        setTimeout(() => { busy.delete(g.id); if (g.status !== 'play' || g.turn !== 'cpu' || g.await) return; const i = SeaAI.pick(g.shots.cpu || [], g.res.cpu || {}, g.sunk.cpu || [], lvl); cpuApply(g, 'sh', i); }, 800 + Math.random() * 600); }
+        setTimeout(() => { busy.delete(g.id); if (g.status !== 'play' || g.turn !== 'cpu' || g.await) return; const sh = (g.shots.cpu || []).slice(), picks = [];
+          for (let k = Math.min(SALVO, 100 - sh.length); k > 0; k--) { const i = SeaAI.pick(sh, g.res.cpu || {}, g.sunk.cpu || [], lvl); sh.push(i); picks.push(i); } cpuApply(g, 'sh', picks); }, 2000 + Math.random() * 700); }
     } else if (g.type === 'word') {
       const pl = g.plan; if (!pl || g.th.fin) return;
       while (g.th.pat.length < Math.min(g.mine.gs.length, pl.gs.length - 1)) cpuApply(g, 'gs', Word.score(pl.gs[g.th.pat.length], g.word));
@@ -363,7 +374,7 @@
   G.pick = key => {
     css(); document.querySelector('.gm-sheet')?.remove();
     const el = document.createElement('div'); el.className = 'gm-sheet'; let secs = 180, lvl = 2, mode = key ? 'friend' : 'cpu';
-    const rows = [['chess', 'Chess', 'Full rules. Take your time.'], ['sea', 'Battleship', 'Hidden fleets - sink theirs first.'], ['word', 'Word race', 'Same secret word, six guesses, beat the clock.'], ['ball', 'Mini golf', 'Three holes with walls, sand and water. Fewest strokes wins.'], ['disc', 'Disc golf', 'Curve your throws around the trees. Fewest throws wins.']];
+    const rows = [['chess', 'Chess', 'Full rules. Take your time.'], ['sea', 'Battleship Blitz', 'Hidden fleets. Plan 3 shots, fire together, sink them all.'], ['word', 'Word race', 'Same secret word, six guesses, beat the clock.'], ['ball', 'Mini golf', 'Three holes with walls, sand and water. Fewest strokes wins.'], ['disc', 'Disc golf', 'Curve your throws around the trees. Fewest throws wins.']];
     const solos = G.solos();
     const draw = () => {
       el.innerHTML = `<div class="gm-sc"><div class="gm-sh"><b>${key ? 'Play with ' + esc(nm(key)) : 'Games'}</b><button class="gm-x" aria-label="Close">&times;</button></div>
@@ -533,49 +544,70 @@
     box.onclick = e => { const b = e.target.closest('[data-p]'); if (!b) { box.hidden = true; cur.ui.sel = null; return paint(); } play(g, ms.find(m => m.p === b.dataset.p)); };
   }
 
-  // ---------------------------------------------------------------- battleship view
+  // ---------------------------------------------------------------- battleship blitz view
   const COLS = 'ABCDEFGHIJ';
+  // Ship silhouettes, drawn lying flat, one cell = 10 units long. Each one is a different shape so you can tell them apart at a glance.
+  const SHIPART = [
+    '<path class="hu" d="M1 6.4 2.8 9.2h38.6c3.8 0 6.6-1.6 7.6-3.8L46.6 2.8H2.8z"/><path class="dk" d="M3 2.8h43.6l-1.4 3H4.2z"/><path class="ln" d="M6 4.3h37" stroke-dasharray="3 2"/><rect class="dt" x="31" y="1" width="6" height="3.6" rx=".8"/><path class="ln" d="M34 1V.2"/><path class="ac" d="M9 3.6l2.4 0-1.2 1.5zM15 3.6l2.4 0-1.2 1.5z"/>',
+    '<path class="hu" d="M1 5l1.8 4.2h28.4c4.6 0 7-2.2 7.8-4.2-.8-2-3.2-4.2-7.8-4.2H2.8z"/><path class="dk" d="M3.4 2.4h27.8c3 0 5 1.2 6 2.6-1 1.4-3 2.6-6 2.6H3.4z"/><circle class="dt" cx="9" cy="5" r="2.1"/><circle class="dt" cx="16" cy="5" r="2.1"/><circle class="dt" cx="31" cy="5" r="1.8"/><path class="ln" d="M9 5h-6M16 5h-5M31 5h4.5"/><rect class="ac" x="21" y="3" width="5" height="4" rx=".8"/><path class="ln" d="M23.5 3V1.2"/>',
+    '<path class="hu" d="M1 5.6l1.6 3.4h20.6c3.4 0 5.4-1.6 5.8-3.4-.4-1.8-2.4-3.4-5.8-3.4H2.6z"/><path class="dk" d="M3 3h20.2c2.4 0 4 1 4.8 2.6C27.200 7 25.600 8 23.200 8H3z"/><circle class="dt" cx="8" cy="5.5" r="1.9"/><path class="ln" d="M8 5.5H3"/><rect class="ac" x="13" y="3.4" width="5" height="4.2" rx=".8"/><path class="ln" d="M15.500 3.400V1"/><rect class="dt" x="21" y="4.4" width="2.4" height="2.2" rx=".5"/>',
+    '<rect class="hu" x="1" y="3.6" width="28" height="4.8" rx="2.4"/><path class="dk" d="M3.400 4.600h23.200c1.200 0 2 .6 2 1.400s-.8 1.400-2 1.400H3.400z"/><path class="hu" d="M11.500 3.600 12.800 1.400h5.400l1.300 2.200z"/><path class="ln" d="M15.500 1.400V.3h2.200"/><circle class="ac" cx="7" cy="6" r=".9"/><circle class="ac" cx="11" cy="6" r=".9"/><circle class="ac" cx="23" cy="6" r=".9"/><path class="dt" d="M1 6 0 4.400v3.200z"/>',
+    '<path class="hu" d="M1 5.4l1.200 3.200H15c2.800 0 4.200-1.400 4.400-3.200-.2-1.800-1.600-3.200-4.400-3.200H2.200z"/><path class="dk" d="M2.600 3.200H15c2 0 3 .9 3.400 2.200-.4 1.300-1.400 2.200-3.400 2.200H2.600z"/><rect class="dt" x="6" y="2" width="2.600" height="3.200" rx=".6"/><circle class="dt" cx="13.500" cy="5.400" r="1.500"/><path class="ln" d="M13.500 5.400h4.800"/><rect class="ac" x="9.500" y="3.600" width="2.400" height="3.600" rx=".6"/>'
+  ];
+  const shipSvg = (s, vert, cls = '') => { const L = Sea.SHIPS[s].l, w = L * 10;
+    return vert ? `<svg viewBox="0 0 10 ${w}" class="gm-shp v ${cls}" preserveAspectRatio="none" aria-hidden="true"><g transform="translate(10 0) rotate(90)">${SHIPART[s]}</g></svg>`
+      : `<svg viewBox="0 0 ${w} 10" class="gm-shp ${cls}" preserveAspectRatio="none" aria-hidden="true">${SHIPART[s]}</svg>`; };
+  const fleetList = (title, sunk) => `<div class="gm-fl"><b>${title} <em>${5 - sunk.length} of 5 afloat</em></b>${Sea.SHIPS.map((sh, i) => `<div class="gm-fi ${sunk.includes(i) ? 'dead' : ''}" title="${sh.n}"><span class="gm-fa"><span style="display:block;width:${sh.l * 10}px">${shipSvg(i, false)}</span></span><span class="gm-fn">${sh.n}</span></div>`).join('')}</div>`;
+  const cellsOf = (board, s) => { const c = []; board.forEach((v, i) => { if (v === s) c.push(i); }); return c; };
+  const shipsOverlay = (board, sunk) => { let h = '<div class="gm-ships">'; for (let s = 0; s < 5; s++) { const c = cellsOf(board, s); if (!c.length) continue; const vert = c.length > 1 && c[1] - c[0] === 10, r = c[0] / 10 | 0, col = c[0] % 10;
+    h += `<div class="gm-sp ${sunk && sunk.includes(s) ? 'dead' : ''}" style="left:${col * 10}%;top:${r * 10}%;width:${vert ? 10 : c.length * 10}%;height:${vert ? c.length * 10 : 10}%" data-s="${s}">${shipSvg(s, vert)}</div>`; } return h + '</div>'; };
   function viewSea(g) {
     const ui = cur.ui, me_ = me();
     if (g.status === 'play' && g.phase === 'place') {
-      if (g.me.ready) return shell(g, `<div class="gm-wait"><h3>Fleet locked in</h3><p>Waiting for ${esc(peerName(g))} to place theirs. You can leave this screen - the game starts when they are ready.</p></div>${seaGrid(g.me.board, null, { own: true, small: false })}`, `<button class="gm-b danger" data-do="resign">Forfeit</button>`);
+      if (g.me.ready) return shell(g, `<div class="gm-wait"><h3>Fleet locked in</h3><p>Waiting for ${esc(peerName(g))} to place theirs. You can leave this screen - the game starts when they are ready.</p></div>${seaGrid(g.me.board, g, { own: true })}`, `<button class="gm-b danger" data-do="resign">Forfeit</button>`);
       if (!ui.board) ui.board = g.me.board ? g.me.board.slice() : Sea.empty();
-      ui.ship = ui.ship == null ? ui.board.findIndex((_, i) => false) : ui.ship;
       const placed = s => ui.board.includes(s);
-      if (ui.ship == null || (ui.ship < 0)) ui.ship = Sea.SHIPS.findIndex((_, s) => !placed(s));
+      if (ui.ship == null || ui.ship < 0 || placed(ui.ship)) ui.ship = Sea.SHIPS.findIndex((_, s) => !placed(s));
       const all = Sea.SHIPS.every((_, s) => placed(s));
-      const tray = Sea.SHIPS.map((sh, s) => `<button class="gm-ship ${ui.ship === s ? 'on' : ''} ${placed(s) ? 'done' : ''}" data-sh="${s}"><span>${sh.n}</span><i>${'<b></b>'.repeat(sh.l)}</i></button>`).join('');
-      return shell(g, `<div class="gm-hint">Tap a ship, then tap the grid to place it. Tap it again on the grid to turn it.</div>${seaGrid(ui.board, null, { own: true, place: true })}<div class="gm-tray">${tray}</div>`,
+      const tray = Sea.SHIPS.map((sh, s) => `<button class="gm-ship ${ui.ship === s ? 'on' : ''} ${placed(s) ? 'done' : ''}" data-sh="${s}"><span class="gm-fa" style="width:${sh.l * 16}px">${shipSvg(s, false)}</span><span>${sh.n}</span></button>`).join('');
+      return shell(g, `<div class="gm-hint">${all ? 'Happy with it? Tap Ready. Tap a ship on the grid to turn it.' : 'Pick a ship below, then tap the grid to place it. Tap a placed ship to turn it.'}</div>${seaGrid(ui.board, g, { own: true, place: true })}<div class="gm-tray">${tray}</div>`,
         `<button class="gm-b" data-do="shuffle">Shuffle</button><button class="gm-b" data-do="clear">Clear</button><button class="gm-b pri" data-do="ready" ${all ? '' : 'disabled'}>Ready</button>`);
     }
-    // battle or finished
-    const turnMine = g.turn === me_ && !g.await, my = g.shots[me_] || [], their = g.shots[g.key] || [];
+    const my = g.shots[me_] || [], their = g.shots[g.key] || [], free = 100 - my.length, need = Math.min(SALVO, free);
+    const turnMine = g.status === 'play' && g.turn === me_ && !g.await;
     const sunkMine = g.sunk[g.key] || [], sunkEnemy = g.sunk[me_] || [];
-    const sel = ui.target;
-    const info = (title, sunk) => `<div class="gm-fl"><b>${title}</b>${Sea.SHIPS.map((s, i) => `<span class="${sunk.includes(i) ? 'dead' : ''}">${s.n}</span>`).join('')}</div>`;
+    if (!ui.tg || !turnMine) ui.tg = ui.tg && turnMine ? ui.tg : [];
+    const tg = ui.tg.filter(i => !my.includes(i)).slice(0, need); ui.tg = tg;
+    // what the last salvo did
+    let sum = '';
+    if (g.last) { const mineL = g.last.by === me_, R = g.res[g.last.by] || {}, rs = g.last.c.map(i => R[i]).filter(Boolean), h = rs.filter(x => x.r !== 'miss').length, sk = rs.filter(x => x.r === 'sunk').map(x => Sea.SHIPS[x.n].n);
+      sum = `<div class="gm-sum ${mineL ? 'm' : 't'}"><b>${mineL ? 'Your last salvo' : esc(peerName(g)) + "'s last salvo"}</b> ${h ? h + ' hit' + (h > 1 ? 's' : '') + ', ' + (rs.length - h) + ' miss' + (rs.length - h === 1 ? '' : 'es') : 'all ' + rs.length + ' missed'}${sk.length ? ' - ' + (mineL ? 'you sank their ' : 'they sank your ') + sk.join(' and ').toLowerCase() + '!' : ''}</div>`; }
     let foot = '', msg = '';
     if (g.status === 'done') {
       const w = g.end.w;
       msg = `<div class="gm-end"><b>${g.end.why === 'cheat' ? 'Fleet check failed' : w === me_ ? 'Victory' : w ? 'Defeat' : 'Game over'}</b><span>${g.end.why === 'cheat' ? (g.cheat === g.key ? esc(peerName(g)) + "'s fleet did not match what they reported." : 'Your fleet did not match.') : w === me_ ? 'You sank their whole fleet.' : w === g.key ? esc(peerName(g)) + ' sank your fleet.' : 'The game ended.'}</span></div>`;
       foot = `<button class="gm-b pri" data-do="rematch">Rematch</button><button class="gm-b" data-do="close">Close</button>`;
     } else {
-      msg = `<div class="gm-turn ${turnMine ? 'me' : ''}">${g.await ? (g.await.by === me_ ? 'Shot fired...' : 'Incoming...') : turnMine ? (sel != null ? 'Target ' + COLS[sel % 10] + (1 + (sel / 10 | 0)) + ' locked' : 'Your shot - pick a square') : 'Waiting for ' + esc(peerName(g)) + '...'}</div>`;
-      foot = `<button class="gm-b pri" data-do="fire" ${turnMine && sel != null ? '' : 'disabled'}>Fire</button><button class="gm-b danger" data-do="resign">Forfeit</button>`;
+      const left = need - tg.length;
+      msg = `<div class="gm-turn ${turnMine ? 'me' : ''}">${g.await ? (g.await.by === me_ ? 'Salvo in the air...' : 'Incoming salvo...') : turnMine ? (left > 0 ? (tg.length ? `Pick ${left} more target${left > 1 ? 's' : ''}` : `Tap ${need} square${need > 1 ? 's' : ''} to aim your salvo`) : 'Locked in - fire when ready') : 'Waiting for ' + esc(peerName(g)) + '...'}</div>`;
+      foot = `<button class="gm-b pri" data-do="fire" ${turnMine && tg.length === need ? '' : 'disabled'}>Fire ${need > 1 ? need + ' shots' : ''}</button>${tg.length ? '<button class="gm-b" data-do="untarget">Clear</button>' : ''}<button class="gm-b danger" data-do="resign">Forfeit</button>`;
     }
-    const enemyReveal = g.status === 'done' && g.end.why !== 'resign' ? null : null;
-    return shell(g, `${msg}<div class="gm-lab">Enemy waters</div>${seaGrid(null, g, { enemy: true, sel: turnMine ? sel : null, shots: my, res: g.res[me_] || {} })}
-      <div class="gm-lab">Your fleet</div><div class="gm-two">${seaGrid(g.me.board, g, { own: true, small: true, shots: their, res: g.res[g.key] || {} })}<div>${info('Enemy fleet', sunkEnemy)}${info('Your fleet', sunkMine)}</div></div>`, foot);
+    const fxOn = !!(g.last && g.seq !== ui.fxSeq); ui.fxOn = fxOn;
+    return shell(g, `${msg}<div class="gm-lab">Enemy waters</div>${seaGrid(null, g, { enemy: true, tg: turnMine ? tg : [], shots: my, res: g.res[me_] || {}, fx: fxOn && g.last.by === me_ ? g.last.c : null })}${sum}
+      <div class="gm-two"><div><div class="gm-lab">Your fleet</div>${seaGrid(g.me.board, g, { own: true, small: true, shots: their, res: g.res[g.key] || {}, sunk: sunkMine, fx: fxOn && g.last.by === g.key ? g.last.c : null })}</div><div class="gm-fls">${fleetList('Enemy', sunkEnemy)}${fleetList('Yours', sunkMine)}</div></div>`, foot);
   }
-  // opts: own (show my ships), enemy (tap to target), shots (indices fired at this grid), res (their results)
+  // opts: own (show my ships), enemy (tap to target), shots (indices fired at this grid), res (their results), tg (planned targets), fx (cells to animate)
   function seaGrid(board, g, o) {
-    const shots = o.shots || [], res = o.res || {}; let h = `<div class="gm-sea ${o.small ? 'sm' : ''} ${o.enemy ? 'en' : ''}" id="gm-sea${o.enemy ? 'e' : o.own ? 'o' : ''}"><div class="gm-sg">`;
+    const shots = o.shots || [], res = o.res || {}, tg = o.tg || [], fx = o.fx || [];
+    let h = `<div class="gm-sea ${o.small ? 'sm' : ''} ${o.enemy ? 'en' : ''}" id="gm-sea${o.enemy ? 'e' : o.own ? 'o' : ''}"><div class="gm-ax"><i></i>${[...COLS].map(c => `<span>${c}</span>`).join('')}</div><div class="gm-bd2"><div class="gm-rl">${Array.from({ length: 10 }, (_, i) => `<span>${i + 1}</span>`).join('')}</div><div class="gm-sgw"><div class="gm-sg">`;
     for (let i = 0; i < 100; i++) {
-      const r = res[i], ship = board ? board[i] : -1, shot = shots.includes(i);
-      let cls = 'gm-c'; if (o.own && ship >= 0) cls += ' sh s' + ship; if (shot) cls += r ? (r.r === 'miss' ? ' miss' : r.r === 'hit' ? ' hit' : ' hit sunk') : ' pend'; if (o.sel === i) cls += ' tg';
-      if (o.own && shot && !r && ship >= 0) cls += ' hit'; else if (o.own && shot && !r) cls += ' miss';
-      h += `<div class="${cls}" data-i="${i}">${shot && (o.enemy || o.own) ? '<s></s>' : ''}</div>`;
+      const r = res[i], shot = shots.includes(i), t = tg.indexOf(i), alt = ((i / 10 | 0) + i % 10) & 1; let cls = 'gm-c' + (alt ? ' a' : '');
+      if (shot) { const hitOwn = o.own && !r && board && board[i] >= 0; cls += r ? (r.r === 'miss' ? ' miss' : r.r === 'hit' ? ' hit' : ' hit sunk') : hitOwn ? ' hit' : o.own ? ' miss' : ' pend'; }
+      if (t >= 0) cls += ' tg'; const k = fx.indexOf(i); if (k >= 0) cls += ' fx';
+      h += `<div class="${cls}" data-i="${i}" ${t >= 0 ? `data-n="${t + 1}"` : ''} style="--d:${k >= 0 ? k * 90 : 0}ms">${shot ? '<s></s><u></u>' : ''}</div>`;
     }
-    return h + '</div></div>';
+    h += '</div>' + (o.own && board ? shipsOverlay(board, o.sunk) : '') + '</div></div></div>';
+    return h;
   }
   function wireSea(g) {
     const ui = cur.ui, root = cur.root;
@@ -583,7 +615,9 @@
       const grid = root.querySelector('#gm-seao');
       root.querySelectorAll('[data-sh]').forEach(b => b.onclick = () => { ui.ship = +b.dataset.sh; paint(); });
       grid.onclick = e => {
-        const c = e.target.closest('[data-i]'); if (!c) return; const i = +c.dataset.i, r = i / 10 | 0, cc = i % 10, at = ui.board[i];
+        const c = e.target.closest('[data-i]'), sp = e.target.closest('[data-s]'); let i;
+        if (c) i = +c.dataset.i; else if (sp) { const cs = cellsOf(ui.board, +sp.dataset.s); const rc = sp.getBoundingClientRect(), vert = cs.length > 1 && cs[1] - cs[0] === 10, f = vert ? (e.clientY - rc.top) / rc.height : (e.clientX - rc.left) / rc.width; i = cs[Math.min(cs.length - 1, Math.max(0, Math.floor(f * cs.length)))]; } else return;
+        const r = i / 10 | 0, cc = i % 10, at = ui.board[i];
         if (at >= 0 && at === ui.ship) { // turn the ship around its first cell
           const cells = ui.board.map((v, k) => v === at ? k : -1).filter(k => k >= 0), r0 = cells[0] / 10 | 0, c0 = cells[0] % 10, vert = cells.length > 1 && cells[1] - cells[0] === 10;
           const nb = Sea.place(ui.board, at, r0, c0, !vert); if (nb) ui.board = nb; else H.toast("Doesn't fit that way"); return paint();
@@ -591,8 +625,7 @@
         if (at >= 0) { ui.ship = at; return paint(); }
         const s = ui.ship; if (s == null || s < 0) return;
         const vert = ui.vert && ui.vert[s]; let nb = Sea.place(ui.board, s, r, cc, !!vert) || Sea.place(ui.board, s, r, cc, !vert);
-        if (!nb) { // slide back so a ship near the edge still fits
-          for (const v of [false, true]) { const sh = Sea.SHIPS[s]; const r2 = v ? Math.min(r, 10 - sh.l) : r, c2 = v ? cc : Math.min(cc, 10 - sh.l); nb = Sea.place(ui.board, s, r2, c2, v); if (nb) break; } }
+        if (!nb) { for (const v of [false, true]) { const sh = Sea.SHIPS[s]; const r2 = v ? Math.min(r, 10 - sh.l) : r, c2 = v ? cc : Math.min(cc, 10 - sh.l); nb = Sea.place(ui.board, s, r2, c2, v); if (nb) break; } }
         if (!nb) return H.toast("Doesn't fit there"); ui.board = nb; vib(8);
         ui.ship = Sea.SHIPS.findIndex((_, k) => !ui.board.includes(k)); paint();
       };
@@ -600,10 +633,13 @@
         if (a === 'ready') b.onclick = () => { if (!Sea.valid(ui.board)) return; g.me.board = ui.board.slice(); g.me.salt = rnd(16); sendMsg(g, 'rdy', { h: sha256(Sea.pack(g.me.board, g.me.salt)) }); save(); }; });
       return;
     }
+    if (ui.fxOn) { const hits = g.last ? g.last.c.filter(i => { const x = (g.res[g.last.by] || {})[i]; return x && x.r !== 'miss'; }).length : 0; vib(hits ? [30, 40, 60] : 14); ui.fxSeq = g.seq; ui.fxOn = false; }
     const e = root.querySelector('#gm-seae'); if (e && g.status === 'play') {
-      const myTurn = g.turn === me() && !g.await;
-      e.onclick = ev => { const c = ev.target.closest('[data-i]'); if (!c || !myTurn) return; const i = +c.dataset.i; if ((g.shots[me()] || []).includes(i)) return; ui.target = ui.target === i ? null : i; vib(6); paint(); };
-      root.querySelectorAll('[data-do="fire"]').forEach(b => b.onclick = () => { if (ui.target == null) return; const i = ui.target; ui.target = null; vib(18); sendMsg(g, 'sh', i); });
+      const my = g.shots[me()] || [], need = Math.min(SALVO, 100 - my.length), myTurn = g.turn === me() && !g.await;
+      e.onclick = ev => { const c = ev.target.closest('[data-i]'); if (!c || !myTurn) return; const i = +c.dataset.i; if (my.includes(i)) return; const t = ui.tg || (ui.tg = []), k = t.indexOf(i);
+        if (k >= 0) t.splice(k, 1); else if (t.length >= need) { H.toast('That is all ' + need + ' shots - tap a target to take it back'); return; } else t.push(i); vib(6); paint(); };
+      root.querySelectorAll('[data-do="fire"]').forEach(b => b.onclick = () => { const t = (ui.tg || []).slice(); if (t.length !== need || !myTurn) return; ui.tg = []; vib(24); sendMsg(g, 'sh', t); });
+      root.querySelectorAll('[data-do="untarget"]').forEach(b => b.onclick = () => { ui.tg = []; paint(); });
     }
   }
 
@@ -800,17 +836,43 @@
 .gm-sq em{position:absolute;font:600 9px system-ui;opacity:.55;font-style:normal;color:#223}.gm-sq em.rk{top:2px;left:3px}.gm-sq em.fl{bottom:1px;right:3px}
 .gm-promo{position:absolute;inset:0;display:grid;place-items:center;background:#0007;border-radius:10px}.gm-promo[hidden]{display:none}.gm-pb{display:flex;gap:6px;background:var(--bg);padding:10px;border-radius:16px;box-shadow:0 10px 30px #0006}.gm-pb button{width:min(16vw,70px);height:min(16vw,70px);background:#e4e2da;border-radius:12px;padding:6px}.gm-pb button:active{background:#8b9bb0}
 .gm-moves{display:flex;gap:7px;align-items:baseline;overflow-x:auto;width:min(100%,520px);padding:6px 4px;font:13px ui-monospace,Menlo,monospace;white-space:nowrap;scrollbar-width:none}.gm-moves::-webkit-scrollbar{display:none}.gm-moves u{text-decoration:none;color:var(--mute);margin-right:2px}.gm-moves span:last-child{font-weight:700}
-/* battleship */
-.gm-ov.gm-t-sea{--bs:min(100vw - 24px,100vh - 450px,400px)}
-.gm-sea{width:var(--bs);flex:none}.gm-sea.sm{width:min(42vw,170px)}.gm-sea.sm .gm-sg{border-radius:7px}.gm-sg{display:grid;grid-template-columns:repeat(10,1fr);gap:1px;background:#6d7f96;padding:1px;border-radius:10px;overflow:hidden;box-shadow:0 0 0 1px var(--line)}
-.gm-c{position:relative;aspect-ratio:1;background:#a9bacd;display:grid;place-items:center}.gm-sea.en .gm-c{cursor:pointer}.gm-sea.en .gm-c:not(.miss):not(.hit):active{background:#c5d3e2}
-.gm-c.sh{background:#44546a}.gm-c.sh.s0,.gm-c.sh.s1,.gm-c.sh.s2,.gm-c.sh.s3,.gm-c.sh.s4{box-shadow:inset 0 0 0 1px #ffffff22}
-.gm-c.miss s{width:26%;height:26%;border-radius:50%;background:#fff;opacity:.9;animation:gmPop .3s}.gm-c.hit{background:#e0584a}.gm-sea:not(.en) .gm-c.hit.sh{background:#b8332a}.gm-c.hit s{width:44%;height:44%;border-radius:50%;background:#ffe9a8;box-shadow:0 0 8px 2px #ffb347;animation:gmPop .3s}.gm-c.sunk{background:#7c1f18}
-.gm-c.pend s{width:34%;height:34%;border-radius:50%;border:2px solid var(--ink);animation:gmPulse .8s infinite}.gm-c.tg::after{content:"";position:absolute;inset:8%;border:2px solid #d4483b;border-radius:50%;animation:gmPulse 1s infinite}.gm-c.tg::before{content:"";position:absolute;left:50%;top:0;bottom:0;width:2px;background:#d4483b99;transform:translateX(-1px)}
-@keyframes gmPop{from{transform:scale(.2);opacity:0}}@keyframes gmPulse{50%{transform:scale(1.18);opacity:.6}}
+/* battleship blitz */
+.gm-ov.gm-t-sea{--bs:min(100vw - 52px,100vh - 520px,380px)}
+.gm-sea{width:calc(var(--bs) + 16px);flex:none}.gm-sea.sm{width:min(44vw,176px)}
+.gm-ax{display:flex;margin-left:16px;font:600 10px system-ui;color:var(--mute)}.gm-ax span{flex:1;text-align:center}.gm-ax i{display:none}
+.gm-bd2{display:flex}.gm-rl{width:16px;display:flex;flex-direction:column;font:600 10px system-ui;color:var(--mute)}.gm-rl span{flex:1;display:grid;place-items:center}
+.gm-sgw{position:relative;flex:1;min-width:0}.gm-sea.sm .gm-ax,.gm-sea.sm .gm-rl{font-size:8px}.gm-sea.sm .gm-rl{width:12px}.gm-sea.sm .gm-ax{margin-left:12px}
+.gm-sg{display:grid;grid-template-columns:repeat(10,1fr);background:#2d6e9e;border-radius:10px;overflow:hidden;box-shadow:0 8px 24px #0003,0 0 0 1px #1d4f75}.gm-sea.sm .gm-sg{border-radius:7px}
+.gm-c{position:relative;aspect-ratio:1;background:#4f9bcc;display:grid;place-items:center;overflow:visible}.gm-c.a{background:#4a94c5}.gm-sea.en .gm-c{cursor:crosshair}
+.gm-c::before{content:"";position:absolute;inset:0;box-shadow:inset 0 0 0 .5px #ffffff26;pointer-events:none}
+.gm-sea.en .gm-c:not(.miss):not(.hit):hover{background:#7ab8de}
+.gm-ships{position:absolute;inset:0;pointer-events:none}.gm-sp{position:absolute;filter:drop-shadow(0 1.5px 1px #0006)}.gm-shp{display:block;width:100%;height:100%;overflow:visible}
+.gm-shp .hu{fill:#56667c;stroke:#2d3a4c;stroke-width:.6}.gm-shp .dk{fill:#8493a8}.gm-shp .dt{fill:#33405a;stroke:#1f2a3c;stroke-width:.3}.gm-shp .ac{fill:#d9b44a}.gm-shp .ln{fill:none;stroke:#26334a;stroke-width:.7;stroke-linecap:round}
+.gm-sp.dead{filter:grayscale(1) brightness(.55)}
+.gm-c.miss s,.gm-c.pend s{width:22%;height:22%;border-radius:50%;background:#fff;opacity:.85;display:block}.gm-c.miss u{position:absolute;inset:24%;border:1.5px solid #ffffffaa;border-radius:50%;opacity:.55}
+.gm-c.pend s{background:none;border:2px solid #fff;animation:gmPulse .8s infinite}
+.gm-c.hit s{position:relative;width:58%;height:58%;border-radius:50%;background:radial-gradient(circle at 50% 60%,#fff4b0 0,#ffb02e 38%,#e5472b 68%,#8a1d12 100%);box-shadow:0 0 7px 2px #ff7a2e;animation:gmFlick .55s infinite alternate}
+.gm-c.hit.sunk s{background:radial-gradient(circle,#ffd27a 0,#c9341f 45%,#3a0f0b 100%);box-shadow:0 0 8px 3px #d4352299}.gm-c.hit u{position:absolute;inset:-35%;pointer-events:none;border-radius:50%;opacity:0}
+.gm-sea:not(.en) .gm-c.hit{background:transparent}.gm-c.hit,.gm-c.fx{z-index:3}.gm-ships{z-index:2}
+@keyframes gmFlick{from{transform:scale(.9) rotate(-4deg);filter:brightness(1)}to{transform:scale(1.08) rotate(4deg);filter:brightness(1.25)}}
+/* water splash on a miss, explosion on a hit - they all play together when the salvo lands */
+.gm-c.fx.miss s{animation:gmSplash .9s var(--d) both;box-shadow:-9px -6px 0 -1px #fff,9px -6px 0 -1px #fff,0 -11px 0 -1px #fff,-6px 8px 0 -2px #fff,6px 8px 0 -2px #fff}
+.gm-c.fx.miss u{animation:gmRing 1s var(--d) both}
+.gm-c.fx.hit{animation:gmShake .45s var(--d)}.gm-c.fx.hit s{animation:gmBoom .8s var(--d) both}.gm-c.fx.hit u{background:radial-gradient(circle,#fffbe0 0,#ffd04a 22%,#ff7a1f 46%,#d4352200 70%);animation:gmBlast .8s var(--d) both}
+@keyframes gmSplash{0%{transform:translateY(8px) scale(0);opacity:0}25%{transform:translateY(-5px) scale(1.6);opacity:1}100%{transform:translateY(0) scale(1);opacity:.85;box-shadow:0 0 0 0 #fff0}}
+@keyframes gmRing{0%{transform:scale(.2);opacity:0}20%{opacity:.9}100%{transform:scale(2.3);opacity:0}}
+@keyframes gmBlast{0%{transform:scale(.1);opacity:0}15%{opacity:1}100%{transform:scale(2.4);opacity:0}}
+@keyframes gmBoom{0%{transform:scale(0)}40%{transform:scale(1.6)}100%{transform:scale(1)}}
+@keyframes gmShake{20%{transform:translate(-1.5px,1px)}40%{transform:translate(1.5px,-1px)}60%{transform:translate(-1px,-1px)}80%{transform:translate(1px,1px)}}
+.gm-c.tg::after{content:attr(data-n);position:absolute;inset:6%;border:2px solid #ff4a3a;border-radius:50%;display:grid;place-items:center;font:800 clamp(9px,3vw,13px) system-ui;color:#fff;background:#ff4a3a88;text-shadow:0 1px 2px #0008;animation:gmPulse 1.1s infinite;z-index:2}
+.gm-c.tg::before{inset:auto;left:-30%;right:-30%;top:50%;height:1.5px;background:#ff4a3a99;box-shadow:none;z-index:1}
+@keyframes gmPulse{50%{transform:scale(1.12);opacity:.75}}
+.gm-sum{font-size:12.5px;text-align:center;color:var(--mute);width:min(100%,400px)}.gm-sum b{color:var(--ink)}.gm-sum.m b{color:#2b8a57}.gm-sum.t b{color:#d4483b}
 .gm-two .gm-lab{margin-bottom:6px}.gm-two{display:flex;gap:12px;align-items:flex-start;justify-content:center;width:100%;max-width:520px}.gm-two.w>div{flex:1;min-width:0}
-.gm-fl{display:flex;flex-direction:column;gap:1px;font-size:11.5px;margin-bottom:6px}.gm-fl b{font:600 11px system-ui;text-transform:uppercase;letter-spacing:.08em;color:var(--mute);margin-bottom:2px}.gm-fl span.dead{text-decoration:line-through;color:#d4483b}
-.gm-tray{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:420px}.gm-ship{display:flex!important;flex-direction:column;gap:4px;padding:7px 10px;border-radius:12px;border:1px solid var(--line);background:var(--card);font-size:12px}.gm-ship.on{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}.gm-ship.done{opacity:.5}.gm-ship i{display:flex;gap:2px;font-style:normal}.gm-ship i b{width:11px;height:11px;border-radius:3px;background:#44546a}
+.gm-fls{display:flex;flex-direction:column;gap:8px;flex:1;min-width:0}.gm-fl{display:flex;flex-direction:column;gap:3px}.gm-fl b{font:600 10.5px system-ui;text-transform:uppercase;letter-spacing:.08em;color:var(--mute)}.gm-fl b em{font-style:normal;text-transform:none;letter-spacing:0;opacity:.8;margin-left:3px}
+.gm-fi{display:flex;align-items:center;gap:7px;font-size:11px;position:relative}.gm-fa{display:block;height:10px;flex:none;width:52px}.gm-ship .gm-fa{width:auto!important}.gm-fa .gm-shp{height:10px;width:100%}.gm-fn{white-space:nowrap}
+.gm-fi.dead .gm-fa{filter:grayscale(1) brightness(.6);opacity:.55}.gm-fi.dead .gm-fn{color:#d4483b;text-decoration:line-through}.gm-fi.dead::after{content:"SUNK";font:700 8px system-ui;letter-spacing:.08em;color:#fff;background:#d4483b;border-radius:3px;padding:1px 3px;margin-left:auto}
+.gm-tray{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:420px}.gm-ship{display:flex!important;flex-direction:column;align-items:center;gap:5px;padding:8px 10px;border-radius:12px;border:1px solid var(--line);background:var(--card);font-size:11.5px}.gm-ship .gm-fa{height:14px}.gm-ship .gm-fa .gm-shp{height:14px}.gm-ship.on{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}.gm-ship.done{opacity:.45}
 /* word race */
 .gm-clock{display:flex;align-items:center;gap:10px;width:min(100%,360px)}.gm-bar{flex:1;height:7px;background:var(--card);border-radius:9px;overflow:hidden;border:1px solid var(--line)}.gm-bar i{display:block;height:100%;background:var(--ink);border-radius:9px;transition:width .3s linear}.gm-bar i.low{background:#d4483b}.gm-clock span{font:700 15px ui-monospace,Menlo,monospace;min-width:40px;text-align:right}
 .gm-opp{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--mute)}.gm-mini{display:flex;flex-direction:column;gap:2px}.gm-mr{display:flex;gap:2px}.gm-mr i,.gm-mini i{width:9px;height:9px;border-radius:2px;background:var(--card);border:1px solid var(--line)}

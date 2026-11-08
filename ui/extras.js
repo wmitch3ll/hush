@@ -34,7 +34,7 @@ window.HushX = function (A) {
 .hx-notes{width:min(640px,100%);min-height:70px;resize:vertical;border-radius:14px;border:1px solid var(--line);background:color-mix(in srgb,var(--card) 88%,transparent);color:var(--ink);padding:10px 12px;font:13px/1.45 system-ui;text-shadow:none}
 .hx-pop{width:min(640px,100%);background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:12px;display:grid;gap:10px;text-shadow:none;font-size:12.5px}
 .hx-sw{width:30px;height:30px;border-radius:50%;border:2px solid var(--line);cursor:pointer}.hx-sw.on{border-color:var(--acc)}
-.hx-add{display:flex;gap:6px;width:min(640px,100%)}.hx-add input,.hx-in{flex:1;min-width:0;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:13px system-ui}
+.hx-note{font-size:12px;color:var(--mute);text-align:center;margin-top:6px}.hx-add{display:flex;gap:6px;width:min(640px,100%)}.hx-add input,.hx-in{flex:1;min-width:0;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:13px system-ui}
 .hx-list{display:grid;gap:6px}.hx-item{display:flex;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
 .hx-item div{flex:1;min-width:0}.hx-item b{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hx-item small{color:var(--mute)}
 .hx-seg{display:flex;gap:4px;flex-wrap:wrap}.hx-seg .hx-b.on{background:var(--ink);color:var(--bg)}
@@ -66,7 +66,7 @@ window.HushX = function (A) {
         return `<div class=hx-tile draggable=${editing} data-u="${esc(b.url)}" title="${esc(b.title || host(b.url))}"><i style="${favStyle(b.url)}">${esc((host(b.url) || '?')[0].toUpperCase())}</i><span>${esc(b.title || host(b.url))}</span><b class=hx-x data-rm="${esc(b.url)}">✕</b></div>` }).join('')}</div>
       ${gm !== 'off' && !priv ? '<div class=hx-ghost></div>' : ''}
       ${scoresOn ? '<div class=hx-scores style="width:100%;display:flex;justify-content:center"></div>' : ''}
-      ${editing ? `<form class=hx-add><input name=u placeholder="Add a site — example.com" autocomplete=off><button class=hx-b>Add</button></form>` : ''}
+      ${editing ? `<form class=hx-add><input name=u placeholder="Add a site — example.com" autocomplete=off><button class=hx-b>Add</button></form><div class=hx-note>Drag to rearrange. Double-tap empty space or tap Done to finish.</div>` : ''}
       ${notes ? `<textarea class=hx-notes placeholder="Quick notes — saved on this device">${esc(LS.get('notes', ''))}</textarea>` : ''}
       ${customizing ? customizer() : ''}
       <div class=hx-row>${priv ? '' : `<button class=hx-b data-a=edit>${editing ? 'Done' : 'Edit shortcuts'}</button><button class=hx-b data-a=custom>${customizing ? 'Close' : 'Customize'}</button>`}</div>
@@ -96,6 +96,10 @@ window.HushX = function (A) {
         let over = null; t.onpointermove = m => { const o = document.elementFromPoint(m.clientX, m.clientY)?.closest('.hx-tile'); tiles.forEach(x => x.classList.toggle('hx-over', x === o && x !== t)); over = o; };
         t.onpointerup = () => { t.onpointermove = t.onpointerup = null; t.classList.remove('hx-drag'); tiles.forEach(x => x.classList.remove('hx-over')); if (over && over !== t) order(t.dataset.u, over.dataset.u); }; });
     });
+    // Like iOS: double-tap empty space to leave rearrange mode.
+    let lastUp = 0, lx = 0, ly = 0;
+    el.onpointerup = e => { if (!editing) return; if (e.target.closest('.hx-tile,button,input,textarea,form,a,.hx-scores,.hx-notes')) { lastUp = 0; return; }
+      const n = Date.now(); if (n - lastUp < 450 && Math.hypot(e.clientX - lx, e.clientY - ly) < 45) { lastUp = 0; editing = false; redraw(); } else { lastUp = n; lx = e.clientX; ly = e.clientY; } };
     if (customizing) wireCustomizer(el, redraw);
     if (scoresOn) HUSH_SCORES.mount(el.querySelector('.hx-scores'), A); else if (window.HUSH_SCORES) HUSH_SCORES.stop();
     if (gm !== 'off' && !priv) HUSH_GHOST.mount(el.querySelector('.hx-ghost'), gm); else if (window.HUSH_GHOST) HUSH_GHOST.stop();

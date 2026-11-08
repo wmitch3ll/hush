@@ -259,9 +259,11 @@ pub fn load_lists() -> Vec<String> {
     vec![include_str!("../lists/easylist.txt").into(), include_str!("../lists/easyprivacy.txt").into(),
          include_str!("../lists/easylist-cookie.txt").into(),
          // uBlock Origin lists (GPLv3): YouTube / anti-adblock network + element rules. Their +js() scriptlets run via SCRIPTLETS_JS.
-         include_str!("../lists/ubo-filters.txt").into(), include_str!("../lists/ubo-quick-fixes.txt").into()]
+         include_str!("../lists/ubo-filters.txt").into(), include_str!("../lists/ubo-quick-fixes.txt").into(), include_str!("../lists/hush-extras.txt").into()]
 }
-fn lists_for(app: &AppHandle) -> Vec<String> { store::lists_override(app).unwrap_or_else(load_lists) }
+/// Hush's own rules (Discord join pop-ups). Added even when the other lists are replaced by a downloaded update.
+const EXTRAS: &str = include_str!("../lists/hush-extras.txt");
+fn lists_for(app: &AppHandle) -> Vec<String> { let mut v = store::lists_override(app).unwrap_or_else(load_lists); if !v.iter().any(|l| l.contains("Hush extras")) { v.push(EXTRAS.into()); } v }
 
 /// Rebuild the engine from lists + custom filters (hot swap; allow list is kept).
 pub fn rebuild(app: &AppHandle) {
@@ -298,31 +300,69 @@ const BANGS: &[(&str, &str)] = &[
 pub fn bang(s: &store::Settings, t: &str) -> Option<String> {
     let words: Vec<&str> = t.split_whitespace().collect();
     let pos = words.iter().position(|w| w.starts_with('!') && w.len() > 1)?;
-    let key = words[pos][1..].to_lowercase();
+    let word = &words[pos][1..];
     let custom = s.ui.get("bangs").cloned().unwrap_or_default();
-    let tpl = custom.split('|').filter_map(|x| x.split_once('=')).find(|(k, v)| k.trim().eq_ignore_ascii_case(&key) && v.trim().starts_with("https://"))
-        .map(|(_, v)| v.trim().to_string()).or_else(|| BANGS.iter().find(|(k, _)| *k == key).map(|(_, v)| v.to_string()))?;
-    let q: String = words.iter().enumerate().filter(|(i, _)| *i != pos).map(|(_, w)| *w).collect::<Vec<_>>().join(" ");
-    let enc: String = url::form_urlencoded::byte_serialize(q.as_bytes()).collect();
+    let find = |k: &str| -> Option<String> { custom.split('|').filter_map(|x| x.split_once('=')).find(|(ck, v)| ck.trim().eq_ignore_ascii_case(k) && v.trim().starts_with("https://"))
+        .map(|(_, v)| v.trim().to_string()).or_else(|| BANGS.iter().find(|(bk, _)| bk.eq_ignore_ascii_case(k)).map(|(_, v)| v.to_string())) };
+    // "!g cats" and also "!gcats": an exact shortcut wins, otherwise the longest shortcut the word starts with.
+    let (tpl, glued) = match find(word) { Some(t) => (t, String::new()), None => {
+        if !word.is_ascii() { return None; }
+        let mut got = None; for n in (1..word.len()).rev() { if let Some(t) = find(&word[..n]) { got = Some((t, word[n..].to_string())); break; } }
+        got? } };
+    let mut parts: Vec<&str> = Vec::new(); if !glued.is_empty() { parts.push(&glued); }
+    parts.extend(words.iter().enumerate().filter(|(i, _)| *i != pos).map(|(_, w)| *w));
+    let enc: String = url::form_urlencoded::byte_serialize(parts.join(" ").as_bytes()).collect();
     Some(if tpl.contains("%s") { tpl.replace("%s", &enc) } else { tpl })
 }
-/// One-word names people type meaning "the actual site" (espn, usatoday). Anything not listed is searched, so ordinary words are never hijacked.
-const SITES: &str = "espn usatoday cnn bbc nbcnews cbsnews abcnews foxnews msnbc nytimes washingtonpost wsj reuters apnews npr bloomberg forbes cnbc theguardian  newsweek politico axios huffpost buzzfeed vox theverge wired engadget techcrunch arstechnica gizmodo mashable \
- youtube google gmail facebook instagram twitter reddit tiktok snapchat pinterest linkedin tumblr twitch discord whatsapp telegram netflix hulu disneyplus hbomax  peacocktv paramountplus spotify soundcloud pandora imdb rottentomatoes amazon ebay etsy walmart  costco bestbuy homedepot lowes ikea wayfair macys nordstrom kohls chewy  aliexpress shein temu zappos \
- apple microsoft github gitlab stackoverflow medium wikipedia quora duckduckgo yahoo bing  aol protonmail outlook hotmail icloud dropbox  zoom slack notion trello asana figma canva adobe openai anthropic nvidia intel amd samsung sony nintendo playstation xbox  epicgames roblox minecraft ign gamespot kotaku polygon \
- nfl nba mlb nhl mls ncaa wnba ufc wwe pga nascar cbssports nbcsports foxsports bleacherreport theathletic sportsillustrated golfdigest yardbarker deadspin hyperfeast \
- paypal venmo cashapp chase wellsfargo bankofamerica  capitalone  americanexpress fidelity schwab vanguard robinhood coinbase binance kraken \
-  accuweather wunderground webmd mayoclinic nih cdc irs usps  fedex dhl dmv  whitehouse  \
- uber lyft doordash grubhub ubereats instacart airbnb vrbo expedia booking kayak tripadvisor   southwest jetblue yelp zillow redfin realtor trulia craigslist indeed glassdoor \
- craigslist autotrader  carvana carmax edmunds kbb tesla ford toyota honda \
- coursera udemy khanacademy duolingo chegg quizlet grammarly wix squarespace shopify wordpress godaddy cloudflare";
+/// One-word names people type meaning "the actual site" (espn, usatoday). name or name=domain. Anything not listed is searched, so ordinary words are never hijacked.
+const SITES: &str = "espn npr=npr.org usatoday cnn bbc=bbc.com nbcnews cbsnews abcnews foxnews msnbc nytimes washingtonpost wsj reuters apnews bloomberg forbes cnbc newsweek politico  \
+ axios huffpost buzzfeed vox theverge wired engadget techcrunch arstechnica gizmodo mashable theatlantic newyorker economist ft=ft.com latimes  \
+ chicagotribune bostonglobe nypost dailymail=dailymail.co.uk thesun telegraph=telegraph.co.uk theguardian=theguardian.com skynews=news.sky.com  \
+ aljazeera dw france24 rt=rt.com cbc ctvnews globalnews smh abc9 foxbusiness thehill rollingstone variety hollywoodreporter deadline tmz eonline  \
+ usmagazine vulture pitchfork billboard youtube google gmail facebook instagram twitter x=x.com reddit tiktok snapchat pinterest linkedin tumblr twitch  \
+ discord whatsapp telegram netflix hulu disneyplus hbomax=max.com peacocktv paramountplus crunchyroll funimation vimeo dailymotion spotify soundcloud  \
+ pandora tidal deezer audible goodreads letterboxd imdb rottentomatoes metacritic fandango atomtickets ticketmaster stubhub seatgeek vividseats  \
+ eventbrite amazon ebay etsy walmart bestbuy homedepot lowes ikea wayfair macys nordstrom kohls chewy aliexpress shein temu zappos costco samsclub aldi  \
+ kroger safeway publix wegmans heb cvs walgreens riteaid petco petsmart autozone advanceautoparts oreillyauto rei dickssportinggoods academy footlocker  \
+ nike adidas puma underarmour lululemon oldnavy bananarepublic jcrew hm zara uniqlo forever21 urbanoutfitters anthropologie sephora ulta  \
+ bathandbodyworks victoriassecret apple microsoft github gitlab bitbucket stackoverflow stackexchange medium wikipedia=wikipedia.org  \
+ wikimedia=wikimedia.org quora duckduckgo yahoo bing aol protonmail outlook hotmail icloud dropbox zoom slack notion trello asana figma canva adobe  \
+ openai=openai.com anthropic=anthropic.com claude=claude.ai chatgpt=chatgpt.com perplexity=perplexity.ai nvidia intel amd samsung sony nintendo  \
+ playstation xbox steampowered=store.steampowered.com epicgames roblox minecraft ign gamespot kotaku polygon twitchtv=twitch.tv gog itch humblebundle  \
+ ea=ea.com ubisoft blizzard riotgames activision rockstargames nfl nba mlb nhl mls ncaa=ncaa.com wnba ufc wwe pga nascar cbssports nbcsports foxsports  \
+ bleacherreport theathletic sportsillustrated golfdigest yardbarker deadspin hyperfeast sportscenter 247sports on3 fanduel draftkings betmgm caesars  \
+ pointsbet prizepicks underdogfantasy yahoosports=sports.yahoo.com fantasypros nflfantasy=fantasy.nfl.com basketballreference pro-football-reference  \
+ baseball-reference hockey-reference transfermarkt fifa uefa premierleague nhra formula1 motogp indycar paypal venmo cashapp zelle chase wellsfargo  \
+ bankofamerica capitalone americanexpress fidelity schwab vanguard robinhood coinbase binance kraken creditkarma nerdwallet investopedia morningstar  \
+ marketwatch seekingalpha tradingview finviz yahoofinance=finance.yahoo.com turbotax intuit quickbooks mint ally sofi chime usbank pnc truist  \
+ citibank=citi.com regions accuweather wunderground webmd mayoclinic healthline clevelandclinic nih=nih.gov cdc=cdc.gov fda=fda.gov irs=irs.gov  \
+ ssa=ssa.gov usps ups fedex dhl dmv=dmv.org usa=usa.gov whitehouse=whitehouse.gov congress=congress.gov supremecourt=supremecourt.gov  \
+ usajobs=usajobs.gov studentaid=studentaid.gov medicare=medicare.gov healthcare=healthcare.gov uber lyft doordash grubhub ubereats instacart airbnb  \
+ vrbo expedia booking kayak tripadvisor southwest jetblue alaskaair=alaskaair.com aa=aa.com hertz avis enterprise marriott hilton hyatt ihg yelp zillow  \
+ redfin realtor trulia apartments=apartments.com craigslist indeed glassdoor ziprecruiter monster autotrader carvana carmax edmunds kbb cargurus tesla  \
+ ford toyota honda chevrolet gm=gm.com nissan bmw mercedes audi volkswagen hyundai kia subaru mazda jeep dodge ram lexus acura harley coursera udemy  \
+ khanacademy duolingo chegg quizlet grammarly wix squarespace shopify wordpress godaddy namecheap cloudflare vercel netlify heroku digitalocean aws  \
+ azure oracle ibm cisco dell hp lenovo asus acer logitech corsair razer garmin fitbit gopro dji sonos bose mcdonalds starbucks chipotle subway wendys  \
+ burgerking tacobell kfc dominos pizzahut papajohns dunkindonuts panera chickfila popeyes dennys ihop applebees outback cheesecakefactory olivegarden  \
+ allrecipes foodnetwork epicurious seriouseats bonappetit simplyrecipes yummly harvard=harvard.edu mit=mit.edu stanford=stanford.edu yale=yale.edu  \
+ princeton=princeton.edu berkeley=berkeley.edu ucla=ucla.edu nyu=nyu.edu columbia=columbia.edu cornell=cornell.edu umich=umich.edu osu=osu.edu  \
+ utexas=utexas.edu ufl=ufl.edu fsu=fsu.edu psu=psu.edu usc=usc.edu unc=unc.edu uga=uga.edu lsu=lsu.edu clemson=clemson.edu azlyrics  \
+ ultimate-guitar=ultimate-guitar.com unsplash pexels pixabay shutterstock gettyimages flickr imgur giphy tenor 9gag knowyourmeme web.archive  \
+ wayback=web.archive.org snopes nbc abc cbs fox cw pbs=pbs.org hgtv tlc nationalgeographic natgeo smithsonianmag scientificamerican sciencemag  \
+ nasa=nasa.gov noaa=noaa.gov livescience ancestry 23andme familysearch meetup nextdoor patreon kickstarter gofundme substack onlyfans tmobile verizon  \
+ att xfinity comcast spectrum cox mintmobile lastpass 1password bitwarden dashlane nordvpn expressvpn surfshark protonvpn mullvad  \
+ torproject=torproject.org eff=eff.org privacyguides=privacyguides.org";
 fn site_for(word: &str) -> Option<String> {
     let w = word.to_ascii_lowercase();
-    if w.len() < 2 || !w.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit()) { return None; }
-    let tld = match w.as_str() { "npr" | "nih" | "cdc" | "ncaa" => "org", "whitehouse" | "congress" | "irs" | "usa" | "nih_" => "gov", "wikipedia" => "org", "hyperfeast" => "com", _ => "com" };
-    let host = match w.as_str() { "congress" => "congress.gov".to_string(), "usa" => "usa.gov".to_string(), "irs" => "irs.gov".to_string(), "cdc" => "cdc.gov".to_string(), "nih" => "nih.gov".to_string(),
-        "whitehouse" => "whitehouse.gov".to_string(), "dmv" => "dmv.org".to_string(), "ncaa" => "ncaa.com".to_string(), "disneyplus" => "disneyplus.com".to_string(), "max" => "max.com".to_string(), _ => format!("{w}.{tld}") };
-    SITES.split_whitespace().any(|x| x == w).then(|| format!("https://www.{host}")).map(|u| u.replacen("www.hyperfeast", "hyperfeast", 1))
+    if w.len() < 2 || w.len() > 30 || !w.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-') { return None; }
+    for e in SITES.split_whitespace() {
+        let (name, host) = match e.split_once('=') { Some((n, h)) => (n, h.to_string()), None => (e, format!("{e}.com")) };
+        if name == w {
+            // sites that live at the bare domain keep it, everything else gets www.
+            return Some(if host == "hyperfeast.com" || host.matches('.').count() > 1 { format!("https://{host}") } else { format!("https://www.{host}") });
+        }
+    }
+    None
 }
 pub fn resolve_with(s: &store::Settings, input: &str) -> String {
     let t = input.trim();
@@ -667,7 +707,12 @@ mod security_tests {
         assert_eq!(resolve_with(&s, "espn"), "https://www.espn.com");
         assert_eq!(resolve_with(&s, "USAToday"), "https://www.usatoday.com");
         assert_eq!(resolve_with(&s, "!hf"), "https://hyperfeast.com");
+        assert_eq!(resolve_with(&s, "!g cats and dogs"), "https://www.google.com/search?q=cats+and+dogs");
+        assert_eq!(resolve_with(&s, "!gcats"), "https://www.google.com/search?q=cats");
+        assert!(resolve_with(&s, "!gh hush").starts_with("https://github.com/search"));
         assert_eq!(resolve_with(&s, "npr"), "https://www.npr.org");
+        assert_eq!(resolve_with(&s, "mcdonalds"), "https://www.mcdonalds.com");
+        assert_eq!(resolve_with(&s, "harvard"), "https://www.harvard.edu");
         assert!(!resolve_with(&s, "pizza").contains("pizza.com"));
         assert!(!resolve_with(&s, "espn scores").starts_with("https://www.espn.com"));
     }
