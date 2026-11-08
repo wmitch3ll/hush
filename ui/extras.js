@@ -348,7 +348,7 @@ window.HushX = function (A) {
     const f = n => n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(n);
     const items = [[blockedWeek, 'ads & trackers blocked'], [c.tor || 0, 'pages opened through Tor'], [c.pop || 0, 'popup ads stopped'], [c.meta || 0, 'photos cleaned of location data']].filter(x => x[0] > 0);
     if (!items.length) return 'Ads, trackers and cookie banners are blocked automatically.';
-    return `<span style="display:block;font-weight:600;margin-bottom:2px">Your week with Hush</span>` + items.map(([n, l]) => `<b>${f(n)}</b> ${l}`).join(' · '); }
+    return `<div style="display:block;width:100%;flex:0 0 100%;text-align:center;font-weight:600;margin:0 0 2px">Your week with Hush</div><div style="display:block;width:100%;flex:0 0 100%;text-align:center">` + items.map(([n, l]) => `<b>${f(n)}</b> ${l}`).join(' · ') + '</div>'; }
   // Tab notes: a private note pinned to a page, kept only on this device.
   const noteKey = u => { try { const x = new URL(u); x.hash = ''; return x.origin + x.pathname.replace(/\/$/, '') + x.search; } catch (e) { return ''; } };
   const tabNote = { get: u => { try { return JSON.parse(localStorage.getItem('hush.tabnotes') || '{}')[noteKey(u)] || ''; } catch (e) { return ''; } },

@@ -3,13 +3,15 @@
 // against the rules, and agree on the result - there is no game server.
 (function () {
   'use strict';
-  const C = window.HUSH_GAMES_CORE, { Chess, Sea, Word } = C;
+  const C = window.HUSH_GAMES_CORE, { Chess, Sea, Word, Golf, ChessAI, SeaAI, rng } = C;
   const G = window.HUSH_GAMES = {};
   let H = null;           // host adapter, set by messenger.js
   let S = null;           // { [gameId]: game }
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const now = () => Date.now();
-  const TYPES = { chess: 'Chess', sea: 'Battleship', word: 'Word race' };
+  const TYPES = { chess: 'Chess', sea: 'Battleship', word: 'Word race', ball: 'Mini golf', disc: 'Disc golf' };
+  const isGolf = t => t === 'ball' || t === 'disc';
+  const nm = pk => pk === 'cpu' ? 'Computer' : H.name(pk);
 
   // ---------------------------------------------------------------- small SHA-256 (synchronous, so rules checks stay simple)
   const K256 = [], H256 = [];
@@ -37,7 +39,7 @@
   const save = () => { try { H.set(S); } catch {} };
   const me = () => H.me();
   const opp = g => g.key;
-  const peerName = g => H.name(g.key);
+  const peerName = g => nm(g.key);
   const isHost = g => g.host === me();
   const other = (g, pk) => pk === me() ? g.key : me();
 
@@ -57,6 +59,7 @@
     if (type === 'chess') { g.st = Chess.init(); g.moves = []; g.sans = []; g.seen = {}; g.seen[Chess.key(g.st)] = 1; g.draw = null; }
     if (type === 'sea') { g.me = { board: null, salt: null, h: null }; g.they = { h: null }; g.shots = {}; g.res = {}; g.sunk = {}; g.phase = 'place'; g.turn = null; g.await = null; g.cheat = null; g.revealed = false; }
     if (type === 'word') { g.word = null; g.sb = null; g.mine = { gs: [], pat: [], start: 0, fin: null }; g.th = { pat: [], fin: null }; }
+    if (isGolf(type)) { g.mine = { holes: [], cur: null }; g.th = { holes: [] }; }
     load()[id] = g; return g;
   }
   const colorOf = (g, pk) => ((parseInt(g.seed[0], 16) & 1) ? (pk === g.host ? 'w' : 'b') : (pk === g.host ? 'b' : 'w'));
@@ -73,18 +76,19 @@
     if (g.status === 'done' || g.status === 'declined' || g.status === 'cancelled') return null;
     if (k === 'dec') { if (mine === isHost(g) || g.status !== 'invite') return null; g.status = 'declined'; g.upd = now(); return TYPES[g.type] + ' challenge declined'; }
     if (k === 'can') { if (from !== g.host || g.status !== 'invite') return null; g.status = 'cancelled'; g.upd = now(); return 'Challenge cancelled'; }
-    if (k === 'rsn') { if (g.status !== 'play') return null; finish(g, 'resign', other(g, from)); return mine ? '' : H.name(from) + ' resigned'; }
+    if (k === 'rsn') { if (g.status !== 'play') return null; finish(g, 'resign', other(g, from)); return mine ? '' : nm(from) + ' resigned'; }
     if (k === 'acc') {
       if (g.status !== 'invite' || from === g.host) return null;
       if (g.type === 'word') { if (!ok.hex(d && d.sb, 16)) return null; g.sb = d.sb; g.word = wordFor(g.seed, g.sb); }
       g.status = 'play'; g.upd = now();
       if (g.type === 'sea') g.phase = 'place';
-      return mine ? '' : H.name(from) + ' accepted your ' + TYPES[g.type] + ' challenge';
+      return mine ? '' : nm(from) + ' accepted your ' + TYPES[g.type] + ' challenge';
     }
     if (g.status !== 'play') return null;
     if (g.type === 'chess') return applyChess(g, from, k, d);
     if (g.type === 'sea') return applySea(g, from, k, d);
     if (g.type === 'word') return applyWord(g, from, k, d);
+    if (isGolf(g.type)) return applyGolf(g, from, k, d);
     return null;
   }
 
@@ -97,10 +101,10 @@
       const kk = Chess.key(g.st); g.seen[kk] = (g.seen[kk] || 0) + 1;
       const st = Chess.status(g.st);
       if (st === 'mate') finish(g, 'mate', from); else if (st === 'stalemate' || st === 'material' || st === 'fifty') finish(g, st, null); else if (g.seen[kk] >= 3) finish(g, 'rep', null);
-      if (g.status === 'done') return mine ? '' : (g.end.w ? 'Checkmate - ' + H.name(from) + ' wins' : 'Chess ended in a draw');
+      if (g.status === 'done') return mine ? '' : (g.end.w ? 'Checkmate - ' + nm(from) + ' wins' : 'Chess ended in a draw');
       return mine ? '' : (st === 'check' ? 'Check! Your move in Chess' : 'Your move in Chess');
     }
-    if (k === 'dro') { if (g.draw) return null; g.draw = from; g.upd = now(); return mine ? '' : H.name(from) + ' offers a draw'; }
+    if (k === 'dro') { if (g.draw) return null; g.draw = from; g.upd = now(); return mine ? '' : nm(from) + ' offers a draw'; }
     if (k === 'dra') { if (!g.draw || g.draw === from) return null; finish(g, 'draw', null); return mine ? '' : 'Draw agreed'; }
     if (k === 'drd') { if (!g.draw || g.draw === from) return null; g.draw = null; g.upd = now(); return mine ? '' : 'Draw declined'; }
     return null;
@@ -122,7 +126,7 @@
       if (g.phase !== 'place' || !ok.hex(d && d.h, 64)) return null; const t = mine ? g.me : g.they; if (t.ready) return null;
       if (mine && !(g.me.board && Sea.valid(g.me.board))) return null; t.h = d.h; t.ready = true;
       if (g.me.ready && g.they.ready) { g.phase = 'battle'; g.turn = g.host; return g.turn === me() ? 'Battleship: fleets are set - you fire first' : 'Battleship: fleets are set'; }
-      return mine ? '' : H.name(from) + ' has placed their fleet';
+      return mine ? '' : nm(from) + ' has placed their fleet';
     }
     if (g.phase !== 'battle' && k !== 'rv') return null;
     if (k === 'sh') {
@@ -142,11 +146,11 @@
         if (by === me()) { const good = checkFleet(g, from, d.b, d.sa); if (!good) g.cheat = from; }
         finish(g, g.cheat ? 'cheat' : 'fleet', by); g.turn = null; g.revealed = true;
         if (by === me() && g === S[g.id]) setTimeout(() => { try { sendMsg(g, 'rv', { b: g.me.board, sa: g.me.salt }); } catch {} }, 60);
-        return by === me() ? '' : 'Battleship: ' + H.name(from) + ' sank your last ship - ' + H.name(by) + ' wins';
+        return by === me() ? '' : 'Battleship: ' + nm(from) + ' sank your last ship - ' + nm(by) + ' wins';
       }
       g.turn = from;
       const msg = d.r === 'sunk' ? 'sank your ' + Sea.SHIPS[d.n].n.toLowerCase() : d.r;
-      return by === me() ? (from === me() ? '' : '') : 'Battleship: ' + H.name(by) + ' fired - ' + (d.r === 'miss' ? 'a miss' : d.r === 'hit' ? 'a hit' : 'they sank your ' + Sea.SHIPS[d.n].n.toLowerCase()) + '. Your turn';
+      return by === me() ? (from === me() ? '' : '') : 'Battleship: ' + nm(by) + ' fired - ' + (d.r === 'miss' ? 'a miss' : d.r === 'hit' ? 'a hit' : 'they sank your ' + Sea.SHIPS[d.n].n.toLowerCase()) + '. Your turn';
     }
     if (k === 'rv') {
       if (!(g.status === 'done' && g.end && g.end.w === from) || g.revealed2) return null; g.revealed2 = true;
@@ -162,6 +166,18 @@
     sendMsg(g, 'rs', out);
   };
 
+  // Golf: both play the same three holes in their own time and send their strokes for each hole; lowest total wins.
+  function applyGolf(g, from, k, d) {
+    if (k !== 'hole') return null; const mine = from === me(), t = mine ? g.mine : g.th;
+    if (!d || t.holes.length >= Golf.HOLES || d.h !== t.holes.length || !Number.isInteger(d.n) || d.n < 1 || d.n > Golf.MAXS) return null;
+    t.holes.push(d.n); g.upd = now();
+    if (g.mine.holes.length === Golf.HOLES && g.th.holes.length === Golf.HOLES) {
+      const a = g.mine.holes.reduce((x, y) => x + y, 0), b = g.th.holes.reduce((x, y) => x + y, 0);
+      finish(g, a === b ? 'tie' : 'golf', a === b ? null : a < b ? me() : g.key);
+      return mine ? '' : TYPES[g.type] + ': ' + (g.end.w === me() ? 'you won' : g.end.w ? nm(from) + ' won' : 'a tie') + ' (' + b + ' to your ' + a + ')';
+    }
+    return mine ? '' : nm(from) + ' finished hole ' + (d.h + 1) + ' of ' + Golf.HOLES;
+  }
   function applyWord(g, from, k, d) {
     const mine = from === me();
     if (k === 'gs') { if (mine) return ''; if (typeof d !== 'string' || !/^[012]{5}$/.test(d) || g.th.pat.length >= 6 || g.th.fin) return null; g.th.pat.push(d); g.upd = now(); return ''; }
@@ -176,9 +192,9 @@
       if (g.mine.fin && g.th.fin) {
         const r = Word.winner(g.mine.fin, g.th.fin), w = r === 'a' ? me() : r === 'b' ? g.key : null;
         finish(g, g.th.fin.bad ? 'cheat' : r === 'none' ? 'nobody' : r === 'tie' ? 'tie' : 'race', w);
-        return mine ? '' : 'Word race result: ' + (w === me() ? 'you won' : w ? H.name(w) + ' won' : 'a draw');
+        return mine ? '' : 'Word race result: ' + (w === me() ? 'you won' : w ? nm(w) + ' won' : 'a draw');
       }
-      return mine ? '' : H.name(from) + ' finished their word - ' + (fin.solved ? 'solved it in ' + fin.n : 'did not solve it');
+      return mine ? '' : nm(from) + ' finished their word - ' + (fin.solved ? 'solved it in ' + fin.n : 'did not solve it');
     }
     return null;
   }
@@ -189,7 +205,8 @@
     // Apply to a throwaway copy first so an illegal move is never sent.
     const probe = JSON.parse(JSON.stringify(g)); if (apply(probe, me(), k, d) === null) return false;
     g.tx = s; g.rx[me()] = s; const note = apply(g, me(), k, d); g.upd = now(); save();
-    H.send(g.key, { g: g.id, s, k, d });
+    if (g.key !== 'cpu') H.send(g.key, { g: g.id, s, k, d });
+    if (g.key === 'cpu') setTimeout(() => cpuTurn(g), 0);
     refresh(g); H.repaint(); return note !== null;
   }
 
@@ -204,7 +221,7 @@
       if (!mineEcho && Object.values(S).filter(x => x.key === key && x.status === 'invite' && x.host === from).length >= 5) return null;
       const opt = {}; if (p.y === 'word') opt.secs = [120, 180, 300].includes(p.o && p.o.secs) ? p.o.secs : 180;
       g = create(key, p.y, from, p.g, p.sd, opt); g.tx = mineEcho ? 1 : 0; g.rx[from] = 1; save();
-      return { card: true, notify: mineEcho ? '' : H.name(from) + ' challenged you to ' + TYPES[p.y] };
+      return { card: true, notify: mineEcho ? '' : nm(from) + ' challenged you to ' + TYPES[p.y] };
     }
     if (!g || g.key !== key || (from !== g.key && from !== me())) return null;
     const want = (g.rx[from] || 0) + 1;
@@ -251,28 +268,35 @@
   const GICON = {
     chess: pieceSvg('N'),
     sea: '<svg viewBox="0 0 45 45" class="gm-pc gi"><path d="M6 27h33l-5 8H12z"/><path d="M20 10h5v11h-5zM12 21h21v6H12z"/></svg>',
+    ball: '<svg viewBox="0 0 45 45" class="gm-pc gi"><circle cx="19" cy="31" r="6.5"/><path d="M30 8v25" stroke="currentColor" stroke-width="2.2" fill="none"/><path d="M30 8l9 4-9 4z"/><ellipse cx="30" cy="35" rx="6" ry="2" opacity=".4"/></svg>',
+    disc: '<svg viewBox="0 0 45 45" class="gm-pc gi"><ellipse cx="22.5" cy="26" rx="16" ry="7"/><ellipse cx="22.5" cy="23.5" rx="12" ry="4.6" opacity=".45"/><path d="M6 14c6-6 20-7 32-2" stroke="currentColor" stroke-width="1.8" fill="none" stroke-dasharray="2 3"/></svg>',
     word: '<svg viewBox="0 0 45 45" class="gm-pc gi"><rect x="5" y="14" width="10" height="10" rx="2"/><rect x="17.5" y="14" width="10" height="10" rx="2" opacity=".6"/><rect x="30" y="14" width="10" height="10" rx="2" opacity=".35"/><rect x="5" y="27" width="10" height="10" rx="2" opacity=".35"/><rect x="17.5" y="27" width="10" height="10" rx="2"/></svg>'
   };
   // One line telling the user where the game stands.
   G.summary = g => {
     if (!g) return { line: 'Game no longer available', hot: false };
-    const nm = peerName(g);
-    if (g.status === 'invite') return isHost(g) ? { line: 'Waiting for ' + nm + ' to accept', hot: false } : { line: nm + ' challenged you', hot: true, ask: true };
+    const who = peerName(g);
+    if (g.status === 'invite') return isHost(g) ? { line: 'Waiting for ' + who + ' to accept', hot: false } : { line: who + ' challenged you', hot: true, ask: true };
     if (g.status === 'declined') return { line: 'Challenge declined', hot: false };
     if (g.status === 'cancelled') return { line: 'Challenge cancelled', hot: false };
     if (g.status === 'done') {
       const w = g.end && g.end.w, why = g.end && g.end.why;
-      const t = why === 'cheat' ? 'Game stopped: a move or fleet did not check out' : !w ? (why === 'nobody' ? 'Nobody found the word' : 'Draw') : w === me() ? 'You won' : nm + ' won';
+      const tot = h => h.reduce((x, y) => x + y, 0), sc = isGolf(g.type) && g.mine.holes.length ? ' (' + tot(g.mine.holes) + ' to ' + tot(g.th.holes) + ')' : '';
+      const t = why === 'cheat' ? 'Game stopped: a move or fleet did not check out' : !w ? (why === 'nobody' ? 'Nobody found the word' : 'Draw') : w === me() ? 'You won' + sc : who + ' won' + sc;
       return { line: t, hot: false, done: true };
     }
-    if (g.type === 'chess') { const my = colorOf(g, me()) === g.st.t; return { line: my ? (Chess.inCheck(g.st) ? 'Check - your move' : 'Your move') : 'Waiting for ' + nm, hot: my }; }
+    if (g.type === 'chess') { const my = colorOf(g, me()) === g.st.t; return { line: my ? (Chess.inCheck(g.st) ? 'Check - your move' : 'Your move') : 'Waiting for ' + who, hot: my }; }
     if (g.type === 'sea') {
-      if (g.phase === 'place') return g.me.ready ? { line: 'Waiting for ' + nm + ' to place their fleet', hot: false } : { line: 'Place your fleet', hot: true };
-      return g.turn === me() ? { line: 'Your shot', hot: true } : { line: 'Waiting for ' + nm, hot: false };
+      if (g.phase === 'place') return g.me.ready ? { line: 'Waiting for ' + who + ' to place their fleet', hot: false } : { line: 'Place your fleet', hot: true };
+      return g.turn === me() ? { line: 'Your shot', hot: true } : { line: 'Waiting for ' + who, hot: false };
+    }
+    if (isGolf(g.type)) {
+      const n = g.mine.holes.length; if (n < Golf.HOLES) return { line: n ? 'Hole ' + (n + 1) + ' of ' + Golf.HOLES + ' - your turn to play' : 'Ready - ' + Golf.HOLES + ' holes', hot: true };
+      return { line: 'Waiting for ' + nm(g.key) + ' to finish', hot: false };
     }
     if (g.type === 'word') {
       if (!g.mine.fin) return { line: g.mine.start ? 'In progress - ' + (g.opt.secs / 60) + ' min race' : 'Ready when you are - ' + (g.opt.secs / 60) + ' min', hot: true };
-      return { line: 'Waiting for ' + nm + ' to finish', hot: false };
+      return { line: 'Waiting for ' + who + ' to finish', hot: false };
     }
     return { line: '', hot: false };
   };
@@ -291,22 +315,70 @@
     el.onclick = e => { e.stopPropagation(); const id = el.dataset.gid, a = el.dataset.ga; if (a === 'open') G.open(id); else if (a === 'acc') G.answer(id, true); else if (a === 'dec') G.answer(id, false); else if (a === 'can') G.cancel(id); };
   });
 
+  // ---------------------------------------------------------------- playing the computer
+  const busy = new Set();
+  function cpuApply(g, k, d) { if (g.status !== 'play') return null; g.rx.cpu = (g.rx.cpu || 0) + 1; const r = apply(g, 'cpu', k, d); g.upd = now(); save(); refresh(g); H.repaint(); return r; }
+  const LVL = [.55, .8, 1];
+  function cpuTurn(g) {
+    if (!g || g.key !== 'cpu' || g.status !== 'play' || busy.has(g.id)) return;
+    const lvl = g.lvl || 2;
+    if (g.type === 'chess') {
+      const cc = colorOf(g, 'cpu'); if (g.st.t !== cc) return; busy.add(g.id);
+      setTimeout(() => { setTimeout(() => { busy.delete(g.id); if (g.status !== 'play' || g.st.t !== cc) return; const m = ChessAI.pick(g.st, lvl); if (m) cpuApply(g, 'mv', Chess.uci(m)); }, 30); }, 420 + Math.random() * 500);
+    } else if (g.type === 'sea') {
+      if (g.phase !== 'battle') return;
+      if (g.await && g.await.by === me()) { busy.add(g.id);
+        setTimeout(() => { busy.delete(g.id); if (!g.await || g.await.by !== me()) return; const i = g.await.i, r = Sea.shoot(g.cpu.board, (g.shots[me()] || []).slice(0, -1), i), out = { i, r: r.r }; if (r.r === 'sunk') out.n = r.n; if (r.over) { out.end = 1; out.b = g.cpu.board; out.sa = g.cpu.salt; }
+          cpuApply(g, 'rs', out); cpuTurn(g); }, 500); }
+      else if (g.turn === 'cpu' && !g.await) { busy.add(g.id);
+        setTimeout(() => { busy.delete(g.id); if (g.status !== 'play' || g.turn !== 'cpu' || g.await) return; const i = SeaAI.pick(g.shots.cpu || [], g.res.cpu || {}, g.sunk.cpu || [], lvl); cpuApply(g, 'sh', i); }, 800 + Math.random() * 600); }
+    } else if (g.type === 'word') {
+      const pl = g.plan; if (!pl || g.th.fin) return;
+      while (g.th.pat.length < Math.min(g.mine.gs.length, pl.gs.length - 1)) cpuApply(g, 'gs', Word.score(pl.gs[g.th.pat.length], g.word));
+      if (g.mine.fin) cpuApply(g, 'fin', { gs: pl.gs, ms: pl.ms, solved: pl.solved });
+    } else if (isGolf(g.type)) {
+      while (g.status === 'play' && g.th.holes.length < g.mine.holes.length) cpuApply(g, 'hole', { h: g.th.holes.length, n: g.plan[g.th.holes.length] });
+    }
+  }
+  G.startSolo = (type, lvl, opt) => {
+    if (!TYPES[type]) return; load();
+    if (Object.values(S).filter(x => x.key === 'cpu' && x.status === 'play').length >= 8) return H.toast('Finish or resign one of your solo games first');
+    const id = rnd(8), seed = rnd(8), o = {}; if (type === 'word') o.secs = [120, 180, 300].includes(opt && opt.secs) ? opt.secs : 180;
+    const g = create('cpu', type, me(), id, seed, o); g.lvl = [1, 2, 3].includes(lvl) ? lvl : 2; g.status = 'play'; g.tx = 1; g.rx[me()] = 1;
+    if (type === 'sea') { g.cpu = { board: Sea.random(), salt: rnd(16) }; g.they.h = sha256(Sea.pack(g.cpu.board, g.cpu.salt)); g.they.ready = true; }
+    if (type === 'word') {
+      g.sb = rnd(8); g.word = wordFor(seed, g.sb); const R = rng(seed + ':cpu'), A = window.HUSH_WORDS.a, na = A.length / 5, L = g.lvl;
+      const solved = R() < [.55, .8, .95][L - 1]; let n = solved ? Math.min(6, [5, 4, 3][L - 1] + (R() < .5 ? 1 : 0)) : 6, gs = [];
+      while (gs.length < (solved ? n - 1 : 6)) { const w = A.slice(Math.floor(R() * na) * 5).slice(0, 5); if (w !== g.word && !gs.includes(w)) gs.push(w); } if (solved) gs.push(g.word);
+      g.plan = { solved, gs, ms: Math.min(Math.round((22 + R() * 45 + n * 11) * 1000 * [1.5, 1, .7][L - 1]), o.secs * 1000) };
+    }
+    if (isGolf(type)) g.plan = [0, 1, 2].map(h => Golf.aiHole(Golf.course(type, seed, h), rng(seed + ':cpu:' + h), LVL[g.lvl - 1]));
+    save(); G.open(id); cpuTurn(g);
+  };
+  G.solos = () => Object.values(load()).filter(g => g.key === 'cpu' && g.status === 'play').sort((a, b) => b.upd - a.upd);
+
   // ---------------------------------------------------------------- picker
+  // key: a chat to challenge, or null for the Games hub (computer only).
   G.pick = key => {
-    css();
-    document.querySelector('.gm-sheet')?.remove();
-    const el = document.createElement('div'); el.className = 'gm-sheet';
-    let secs = 180;
-    el.innerHTML = `<div class="gm-sc"><div class="gm-sh"><b>Play with ${esc(H.name(key))}</b><button class="gm-x" aria-label="Close">&times;</button></div>
-      <button class="gm-opt" data-t="chess"><span class="gm-oi">${GICON.chess}</span><span><b>Chess</b><small>Full rules. Take your time - moves wait for them.</small></span></button>
-      <button class="gm-opt" data-t="sea"><span class="gm-oi">${GICON.sea}</span><span><b>Battleship</b><small>Hidden fleets, checked at the end so nobody can cheat.</small></span></button>
-      <button class="gm-opt" data-t="word"><span class="gm-oi">${GICON.word}</span><span><b>Word race</b><small>Same secret word, six guesses. Fewest guesses, then fastest, wins.</small></span></button>
-      <div class="gm-seg" aria-label="Word race time"><span>Word race time</span><button data-s="120">2 min</button><button data-s="180" class="on">3 min</button><button data-s="300">5 min</button></div></div>`;
-    document.body.append(el);
-    el.onclick = e => { if (e.target === el) el.remove(); };
-    el.querySelector('.gm-x').onclick = () => el.remove();
-    el.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { secs = +b.dataset.s; el.querySelectorAll('[data-s]').forEach(x => x.classList.toggle('on', x === b)); });
-    el.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { el.remove(); G.start(key, b.dataset.t, { secs }); });
+    css(); document.querySelector('.gm-sheet')?.remove();
+    const el = document.createElement('div'); el.className = 'gm-sheet'; let secs = 180, lvl = 2, mode = key ? 'friend' : 'cpu';
+    const rows = [['chess', 'Chess', 'Full rules. Take your time.'], ['sea', 'Battleship', 'Hidden fleets - sink theirs first.'], ['word', 'Word race', 'Same secret word, six guesses, beat the clock.'], ['ball', 'Mini golf', 'Three holes with walls, sand and water. Fewest strokes wins.'], ['disc', 'Disc golf', 'Curve your throws around the trees. Fewest throws wins.']];
+    const solos = G.solos();
+    const draw = () => {
+      el.innerHTML = `<div class="gm-sc"><div class="gm-sh"><b>${key ? 'Play with ' + esc(nm(key)) : 'Games'}</b><button class="gm-x" aria-label="Close">&times;</button></div>
+        ${key ? `<div class="gm-seg2" data-g="mode"><button data-v="friend" class="${mode === 'friend' ? 'on' : ''}">${esc(nm(key))}</button><button data-v="cpu" class="${mode === 'cpu' ? 'on' : ''}">Computer</button></div>` : '<div class="gm-sub">Play against the computer, offline. Open a chat to challenge a friend.</div>'}
+        ${mode === 'cpu' ? `<div class="gm-seg2" data-g="lvl"><button data-v="1" class="${lvl === 1 ? 'on' : ''}">Easy</button><button data-v="2" class="${lvl === 2 ? 'on' : ''}">Medium</button><button data-v="3" class="${lvl === 3 ? 'on' : ''}">Hard</button></div>` : ''}
+        ${rows.map(r => `<button class="gm-opt" data-t="${r[0]}"><span class="gm-oi">${GICON[r[0]]}</span><span><b>${r[1]}</b><small>${r[2]}</small></span></button>`).join('')}
+        <div class="gm-seg" aria-label="Word race time"><span>Word race time</span><button data-s="120" class="${secs === 120 ? 'on' : ''}">2 min</button><button data-s="180" class="${secs === 180 ? 'on' : ''}">3 min</button><button data-s="300" class="${secs === 300 ? 'on' : ''}">5 min</button></div>
+        ${mode === 'cpu' && solos.length ? `<div class="gm-sub" style="margin-top:4px">Continue</div>${solos.map(g => `<button class="gm-opt gm-res" data-r="${g.id}"><span class="gm-oi">${GICON[g.type]}</span><span><b>${TYPES[g.type]}</b><small>${esc(G.summary(g).line)}</small></span></button>`).join('')}` : ''}</div>`;
+      el.querySelector('.gm-x').onclick = () => el.remove();
+      el.querySelectorAll('[data-g=mode] button').forEach(b => b.onclick = () => { mode = b.dataset.v; draw(); });
+      el.querySelectorAll('[data-g=lvl] button').forEach(b => b.onclick = () => { lvl = +b.dataset.v; draw(); });
+      el.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { secs = +b.dataset.s; draw(); });
+      el.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { el.remove(); if (mode === 'cpu') G.startSolo(b.dataset.t, lvl, { secs }); else G.start(key, b.dataset.t, { secs }); });
+      el.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { el.remove(); G.open(b.dataset.r); });
+    };
+    document.body.append(el); el.onclick = e => { if (e.target === el) el.remove(); }; draw();
   };
 
   // ---------------------------------------------------------------- game window
@@ -318,9 +390,9 @@
     document.querySelector('.gm-ov')?.remove();
     const root = document.createElement('div'); root.className = 'gm-ov'; document.body.append(root);
     cur = { id, root, ui: {} }; if (g.type === 'word') cur.timer = setInterval(() => { if (cur && cur.id === id) tickWord(); else clearInterval(cur && cur.timer); }, 250);
-    paint(true);
+    paint(true); if (g.key === 'cpu') cpuTurn(g);
   };
-  const closeGame = () => { if (cur) { clearInterval(cur.timer); cur.root.remove(); cur = null; document.removeEventListener('keydown', onKey); } H.repaint(); };
+  const closeGame = () => { if (cur) { clearInterval(cur.timer); cancelAnimationFrame(cur.raf); cur.root.remove(); cur = null; document.removeEventListener('keydown', onKey); } H.repaint(); };
   G.close = closeGame;
 
   function shell(g, bodyHtml, foot) {
@@ -336,6 +408,7 @@
     else if (g.status === 'declined' || g.status === 'cancelled') html = shell(g, `<div class="gm-wait"><div class="gm-big">${GICON[g.type]}</div><h3>${g.status === 'declined' ? 'Challenge declined' : 'Challenge cancelled'}</h3></div>`, `<button class="gm-b" data-do="close">Close</button>`);
     else if (g.type === 'chess') html = viewChess(g);
     else if (g.type === 'sea') html = viewSea(g);
+    else if (isGolf(g.type)) html = viewGolf(g);
     else html = viewWord(g);
     r.innerHTML = html; cur.root.className = 'gm-ov gm-t-' + g.type;
     r.querySelector('.gm-back').onclick = closeGame;
@@ -343,6 +416,7 @@
     if (g.type === 'chess' && g.status !== 'invite') wireChess(g, first);
     else if (g.type === 'sea' && g.status === 'play') wireSea(g);
     else if (g.type === 'word' && g.status !== 'invite') wireWord(g, first);
+    else if (isGolf(g.type) && g.status !== 'invite') wireGolf(g);
     document.removeEventListener('keydown', onKey); if (g.type === 'word') document.addEventListener('keydown', onKey);
   }
   function doAct(g, a, el) {
@@ -354,7 +428,7 @@
     if (a === 'draw') { sendMsg(g, 'dro', {}); H.toast('Draw offered'); return; }
     if (a === 'drawy') return void sendMsg(g, 'dra', {});
     if (a === 'drawn') return void sendMsg(g, 'drd', {});
-    if (a === 'rematch') { const t = g.type, o = g.opt, k = g.key; closeGame(); G.start(k, t, o); return; }
+    if (a === 'rematch') { const t = g.type, o = g.opt, k = g.key, l = g.lvl; closeGame(); if (k === 'cpu') G.startSolo(t, l, o); else G.start(k, t, o); return; }
     if (a === 'flip') { cur.ui.flip = !cur.ui.flip; return paint(); }
   }
 
@@ -392,7 +466,7 @@
     } else {
       const myturn = st.t === my;
       if (g.draw && g.draw !== me()) { msg = `<div class="gm-end soft"><b>${esc(peerName(g))} offers a draw</b></div>`; foot = `<button class="gm-b pri" data-do="drawy">Accept draw</button><button class="gm-b" data-do="drawn">Decline</button>`; }
-      else foot = `<button class="gm-b" data-do="flip">Flip board</button>${g.draw === me() ? '<button class="gm-b" disabled>Draw offered</button>' : '<button class="gm-b" data-do="draw">Offer draw</button>'}<button class="gm-b danger" data-do="resign">Resign</button>`;
+      else foot = `<button class="gm-b" data-do="flip">Flip board</button>${g.key === 'cpu' ? '' : g.draw === me() ? '<button class="gm-b" disabled>Draw offered</button>' : '<button class="gm-b" data-do="draw">Offer draw</button>'}<button class="gm-b danger" data-do="resign">Resign</button>`;
       if (!msg) msg = `<div class="gm-turn ${myturn ? 'me' : ''}">${myturn ? (Chess.inCheck(st) ? 'Check - your move' : 'Your move') : 'Waiting for ' + esc(peerName(g)) + '...'}</div>`;
     }
     return shell(g, `${strip(them === 'w' ? 'w' : 'b', peerName(g))}<div class="gm-board-wrap"><div class="gm-board" id="gm-bd">${sq}</div><div class="gm-promo" id="gm-pr" hidden></div></div>${strip(my, 'You')}${msg}<div class="gm-moves" id="gm-mv">${sans || '<span class="gm-mute">No moves yet</span>'}</div>`, foot);
@@ -563,6 +637,81 @@
   // Time keeps running if the user leaves the screen: finish for them if the clock ran out while away.
   G.check = () => { load(); for (const g of Object.values(S)) if (g.type === 'word' && g.status === 'play' && g.mine.start && !g.mine.fin && left(g) <= 0) { try { finishWord(g); } catch {} } };
 
+  // ---------------------------------------------------------------- mini golf and disc golf view
+  const sum = a => a.reduce((x, y) => x + y, 0);
+  const scoreName = (n, par) => n === 1 ? 'Hole in one!' : n <= par - 2 ? 'Eagle!' : n === par - 1 ? 'Birdie!' : n === par ? 'Par' : n === par + 1 ? 'Bogey' : '+' + (n - par);
+  function viewGolf(g) {
+    const m = g.mine, disc = g.type === 'disc', done = m.holes.length >= Golf.HOLES;
+    if (done || g.status === 'done') {
+      const pars = [0, 1, 2].map(h => Golf.course(g.type, g.seed, h).par), fin = g.status === 'done', w = g.end && g.end.w;
+      const row = (h, i) => `<tr><td>${i + 1}</td><td>${pars[i]}</td><td>${h[i] != null ? h[i] : '-'}</td></tr>`;
+      const msg = fin ? `<div class="gm-end"><b>${!w ? 'It is a tie' : w === me() ? 'You win' : esc(peerName(g)) + ' wins'}</b><span>${sum(m.holes)} ${disc ? 'throws' : 'strokes'} to ${sum(g.th.holes)}.</span></div>` : `<div class="gm-turn">You finished with ${sum(m.holes)}. Waiting for ${esc(peerName(g))} to finish (${g.th.holes.length} of ${Golf.HOLES} holes done)...</div>`;
+      const card = (t, who) => `<div><div class="gm-lab">${who}</div><table class="gm-tb"><tr><th>Hole</th><th>Par</th><th>${disc ? 'Throws' : 'Strokes'}</th></tr>${[0, 1, 2].map(i => row(t, i)).join('')}<tr class="tot"><td>Total</td><td>${sum(pars)}</td><td>${t.length ? sum(t) : '-'}</td></tr></table></div>`;
+      return shell(g, `${msg}<div class="gm-two w">${card(m.holes, 'You')}${card(g.th.holes, esc(peerName(g)))}</div>`, fin ? `<button class="gm-b pri" data-do="rematch">Rematch</button><button class="gm-b" data-do="close">Close</button>` : `<button class="gm-b" data-do="close">Close</button>`);
+    }
+    const h = m.holes.length, c = Golf.course(g.type, g.seed, h); if (!m.cur || m.cur.h !== h) m.cur = { h, n: 0, pos: { x: c.tee.x, y: c.tee.y }, last: { x: c.tee.x, y: c.tee.y } };
+    cur.ui.c = c;
+    return shell(g, `<div class="gm-hud"><span>Hole <b>${h + 1}</b> of ${Golf.HOLES}</span><span>Par <b>${c.par}</b></span><span>${disc ? 'Throws' : 'Strokes'} <b id="gm-n">${m.cur.n}</b></span></div>
+      <div class="gm-opp2">${esc(peerName(g))}: ${g.th.holes.length} of ${Golf.HOLES} holes${g.th.holes.length ? ' (' + sum(g.th.holes) + ')' : ''}</div>
+      <canvas id="gm-cv" class="gm-cv"></canvas><div class="gm-turn" id="gm-msg">${m.cur.n ? '' : 'Drag back from the ' + (disc ? 'disc' : 'ball') + ', then let go to ' + (disc ? 'throw' : 'hit') + '.'}</div>
+      ${disc ? `<div class="gm-curve"><span>Curve left</span><input type="range" id="gm-cu" min="-100" max="100" value="${cur.ui.curve || 0}" aria-label="Curve"><span>right</span></div>` : ''}`, `<button class="gm-b danger" data-do="resign">Give up</button>`);
+  }
+  function wireGolf(g) {
+    const cv = cur.root.querySelector('#gm-cv'); if (!cv) return; const disc = g.type === 'disc', c = cur.ui.c, m = g.mine, ctx = cv.getContext('2d');
+    const bw = Math.max(200, Math.min(innerWidth - 24, (innerHeight - 290) * (Golf.W / Golf.H), 440)), bh = bw * Golf.H / Golf.W, dpr = Math.min(2, window.devicePixelRatio || 1), K = bw / Golf.W;
+    cv.style.width = bw + 'px'; cv.style.height = bh + 'px'; cv.width = Math.round(bw * dpr); cv.height = Math.round(bh * dpr); ctx.setTransform(dpr * K, 0, 0, dpr * K, 0, 0);
+    const msg = t => { const e = cur.root.querySelector('#gm-msg'); if (e) e.textContent = t; };
+    const cu = cur.root.querySelector('#gm-cu'); if (cu) cu.oninput = () => { cur.ui.curve = +cu.value; frame(); };
+    const curve = () => disc ? (cur.ui.curve || 0) / 100 : 0;
+    let aim = null, anim = null;
+    function frame(pos, h) {
+      const g2 = ctx; g2.clearRect(0, 0, Golf.W, Golf.H);
+      const gr = g2.createLinearGradient(0, 0, 0, Golf.H); gr.addColorStop(0, '#6fb766'); gr.addColorStop(1, '#4f9a57'); g2.fillStyle = gr; g2.fillRect(0, 0, Golf.W, Golf.H);
+      g2.fillStyle = '#ffffff12'; for (let y = 0; y < Golf.H; y += 40) g2.fillRect(0, y, Golf.W, 20);
+      for (const r of c.sand) { g2.fillStyle = '#e3cf94'; g2.beginPath(); g2.roundRect(r.x, r.y, r.w, r.h, 10); g2.fill(); }
+      for (const r of c.water) { g2.fillStyle = '#4a93d6'; g2.beginPath(); g2.roundRect(r.x, r.y, r.w, r.h, 9); g2.fill(); g2.strokeStyle = '#ffffff66'; g2.lineWidth = 1.5; g2.beginPath(); for (let x = r.x + 8; x < r.x + r.w - 8; x += 14) { g2.moveTo(x, r.y + r.h / 2); g2.quadraticCurveTo(x + 4, r.y + r.h / 2 - 4, x + 8, r.y + r.h / 2); } g2.stroke(); }
+      for (const b of c.blocks) { g2.fillStyle = '#00000030'; g2.beginPath(); g2.roundRect(b.x + 2, b.y + 3, b.w, b.h, 5); g2.fill(); g2.fillStyle = '#8a5a35'; g2.beginPath(); g2.roundRect(b.x, b.y, b.w, b.h, 5); g2.fill(); g2.fillStyle = '#a4703f'; g2.fillRect(b.x + 3, b.y + 3, b.w - 6, 3); }
+      g2.fillStyle = '#3a7a42'; g2.beginPath(); g2.roundRect(c.tee.x - 14, c.tee.y - 10, 28, 20, 5); g2.fill();
+      // cup / basket
+      if (disc) { g2.strokeStyle = '#d8d8d8'; g2.lineWidth = 2; for (let a = 0; a < 6; a++) { g2.beginPath(); g2.moveTo(c.hole.x, c.hole.y - 20); g2.lineTo(c.hole.x + Math.cos(a * 1.0472) * 11, c.hole.y + Math.sin(a * 1.0472) * 6); g2.stroke(); }
+        g2.fillStyle = '#2f3b4a'; g2.beginPath(); g2.arc(c.hole.x, c.hole.y, 9, 0, 7); g2.fill(); g2.strokeStyle = '#e8e8e8'; g2.lineWidth = 2; g2.beginPath(); g2.arc(c.hole.x, c.hole.y, 11, 0, 7); g2.stroke(); g2.fillStyle = '#f0b429'; g2.fillRect(c.hole.x - 3, c.hole.y - 24, 6, 5); }
+      else { g2.fillStyle = '#111'; g2.beginPath(); g2.arc(c.hole.x, c.hole.y, Golf.HR, 0, 7); g2.fill(); g2.strokeStyle = '#fff'; g2.lineWidth = 1.6; g2.beginPath(); g2.moveTo(c.hole.x, c.hole.y); g2.lineTo(c.hole.x, c.hole.y - 34); g2.stroke(); g2.fillStyle = '#e5392b'; g2.beginPath(); g2.moveTo(c.hole.x, c.hole.y - 34); g2.lineTo(c.hole.x + 17, c.hole.y - 28); g2.lineTo(c.hole.x, c.hole.y - 22); g2.fill(); }
+      for (const t of c.trees) { g2.fillStyle = '#00000030'; g2.beginPath(); g2.arc(t.x + 3, t.y + 4, t.r, 0, 7); g2.fill(); g2.fillStyle = '#2d6b3a'; g2.beginPath(); g2.arc(t.x, t.y, t.r, 0, 7); g2.fill(); g2.fillStyle = '#3f8a4c'; g2.beginPath(); g2.arc(t.x - t.r * .25, t.y - t.r * .25, t.r * .6, 0, 7); g2.fill(); }
+      const p = pos || m.cur.pos;
+      // aim guide
+      if (aim && aim.p > .03) { const sh = { a: aim.a, p: aim.p, c: curve() }; let pts;
+        if (disc) pts = Golf.sim(c, p, sh).trace; else { const L = 30 + aim.p * 150; pts = [[p.x, p.y], [p.x + Math.cos(aim.a) * L, p.y + Math.sin(aim.a) * L]]; }
+        g2.strokeStyle = '#ffffffcc'; g2.lineWidth = 2; g2.setLineDash([2, 5]); g2.lineCap = 'round'; g2.beginPath(); pts.forEach((q, i) => i ? g2.lineTo(q[0], q[1]) : g2.moveTo(q[0], q[1])); g2.stroke(); g2.setLineDash([]);
+        g2.fillStyle = '#fff'; g2.font = '600 11px system-ui'; g2.textAlign = 'center'; g2.fillText(Math.round(aim.p * 100) + '%', p.x, p.y + 20); }
+      // ball or disc (shadow shows height while it flies)
+      const lift = h || 0; g2.fillStyle = '#00000040'; g2.beginPath(); g2.ellipse(p.x + 1.5, p.y + 2.5 + lift * .2, disc ? 8 : 5.5, disc ? 3.4 : 3, 0, 0, 7); g2.fill();
+      if (disc) { g2.fillStyle = '#ef6a3a'; g2.beginPath(); g2.ellipse(p.x, p.y - lift, 8, 4, 0, 0, 7); g2.fill(); g2.fillStyle = '#ffb08c'; g2.beginPath(); g2.ellipse(p.x, p.y - lift - 1, 5, 2.2, 0, 0, 7); g2.fill(); }
+      else { g2.fillStyle = '#fff'; g2.beginPath(); g2.arc(p.x, p.y - lift, Golf.BR, 0, 7); g2.fill(); g2.strokeStyle = '#00000030'; g2.lineWidth = .8; g2.stroke(); }
+    }
+    frame();
+    function shoot(shot) {
+      const pos = m.cur.pos, r = Golf.sim(c, pos, shot), n = r.trace.length; let t0 = 0; vib(14);
+      anim = true; const step = ts => { if (!cur || cur.root !== cv.closest('.gm-ov')) return; if (!t0) t0 = ts; const f = Math.min(n - 1, (ts - t0) / 1000 * 30), i = Math.floor(f), fr = f - i, a = r.trace[i], b = r.trace[Math.min(n - 1, i + 1)];
+        const q = { x: a[0] + (b[0] - a[0]) * fr, y: a[1] + (b[1] - a[1]) * fr }, lift = disc ? Math.sin(Math.min(1, f / Math.max(1, n - 4)) * Math.PI) * 16 : 0; frame(q, lift);
+        if (f < n - 1) cur.raf = requestAnimationFrame(step); else land(r); }; cur.raf = requestAnimationFrame(step);
+    }
+    function land(r) {
+      anim = false; const cu_ = m.cur; cu_.n++; const ne = cur.root.querySelector('#gm-n'); if (ne) ne.textContent = cu_.n;
+      if (r.sunk) { frame(c.hole); msg(scoreName(cu_.n, c.par)); vib([20, 40, 20]); return setTimeout(() => finishHole(cu_.n), 1100); }
+      if (r.water) { cu_.n++; if (ne) ne.textContent = cu_.n; msg('Splash! One stroke added - back to your last spot.'); vib([30, 60]); cu_.pos = { x: cu_.last.x, y: cu_.last.y }; }
+      else { cu_.pos = { x: r.end.x, y: r.end.y }; cu_.last = { x: r.end.x, y: r.end.y }; msg(Math.round(Math.hypot(c.hole.x - r.end.x, c.hole.y - r.end.y)) + ' to the ' + (disc ? 'basket' : 'hole')); }
+      save(); if (cu_.n >= Golf.MAXS) { msg('Pick up - that counts as ' + Golf.MAXS); return setTimeout(() => finishHole(Golf.MAXS), 1100); } frame();
+    }
+    function finishHole(n) { if (!cur) return; const h = m.cur.h; m.cur = null; sendMsg(g, 'hole', { h, n }); save(); if (cur) paint(); }
+    // slingshot: drag back from anywhere, the shot goes the opposite way; longer drag = more power
+    const pt = e => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / K, y: (e.clientY - r.top) / K }; };
+    let p0 = null;
+    cv.onpointerdown = e => { if (anim) return; p0 = pt(e); aim = { a: 0, p: 0 }; try { cv.setPointerCapture(e.pointerId); } catch {} e.preventDefault(); };
+    cv.onpointermove = e => { if (!p0) return; const q = pt(e), dx = p0.x - q.x, dy = p0.y - q.y, len = Math.hypot(dx, dy); aim = { a: Math.round(Math.atan2(dy, dx) * 1000) / 1000, p: Math.min(1, len / 120) }; frame(); };
+    const end = e => { if (!p0) return; p0 = null; const a = aim; aim = null; if (a && a.p > .06) shoot({ a: a.a, p: Math.round(a.p * 100) / 100, c: curve() }); else frame(); };
+    cv.onpointerup = end; cv.onpointercancel = () => { p0 = null; aim = null; frame(); };
+  }
+
   // ---------------------------------------------------------------- styles
   function css() {
     if (document.getElementById('gm-css')) return; const s = document.createElement('style'); s.id = 'gm-css'; s.textContent = CSS; document.head.append(s);
@@ -634,6 +783,13 @@
 .gm-k{flex:1;max-width:44px;height:50px;border-radius:8px;background:var(--card);border:1px solid var(--line);display:grid!important;place-items:center;font:600 15px system-ui;text-transform:uppercase}.gm-k.w{flex:1.6;max-width:70px;font-size:11.5px}.gm-k:active{transform:scale(.94)}.gm-k svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .gm-k.k0{background:#6a6d73;color:#fff;border-color:#6a6d73}.gm-k.k1{background:#c9a227;color:#fff;border-color:#c9a227}.gm-k.k2{background:#3e9b5a;color:#fff;border-color:#3e9b5a}
 .gm-toast{position:absolute;top:96px;left:50%;transform:translate(-50%,-6px);background:var(--ink);color:var(--bg);padding:7px 13px;border-radius:10px;font:600 13px system-ui;opacity:0;pointer-events:none;transition:.18s}.gm-toast.on{opacity:1;transform:translate(-50%,0)}
+
+.gm-hud{display:flex;gap:18px;justify-content:center;font-size:13px;color:var(--mute)}.gm-hud b{color:var(--ink);font-size:15px}.gm-opp2{font-size:12px;color:var(--mute)}
+.gm-cv{border-radius:14px;touch-action:none;box-shadow:0 8px 28px #0003,0 0 0 1px var(--line);flex:none;cursor:crosshair}
+.gm-curve{display:flex;align-items:center;gap:10px;width:min(100%,380px);font-size:12px;color:var(--mute)}.gm-curve input{flex:1;accent-color:var(--ink)}
+.gm-tb{width:100%;border-collapse:collapse;font-size:13px}.gm-tb th{font:600 11px system-ui;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);text-align:center;padding:4px}.gm-tb td{text-align:center;padding:6px;border-top:1px solid var(--line)}.gm-tb tr.tot td{font-weight:700}
+.gm-seg2{display:flex;gap:4px;padding:3px;border-radius:12px;background:var(--card);border:1px solid var(--line)}.gm-seg2 button{flex:1;text-align:center;padding:8px 6px;border-radius:9px;font:600 13px system-ui;color:var(--mute)}.gm-seg2 button.on{background:var(--ink);color:var(--bg)}
+.gm-sub{font-size:12.5px;color:var(--mute);padding:0 4px}.gm-sc{max-height:92vh;overflow-y:auto}.gm-res .gm-oi{opacity:.85}
 @media (prefers-reduced-motion:reduce){.gm-ov,.gm-sc,.gm-sheet{animation:none}}
 `;
 

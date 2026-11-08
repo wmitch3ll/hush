@@ -250,7 +250,10 @@ function insets(){
   if(dock){const d=$("#"+dock).getBoundingClientRect();bot=Math.max(bot,innerHeight-d.top)}
   inv("set_chrome_inset",{px:Math.round(top*k),bottom:Math.round(Math.max(0,bot)*k)}).catch(()=>{});
 }
-addEventListener("resize",()=>insets());
+// Folding/unfolding or rotating a phone or tablet changes the window size: bring the bars back and re-measure (Android reports the new size a moment late).
+let relT=0;function relayout(){clearTimeout(relT);toolsShow(true);insets();relT=setTimeout(()=>{insets();setTimeout(insets,900)},300)}
+addEventListener("resize",relayout);addEventListener("orientationchange",relayout);if(window.visualViewport)visualViewport.addEventListener("resize",relayout);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)relayout()});
 
 // ---------- workspaces ----------
 const wsList=()=>pref("workspaces").split("|").filter(Boolean);
