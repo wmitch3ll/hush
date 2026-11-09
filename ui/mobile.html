@@ -167,6 +167,7 @@ body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
 <script src="icons.js"></script>
 <script src="qr.js"></script>
 <script src="extras.js"></script>
+<script src="importer.js"></script><script src="vault.js"></script><script src="vault-ui.js"></script><script src="pdf.js"></script>
 <script src="ghost.js"></script>
 <script src="scores.js"></script>
 <script src="guide.js"></script>
@@ -213,7 +214,7 @@ let splitFocusNat=null,splitMix=false;
 const T=()=>{if(splitSet.size&&splitFocusNat){const f=tabs.find(x=>x.native===splitFocusNat);if(f&&(f.id===cur||splitSet.has(f.id)))return f}return tabs.find(t=>t.id===cur)};
 
 // ---------- preferences (stored in Rust as ui.<name>) ----------
-const DEF={toolbar:"on",video_quality:"1080",video_leave:"mini",fp:"on",fp_off:"",bg_play:"true",memory_saver:"10",bangs:"",focus_sites:"youtube.com,reddit.com,x.com,instagram.com,tiktok.com,facebook.com",focus_until:"0",color:"graphite",bar_pos:"top",theme:"system",text_zoom:"100",desktop:"false",pull_refresh:"true",force_dark:"false",history:"off",restore:"off",workspaces:"Personal",ws:"Personal"};
+const DEF={pdf_viewer:"true",toolbar:"on",video_quality:"1080",video_leave:"mini",fp:"on",fp_off:"",bg_play:"true",memory_saver:"10",bangs:"",focus_sites:"youtube.com,reddit.com,x.com,instagram.com,tiktok.com,facebook.com",focus_until:"0",color:"graphite",bar_pos:"top",theme:"system",text_zoom:"100",desktop:"false",pull_refresh:"true",force_dark:"false",history:"off",restore:"off",workspaces:"Personal",ws:"Personal"};
 const pref=k=>state.settings.ui?.[k]??DEF[k];
 async function setPref(k,v){state.settings.ui[k]=String(v);applyPrefs();try{await inv("set_setting",{key:"ui."+k,value:String(v)})}catch(e){}}
 // Browser color: a hue/saturation tints every surface; light and dark variants are derived from it.
@@ -430,6 +431,7 @@ window.__hushEvent=(name,d)=>{
     if(d.state==="finished"){if(!t.priv&&d.url.startsWith("http"))inv("history_add",{url:d.url,title:t.title||bare(d.url)}).catch(()=>{});saveSession()}
     if(d.state==="started"&&!torOn&&/^https?:/.test(d.url)&&listHas("tor_sites",bare(d.url))){setTor(true);toast("Tor mode on — you set this site to always use Tor")}
     if(t.id===cur){progress(d.state==="started");toolsShow(true);render();requestAnimationFrame(insets)}}
+  else if(name==="pdf"){if(pref("pdf_viewer")==="false")native("downloadUrl",{url:d.url,ua:d.ua}).catch(()=>{});else openPdf(d)}
   else if(name==="download"){HX.dl.event(d);if(d.state==="done")vibe();if(sheet==="downloads")drawDownloads()}
   else if(name==="tabAudio"){const t=tabs.find(x=>x.native===d.id);if(t&&t.audio!==!!d.audio){t.audio=!!d.audio;render();if(sheet==="switcher")drawSwitcher()}}
   else if(name==="listen"){listenSt=d.state;if(d.state==="empty")toast("Nothing to read on this page");else if(d.state==="unavailable")toast("No voice is installed — check Android text-to-speech settings");
@@ -581,7 +583,7 @@ async function setTor(on){show(null);try{
   if(on){toast("Connecting to Tor… the first time can take ~20 s");const port=await inv("tor_start");await native("torMode",{on:true,port});toast("Tor mode on — sites can’t see your IP")}
   else{await native("torMode",{on:false});toast("Tor mode off")}
   torOn=on;document.body.classList.toggle("tor",on);render()}catch(e){toast(String(e))}}
-const HX=HushX({alert:(t,x)=>{if(document.visibilityState==="hidden")native("notify",{key:"hush-scores",title:t,text:x,count:1}).catch(()=>{});else toast(t+": "+x)},askNotify:()=>native("notifPerm").catch(()=>{}),dlOpen:d=>native("downloadOpen",{id:d.id}).catch(e=>toast(String(e&&e.message||e))),dlCancel:d=>native("downloadCancel",{id:d.id}).catch(()=>{}),inv,pref,setPref,toast,open:u=>{show(null);go(u)},state:()=>state,reload:()=>loadState(),mobile:true,act:id=>runAction(id),
+const HX=HushX({alert:(t,x)=>{if(document.visibilityState==="hidden")native("notify",{key:"hush-scores",title:t,text:x,count:1}).catch(()=>{});else toast(t+": "+x)},askNotify:()=>native("notifPerm").catch(()=>{}),dlOpen:d=>/\.pdf$/i.test(d.name||"")&&d.url&&/^https:/.test(d.url)&&pref("pdf_viewer")!=="false"?openPdf({url:d.url,name:d.name}):native("downloadOpen",{id:d.id}).catch(e=>toast(String(e&&e.message||e))),dlCancel:d=>native("downloadCancel",{id:d.id}).catch(()=>{}),inv,pref,setPref,toast,open:u=>{show(null);go(u)},state:()=>state,reload:()=>loadState(),mobile:true,act:id=>runAction(id),
   watchPick:()=>{if(!T()?.native)return toast("Open the page you want to watch first");show(null);setTimeout(()=>native("pick",{mode:"watch"}),200);toast("Tap the price or text to watch")},
   zap:()=>{show(null);setTimeout(()=>native("pick"),200);toast("Tap the thing to remove")}});
 function renderHome(t){const v=$("#view");HX.home(v,{priv:!!t?.priv,icon,long:true,
@@ -594,7 +596,7 @@ function openWatch(){$("#xs").innerHTML=head("Change watch")+'<div id="wx" style
 async function panic(){show(null);try{HM.api.lockNow();EC.close()}catch(e){}
   const gone=tabs.filter(t=>t.priv).map(t=>t.id);for(const id of gone)await closeTab(id).catch(()=>{});if(torOn)inv("tor_new_identity").catch(()=>{});
   native("bubble",{show:false}).catch(()=>{});toast("Panic: private tabs closed, Murmur locked")}
-function runAction(id){const t=T();const A={panic,back:()=>inv("nav",{action:"back"}),forward:()=>inv("nav",{action:"fwd"}),reload:()=>inv("nav",{action:"reload"}),newtab:()=>newTab(),closetab:()=>closeTab(cur),
+function runAction(id){const t=T();const A={summarize:()=>openAssistant("sum"),vault:()=>openVault(),panic,back:()=>inv("nav",{action:"back"}),forward:()=>inv("nav",{action:"fwd"}),reload:()=>inv("nav",{action:"reload"}),newtab:()=>newTab(),closetab:()=>closeTab(cur),
   reopen:()=>toast("Nothing to reopen"),nexttab:()=>step(1),prevtab:()=>step(-1),top:()=>inv("page_action",{action:"scroll-top"}),bottom:()=>inv("page_action",{action:"scroll-bottom"}),find:()=>findMode(true),
   reader:()=>inv("page_action",{action:"reader"}),listen:()=>{native("listen",{action:listenSt?"stop":"start",rate:lRate});listenSt=listenSt?"":"playing"},screenshot:()=>native("screenshot").catch(e=>toast(String(e))),
   tor:()=>setTor(!torOn),newid:()=>inv("tor_new_identity").then(()=>inv("nav",{action:"reload"})).catch(e=>toast(String(e))),bookmark:()=>t&&inv("bookmark_add",{title:t.title||bare(t.url),url:t.url}).then(loadState),
@@ -737,12 +739,27 @@ function openReport(){const x=$("#xs");x.innerHTML="";x.style.padding="0";const 
 function openAssistant(run){const x=$("#xs");x.innerHTML="";x.style.padding="0";const d=document.createElement("div");d.style.cssText="flex:1;min-height:0;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)";x.append(d);
   const restore=()=>{x.style.padding=""};const obs=new MutationObserver(()=>{if(!x.classList.contains("on")){restore();obs.disconnect()}});obs.observe(x,{attributes:true,attributeFilter:["class"]});
   HX.assistant(d,{pageText:()=>native("pageText").then(r=>r&&r.text||""),pageInfo:()=>{const t=T();return t&&/^https?:/.test(t.url)&&!t.priv?{host:hostOf(t.url).replace(/^www\./,"")}:null},close:()=>show(null),run});show("xs")}
+async function openPdf(d){const x=$("#xs");x.innerHTML="";x.style.padding="0";const box=document.createElement("div");box.style.cssText="flex:1;min-height:0;position:relative;padding-top:env(safe-area-inset-top,0px)";x.append(box);
+  const obs=new MutationObserver(()=>{if(!x.classList.contains("on")){x.style.padding="";obs.disconnect();v&&v.close&&v.close()}});obs.observe(x,{attributes:true,attributeFilter:["class"]});let v=null;
+  const inner=document.createElement("div");inner.style.cssText="position:absolute;inset:env(safe-area-inset-top,0px) 0 0 0";box.append(inner);show("xs");toast("Opening PDF…");
+  try{const buf=await inv("pdf_fetch",{url:d.url,ua:d.ua||"",cookie:d.cookie||""});
+    v=await HXPDF.open(inner,{data:buf,name:d.name||"Document.pdf",close:()=>show(null),toast,save:()=>native("downloadUrl",{url:d.url,ua:d.ua||""}).then(()=>toast("Saving to Downloads")).catch(e=>toast(String(e&&e.message||e))),
+      summarize:t=>{window.__pdfText=t;show(null);openAssistant("sumdoc")}})}
+  catch(e){show(null);toast("Couldn’t open it here — saving instead");native("downloadUrl",{url:d.url,ua:d.ua||""}).catch(()=>{})}}
+function openVault(imp){const x=$("#xs");x.innerHTML="";x.style.padding="0";const d=document.createElement("div");d.style.cssText="flex:1;min-height:0;overflow:auto;padding:calc(env(safe-area-inset-top,0px) + 14px) 14px 28px";x.append(d);
+  const obs=new MutationObserver(()=>{if(!x.classList.contains("on")){x.style.padding="";obs.disconnect()}});obs.observe(x,{attributes:true,attributeFilter:["class"]});
+  const t=T(),h=t&&/^https?:/.test(t.url)&&!t.priv?hostOf(t.url).replace(/^www\./,""):"";
+  HXVUI.open(d,{host:h,readForm:h?()=>inv("page_query",{q:"forms"}):null,fill:it=>inv("page_action",{action:"fill",arg:JSON.stringify({u:it.user,p:it.pass})}),copy:s=>navigator.clipboard.writeText(s).catch(()=>{}),toast,
+    range:p=>inv("pwned_range",{prefix:p}),openUrl:u=>{show(null);newTab();go(u)},close:()=>show(null),bookmarks:async items=>{const n=await inv("import_bookmarks",{items});await loadState();return n},
+    bio:{on:()=>pref("vault_bio")!=="false",enable:pw=>native("secretSet",{name:"vault-pw",value:pw}).catch(()=>{}),
+      unlock:async()=>{const r=await native("biometric");if(!r||!r.ok)return null;const v=await native("secretGet",{name:"vault-pw"});return v&&typeof v.value==="string"?v.value:null}}});
+  show("xs");if(imp)setTimeout(()=>d.querySelector("[data-v=import]")?.click(),500)}
 function openCmd(){vibe();const el=$("#cmd");
   const ACT=[["New tab",()=>newTab()],["New private tab",()=>newTab(true)],["Find in page",()=>{show(null);findMode(true)}],["Reader view",()=>{show(null);inv("page_action",{action:"reader"})}],
     ["Dark mode for websites: "+(pref("force_dark")==="true"?"on → off":"off → on"),async()=>{await setPref("force_dark",pref("force_dark")==="true"?"false":"true");applyDarkNow();show(null)}],
     ["Address bar to "+(pref("bar_pos")==="top"?"bottom":"top"),()=>{setPref("bar_pos",pref("bar_pos")==="top"?"bottom":"top");show(null)}],
     ["Site settings & QR",()=>{if(T()?.native){drawSite();show("site")}}],["All tabs",openSwitcher],["History",()=>{drawHistory();show("history")}],
-    ["Downloads",()=>{drawDownloads();show("downloads")}],["Settings",()=>{drawSettings();show("settings")}],
+    ["Vault: passwords & logins",()=>openVault()],["Import from another browser",()=>openVault(true)],["Downloads",()=>{drawDownloads();show("downloads")}],["Settings",()=>{drawSettings();show("settings")}],
     ["Audio only (hide video)",()=>{const t=T();if(!t||!t.native)return toast("Open a page with a video first");show(null);native("evalJs",{js:"window.__hushAO&&window.__hushAO(!window.__hushAOon)"}).catch(()=>{});toast("Audio only toggled — tap the screen to bring the video back")}],["Send page to my computer",()=>{const t=T();if(!t||!t.native||t.priv)return toast("Open a normal (non-private) page first");show(null);HX.syncSendTab(t.url,t.title)}],["Reading list",()=>{drawReading();show("reading")}],["Focus mode",()=>{drawFocus();show("focus")}],["Voice search",()=>{show(null);voice()}],
     ["Save page as PDF",()=>{show(null);native("printPage")}],["Pop-out video (picture-in-picture)",()=>{show(null);native("pip")}],["About & updates",()=>{drawAbout();show("about")}],["Close tab",()=>{show(null);closeTab(cur)}],[HX.aiName()+" — AI assistant on this phone",()=>openAssistant()],["⬒ Split screen…",()=>splitMenu()],["Hush guide",()=>openGuide()],["Report a problem",()=>openReport()],["Sleep timer for this video",()=>{show(null);actions("Pause the video in…",[[15,"15 min"],[30,"30 min"],[60,"1 hour"],[0,"Off"]].map(([n,l])=>[l,()=>{clearTimeout(window.__sleepT);if(!n)return toast("Sleep timer off");window.__sleepT=setTimeout(()=>{inv("page_action",{action:"media-pause"}).catch(()=>{});toast("Paused")},n*60000);toast("Pausing in "+l)}]))}],["Send this page to a friend",()=>{const t=T();if(!t||!/^https?:/.test(t.url))return toast("Open a page first");const l=(()=>{try{return HM.api.chatList()}catch(e){return[]}})();if(!l.length){openMsgs();return toast("Add a friend in Murmur first")}actions("Send to…",l.slice(0,20).map(c=>[c.name,()=>{HM.api.sendTo(c.key,t.url);toast("Sent privately through Tor")}]))}],["Panic: close private tabs, lock Murmur",()=>panic()],
     ...wsList().filter(w=>w!==curWs()).map(w=>["Workspace: "+w,()=>{show(null);switchWs(w)}])];
@@ -775,6 +792,8 @@ function drawDownloads(){const el=$("#downloads");
 function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<button class="sw ${on?"on":""}" data-sw="${k}"></button>`;
   el.innerHTML=head("Settings")+`<input class="txt" id="s-q" placeholder="Search settings" style="margin:0 0 6px"><h3>Layout</h3>
    ${item("Address bar","Swipe it ← → to switch tabs",seg("bar_pos",[["top","Top"],["bottom","Bottom"]]))}
+   ${item("Keep messages arriving","Lets Hush run in the background so Murmur messages and score alerts aren’t delayed",`<button class="btn" id="s-batt">Check</button>`)}
+   ${item("Open PDFs in Hush","A built-in viewer with search, dark pages and summaries",seg("pdf_viewer",[["true","On"],["false","Off"]]))}
    ${item("Theme","True black saves battery",seg("theme",[["system","Auto"],["light","Light"],["dark","Dark"],["black","Black"]]))}
    <div class="item" style="flex-direction:column;align-items:stretch;gap:8px"><div style="width:100%">Browser color</div><div class="swatches">${Object.entries(COLORS).map(([k,v])=>
      `<button data-color="${k}" class="${pref("color")===k?"on":""}" aria-label="${k}" style="background:${v?`hsl(${v[0]} ${v[1]}% 55%)`:"#555"}"></button>`).join("")}
@@ -845,6 +864,7 @@ function drawSettings(){const el=$("#settings"),s=state.settings,sw=(k,on)=>`<bu
     const list=v.split(/\n|\|/).map(x=>x.trim()).filter(x=>/^[a-z0-9]{1,12}=https:\/\/\S+$/i.test(x));await setPref("bangs",list.join("|"));drawSettings();toast(list.length+" shortcuts saved")};
   el.querySelectorAll("[data-allow]").forEach(b=>b.onclick=async()=>{await inv("toggle_shield",{host:b.dataset.allow});allow.delete(b.dataset.allow);drawSettings();render()});
   $("#s-export").onclick=async()=>{try{const j=await inv("export_data");try{await navigator.clipboard.writeText(j);toast("Copied")}catch(e){$("#s-json").value=j;toast("Select the text above to copy it")}}catch(e){toast("Export failed")}};
+  $("#s-batt").onclick=async()=>{try{const r=await native("batteryState");if(r&&r.ok)return toast("Already set — Hush can run in the background");await native("batteryExempt")}catch(e){toast(String(e&&e.message||e))}};
   $("#s-import").onclick=async()=>{try{await inv("import_data",{json:$("#s-json").value});await loadState();drawSettings();toast("Imported")}catch(e){toast("Not a Hush export")}};
 }
 function clearData(){if(confirm("Clear cookies, cache and site data for every site?")){inv("clear_data");show(null);toast("Browsing data cleared")}}

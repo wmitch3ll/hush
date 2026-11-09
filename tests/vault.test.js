@@ -1,0 +1,28 @@
+const store={};globalThis.localStorage={getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=v}};
+const V=require('../ui/vault.js'),I=require('../ui/importer.js');
+const ok=(c,m)=>{console.log((c?'ok   ':'FAIL ')+m);if(!c)process.exitCode=1};
+(async()=>{
+ok(!V.exists(),'no vault'); await V.create('correct horse battery');
+ok(V.exists()&&V.unlocked(),'created');
+await V.add({host:'https://www.Example.com/login',user:'me',pass:'Tr0ub4dor&3xyz'});
+await V.add({host:'example.com',user:'me',pass:'new-pass-9988'}); ok(V.all().length===1&&V.all()[0].pass==='new-pass-9988','dup user updates');
+ok(V.forHost('accounts.example.com').length===1,'parent domain matches'); ok(V.forHost('evil.com').length===0,'other host no');
+V.lock(); let e;try{V.all()}catch(x){e=x}; ok(!!e,'locked throws');
+try{await V.unlock('wrong')}catch(x){e=x.message} ok(e==='Wrong password','wrong pw rejected');
+await V.unlock('correct horse battery'); ok(V.all().length===1,'unlock restores');
+ok(!JSON.stringify(store).includes('new-pass'),'stored ciphertext hides password');
+const g=V.generate({len:24}); ok(g.length===24&&/[a-z]/.test(g)&&/[A-Z]/.test(g)&&/\d/.test(g)&&/[^A-Za-z0-9]/.test(g),'generator classes');
+ok(V.strength('password1')<=1&&V.strength(g)>=3,'strength');
+await V.addMany([{host:'a.com',user:'u',pass:'123456'},{host:'b.com',user:'u',pass:'123456'}]); const a=V.audit(); ok(a.reused.length===2&&a.weak.length===2,'audit');
+ok(V.exportCsv().startsWith('name,url,username,password,note'),'csv export');
+await V.changePassword('correct horse battery','another long password'); V.lock(); await V.unlock('another long password'); ok(V.all().length===3,'change password');
+ok(await V.pwned('password',async p=>p==='5BAA6'?'1E4C9B93F3F0682250B6CF8331B7EE68FD8:9545824\r\nAAA:2':'')>0,'pwned k-anon');
+const html=`<DL><p><DT><H3>Bookmarks bar</H3><DL><p><DT><A HREF="https://a.com/?x=1&amp;y=2">A &amp; B</A><DT><H3>News</H3><DL><p><DT><A HREF="https://n.com">N</A></DL><p></DL><p><DT><A HREF="javascript:alert(1)">bad</A></DL>`;
+const b=I.bookmarksHtml(html); ok(b.length===2&&b[0].url==='https://a.com/?x=1&y=2'&&b[0].title==='A & B'&&b[0].folder===''&&b[1].folder==='News','netscape html');
+const fj=JSON.stringify({children:[{title:'toolbar',type:'text/x-moz-place-container',children:[{title:'Dev',type:'text/x-moz-place-container',children:[{title:'MDN',uri:'https://mdn.dev'}]}]}]});
+ok(I.bookmarksJson(fj)[0].folder==='Dev','firefox json');
+const c=I.parse('name,url,username,password,note\nGH,https://github.com/login,me,"p,ss""w",hi\nx,,,,\n','p.csv'); ok(c.kind==='logins'&&c.logins[0].pass==='p,ss"w'&&c.logins[0].host==='github.com','chrome csv');
+const f=I.parse('url,username,password,httpRealm\nhttps://m.facebook.com,u,pw,\n','l.csv'); ok(f.logins[0].host==='m.facebook.com','firefox csv');
+ok(I.parse('hello','x.txt').kind==='unknown','unknown');
+V.lock();process.exit(process.exitCode||0);
+})();

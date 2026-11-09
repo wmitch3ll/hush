@@ -1,0 +1,56 @@
+"""Browser tests (Playwright + Chromium): vault screens, reader view, PDF viewer, downloads list. Run: python3 tests/browser.py"""
+import base64, os, subprocess, sys, time
+from playwright.sync_api import sync_playwright
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..')); UI = os.path.join(ROOT, 'ui'); SRC = os.path.join(ROOT, 'src-tauri', 'src')
+FAIL = []
+def ok(c, m):
+    print(('ok   ' if c else 'FAIL ') + m)
+    if not c: FAIL.append(m)
+VARS = ':root{--bg:#f5f5f4;--card:#fff;--line:#e4e4e2;--ink:#161616;--mute:#8b8b88}body{margin:0}'
+srv = subprocess.Popen([sys.executable, '-m', 'http.server', '8791', '-d', ROOT], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(1)
+B = 'http://localhost:8791/'
+try:
+  with sync_playwright() as p:
+    br = p.chromium.launch(); errs = []
+    def page(w=390, h=780):
+        pg = br.new_page(viewport={'width': w, 'height': h}); pg.on('pageerror', lambda e: errs.append(str(e)))
+        pg.goto(B + 'tests/blank.html'); return pg
+    open(os.path.join(ROOT, 'tests', 'blank.html'), 'w').write('<!doctype html><meta charset=utf-8><style>' + VARS + '</style><div id=r style="position:fixed;inset:0;overflow:auto;padding:14px"></div>')
+    # ---- vault ----
+    pg = page()
+    for f in ['importer.js', 'vault.js', 'vault-ui.js']: pg.add_script_tag(url=B + 'ui/' + f)
+    pg.evaluate("""HXVUI.open(document.getElementById('r'),{host:'github.com',readForm:async()=>JSON.stringify({has:true,host:'github.com',user:'me',pass:'S3cret!pass'}),fill:i=>window.__f=i,copy:s=>window.__c=s,toast:m=>0,range:async p=>'',bookmarks:async i=>i.length,close(){}})""")
+    pg.fill('#pw', 'correct horse battery'); pg.fill('#pw2', 'correct horse battery'); pg.click('#go'); pg.wait_for_selector('#q')
+    pg.click('[data-save]'); pg.wait_for_selector('.it'); ok(pg.evaluate('HXV.all().length') == 1, 'vault: saved login from page form')
+    pg.click('[data-fill]'); ok(pg.evaluate('window.__f && window.__f.user') == 'me', 'vault: fill hands the login to the page')
+    pg.click('.it'); pg.click('#sh'); ok(pg.inner_text('#pv') == 'S3cret!pass', 'vault: reveal password')
+    pg.click('[data-v=list]'); pg.click('[data-v=import]'); pg.fill('#t', '<DT><A HREF="https://a.com">A</A>'); pg.click('#pp'); pg.click('#ib'); ok('1 new' in pg.inner_text('#er'), 'vault: bookmark import')
+    pg.click('[data-v=list]'); pg.click('[data-v=gen]'); pg.wait_for_selector('#out'); ok(len(pg.inner_text('#out')) == 20, 'vault: generator')
+    pg.click('[data-v=list]'); pg.click('[data-lock]'); pg.wait_for_selector('#go'); ok(pg.inner_text('#go') == 'Unlock', 'vault: lock screen after locking')
+    # ---- reader ----
+    para = lambda n: '<p>' + ('The city council voted on Tuesday to approve the new stadium plan, which supporters say will bring jobs, while critics point to the cost. ' * 3) + f'({n})</p>'
+    art = '<!doctype html><meta charset=utf-8><title>T</title><meta property="og:site_name" content="Daily Paper"><meta name=author content="Jane Roe"><header><nav><a href=/>Home</a></nav></header><ul class=side><li><a href=/a>Related</a></li></ul><div id=content class=post><h1>Council approves stadium</h1>' + ''.join(para(i) for i in range(8)) + '</div><footer><a href=/x>About</a></footer>'
+    open(os.path.join(ROOT, 'tests', 'article.html'), 'w').write(art)
+    pg = page(); pg.goto(B + 'tests/article.html'); pg.add_script_tag(url=B + 'src-tauri/src/page.js'); pg.evaluate('__hushPage.reader()')
+    ok(pg.evaluate("document.querySelectorAll('#hush-reader p').length") >= 8, 'reader: keeps the article paragraphs')
+    ok(not pg.evaluate("!!document.querySelector('#hush-reader nav, #hush-reader footer, #hush-reader .side')"), 'reader: drops navigation and sidebars')
+    ok('Daily Paper' in pg.inner_text('#hush-reader .by') and 'min read' in pg.inner_text('#hush-reader .by'), 'reader: byline and reading time')
+    # ---- PDF ----
+    pg = br.new_page(); pg.set_content('<h1>Report</h1>' + ''.join(f'<h2 style="page-break-before:always">Section {i}</h2><p>Revenue grew in Q{i}.</p>' for i in range(1, 5))); pdf = pg.pdf(format='A4')
+    pg = page(); pg.add_script_tag(url=B + 'ui/pdf.js')
+    pg.evaluate("""async b64=>{const u=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));window.V=await HXPDF.open(document.getElementById('r'),{data:u.buffer,name:'report.pdf',close(){window.__closed=1},summarize:t=>window.__sum=t,toast:()=>0})}""", base64.b64encode(pdf).decode())
+    pg.wait_for_selector('.pv-p canvas', timeout=20000)
+    ok(pg.evaluate("document.querySelectorAll('.pv-p').length") == 5, 'pdf: all pages laid out')
+    pg.click('[data-a=find]'); pg.fill('.pv-find input', 'revenue'); pg.press('.pv-find input', 'Enter'); pg.wait_for_timeout(800); ok('/ 4' in pg.inner_text('#fc'), 'pdf: search finds every match')
+    pg.click('[data-a=sum]'); pg.wait_for_timeout(600); ok('Revenue grew' in (pg.evaluate('window.__sum') or ''), 'pdf: text handed to the summarizer')
+    pg.click('[data-a=close]'); ok(pg.evaluate('window.__closed') == 1, 'pdf: close')
+    # ---- downloads persist ----
+    pg = page(); pg.add_script_tag(url=B + 'ui/extras.js')
+    stub = "const A={inv:async()=>null,pref:()=>'',setPref(){},toast(){},state:()=>({settings:{ui:{}},bookmarks:[]}),mobile:false,act(){}};"
+    pg.evaluate("()=>{" + stub + "window.HX=HushX(A);for(let i=0;i<7;i++){HX.dl.event({id:i,name:'f'+i+'.pdf',url:'https://h.com/'+i,state:'started'});HX.dl.event({id:i,name:'f'+i+'.pdf',state:'done',size:1000})}HX.dl.list(document.getElementById('r'),{})}")
+    pg.fill('[data-dq]', 'f3'); ok(pg.evaluate("document.querySelectorAll('.dl-r').length") == 1, 'downloads: search filters the list')
+    pg.reload(); pg.add_script_tag(url=B + 'ui/extras.js'); ok(pg.evaluate("(()=>{" + stub + "return HushX(A).dl.items.length})()") == 7, 'downloads: history survives a restart')
+    ok(not errs, 'no page errors: ' + str(errs[:2]))
+finally:
+    srv.kill()
+sys.exit(1 if FAIL else 0)

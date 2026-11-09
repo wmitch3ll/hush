@@ -57,11 +57,19 @@ pub async fn page_action(app: AppHandle, action: String, arg: Option<String>) ->
     }
 }
 
+/// Fixed read-only questions about the active page ("text", "forms"); the answer comes back as text.
+#[tauri::command]
+pub async fn page_query(app: AppHandle, q: String) -> Result<String, String> {
+    let js = crate::page_query_js(&q).ok_or("unknown query")?;
+    let r = call(&app, "pageEval", json!({ "js": js }))?;
+    Ok(r["text"].as_str().unwrap_or("").to_string())
+}
+
 /// Phone-only actions that go straight to the native plugin. Only these names are allowed.
 #[tauri::command]
 pub async fn native_call(app: AppHandle, cmd: String, args: Option<Value>) -> Result<Value, String> {
     const ALLOWED: &[&str] = &["takeIntent", "askDefault", "isDefault", "pip", "permissionReply", "sitePerms", "resetSitePerms",
-        "printPage", "voice", "discardBackground", "muteTab", "listen", "peek", "peekClose", "screenshot", "saveImage", "pick", "torMode", "floatTab", "floatClose", "media", "splitTab", "splitMode", "splitMix", "splitRatio", "splitSwap", "msgLive", "downloadOpen", "downloadCancel", "downloadsApp", "notify", "clearNotif", "notifPerm", "pageText", "mediaLog", "allSitePerms", "clipText", "secretSet", "secretGet", "secretDel", "biometric", "secure", "bubble"];
+        "printPage", "voice", "discardBackground", "muteTab", "listen", "peek", "peekClose", "screenshot", "saveImage", "pick", "torMode", "floatTab", "floatClose", "media", "splitTab", "splitMode", "splitMix", "splitRatio", "splitSwap", "msgLive", "downloadOpen", "downloadUrl", "batteryState", "batteryExempt", "downloadCancel", "downloadsApp", "notify", "clearNotif", "notifPerm", "pageText", "mediaLog", "allSitePerms", "clipText", "secretSet", "secretGet", "secretDel", "biometric", "secure", "bubble"];
     if !ALLOWED.contains(&cmd.as_str()) { return Err("not allowed".into()); }
     call(&app, &cmd, args.unwrap_or(json!({})))
 }

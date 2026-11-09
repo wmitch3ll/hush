@@ -48,7 +48,7 @@ cp -R "$ROOT"/src-tauri/android-plugin/res/. "$A/src/main/res/"
 python3 - "$A/src/main/AndroidManifest.xml" <<'PY'
 import re,sys
 p=sys.argv[1]; s=open(p).read()
-perms=["CAMERA","RECORD_AUDIO","MODIFY_AUDIO_SETTINGS","ACCESS_FINE_LOCATION","ACCESS_COARSE_LOCATION","FOREGROUND_SERVICE","FOREGROUND_SERVICE_MEDIA_PLAYBACK","FOREGROUND_SERVICE_REMOTE_MESSAGING","POST_NOTIFICATIONS","WAKE_LOCK"]
+perms=["CAMERA","RECORD_AUDIO","MODIFY_AUDIO_SETTINGS","ACCESS_FINE_LOCATION","ACCESS_COARSE_LOCATION","FOREGROUND_SERVICE","FOREGROUND_SERVICE_MEDIA_PLAYBACK","FOREGROUND_SERVICE_REMOTE_MESSAGING","POST_NOTIFICATIONS","WAKE_LOCK","REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"]
 for x in perms:
     if f'android.permission.{x}"' not in s:
         s=re.sub(r'(<manifest[^>]*>)',r'\1\n    <uses-permission android:name="android.permission.'+x+'" />',s,count=1)

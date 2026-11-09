@@ -208,12 +208,12 @@ pub fn capture(wv: &tauri::Webview) {
 }
 
 /// Read the page's visible text (for the on-device assistant). The script is fixed; only text comes back.
-pub fn page_text(wv: &tauri::Webview, tx: std::sync::mpsc::Sender<String>) {
+pub fn page_text(wv: &tauri::Webview, tx: std::sync::mpsc::Sender<String>, script: String) {
     let _ = wv.with_webview(move |p| unsafe {
         let Ok(core) = p.controller().CoreWebView2() else { let _ = tx.send(String::new()); return };
         let tx2 = tx.clone();
         let h = webview2_com::ExecuteScriptCompletedHandler::create(Box::new(move |_res, json| { let s = serde_json::from_str::<String>(&json).unwrap_or_default(); let _ = tx2.send(s); Ok(()) }));
-        let js: Vec<u16> = format!("{}\0", crate::PAGE_TEXT_JS).encode_utf16().collect();
+        let js: Vec<u16> = format!("{}\0", script).encode_utf16().collect();
         if core.ExecuteScript(windows::core::PCWSTR(js.as_ptr()), &h).is_err() { let _ = tx.send(String::new()); }
     });
 }

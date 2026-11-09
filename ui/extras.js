@@ -233,7 +233,7 @@ window.HushX = function (A) {
   // ---------------------------------------------------------------- actions, gestures, quick wheel
   // A.act(id) runs an action on the current platform; ids are shared with tools.js (the in-page wheel).
   const ACTIONS = { none: 'Do nothing', back: 'Back', forward: 'Forward', reload: 'Reload', newtab: 'New tab', closetab: 'Close tab', reopen: 'Reopen closed tab',
-    nexttab: 'Next tab', prevtab: 'Previous tab', top: 'Scroll to top', bottom: 'Scroll to bottom', find: 'Find in page', reader: 'Reader view', listen: 'Listen to page',
+    nexttab: 'Next tab', prevtab: 'Previous tab', top: 'Scroll to top', bottom: 'Scroll to bottom', find: 'Find in page', reader: 'Reader view', summarize: 'Summarize this page', vault: 'Open the vault', listen: 'Listen to page',
     screenshot: 'Screenshot', tor: A.mobile ? 'Tor mode on/off' : 'Open in Tor tab', newid: 'New Tor identity', bookmark: 'Bookmark page', copylink: 'Copy link', dark: 'Dark mode on/off',
     alltabs: 'All tabs', home: 'Start page', private: 'New private tab', mute: 'Mute tab', boosts: 'Boosts', destruct: 'Self-destruct tab…', panic: 'Panic: close private & Tor tabs, lock Murmur' };
   const SLOTS = A.mobile
@@ -519,6 +519,7 @@ window.HushX = function (A) {
   const AX_SUGG = [['sum', 'Summarize', 'this page in a few lines', 'Summarize this web page in 4–6 short sentences.', true],
     ['key', 'Key points', 'as quick bullets', 'List the key points of this web page as short bullet points.', true],
     ['simple', 'Explain simply', 'no jargon', 'Explain what this web page says in simple words.', true],
+    ['sumdoc', 'Summarize this PDF', 'the document you were reading', 'Summarize this document in 5–8 short bullet points, then list any important dates, numbers or action items.', true],
     ['ask', 'Ask anything', 'not about the page', '', false]];
   // Header used on the setup screens too (same look as the chat).
   const axHead = sub => `<style>${AX_CSS}</style><div class=ax-h style="padding:6px 0 14px;border:0"><div class=ax-av>${esc((aiName().trim()[0] || 'A').toUpperCase())}</div><div style="flex:1;min-width:0"><b>${esc(aiName())}</b><small>${esc(sub)}</small></div><button class=ax-ib data-rename title="Rename"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></button></div>`;
@@ -541,7 +542,7 @@ window.HushX = function (A) {
     const bubble = m => m.r === 'u' ? `<div class=ax-u>${esc(m.t)}</div>`
       : `<div class=ax-a><div class=ax-av>${ini}</div><div><div class="t${m.err ? ' err' : ''}">${esc(m.t)}</div>${m.t && !m.err && !m.live ? '<div class=ax-tools><button data-copy>Copy</button></div>' : ''}</div></div>`;
     const paint = () => { M.innerHTML = axLog.length ? axLog.map(bubble).join('') : `<div class=ax-hi><div class=ax-av>${ini}</div><h3>Hi, I’m ${esc(name)}</h3><p>${ai.cloud() ? 'Fast answers from Groq.' : 'I run on this device — nothing you ask leaves it.'} What can I help with?</p>
-        <div class=ax-sg>${AX_SUGG.map(([k, a, b]) => `<button data-sg=${k}><b>${a}</b><span>${b}</span></button>`).join('')}</div></div>`;
+        <div class=ax-sg>${AX_SUGG.filter(s => s[0] !== 'sumdoc' || window.__pdfText).map(([k, a, b]) => `<button data-sg=${k}><b>${a}</b><span>${b}</span></button>`).join('')}</div></div>`;
       M.querySelectorAll('[data-copy]').forEach((b, k) => b.onclick = () => { const txt = axLog.filter(m => m.r === 'a')[k]?.t || ''; try { navigator.clipboard.writeText(txt); A.toast('Copied'); } catch (e) {} });
       M.querySelectorAll('[data-sg]').forEach(b => b.onclick = () => { const s = AX_SUGG.find(x => x[0] === b.dataset.sg); if (!s[3]) { ta.focus(); return; } ask(s[1], s[3], true); });
       M.scrollTop = M.scrollHeight; };
@@ -550,7 +551,7 @@ window.HushX = function (A) {
       if (busy) return; busy = true; send.disabled = true;
       axLog.push({ r: 'u', t: shown }); const a = { r: 'a', t: '', live: true }; axLog.push(a); paint();
       const tEl = () => M.querySelectorAll('.ax-a .t')[M.querySelectorAll('.ax-a .t').length - 1];
-      let page = ''; if (usePage) { try { page = (await o.pageText()) || ''; } catch (e) {} if (!page.trim()) { a.t = 'I couldn’t read this page — open a website first, or turn off “Use this page”.'; a.err = true; a.live = false; busy = false; paint(); return; } }
+      let page = ''; if (usePage) { try { page = window.__pdfText || (await o.pageText()) || ''; } catch (e) {} if (!page.trim()) { a.t = 'I couldn’t read this page — open a website first, or turn off “Use this page”.'; a.err = true; a.live = false; busy = false; paint(); return; } }
       // Recent turns give follow-up questions context.
       const hist = axLog.slice(0, -2).slice(-6).map(m => (m.r === 'u' ? 'User: ' : name + ': ') + m.t.slice(0, 1500)).join('\n');
       const prompt = (hist ? 'Conversation so far:\n' + hist + '\n\n' : '') + (usePage ? `${q}\n\nWeb page${host ? ' (' + host + ')' : ''}:\n${page.slice(0, ai.cloud() ? 40000 : 12000)}` : q);
@@ -565,6 +566,7 @@ window.HushX = function (A) {
     el.querySelector('[data-new]').onclick = () => { axLog = []; paint(); ta.focus(); };
     el.querySelector('[data-close]')?.addEventListener('click', () => o.close());
     paint(); paintCtx(); if (!A.mobile) setTimeout(() => ta.focus(), 80);
+    if (o.run !== 'sumdoc' && window.__pdfText) window.__pdfText = '';
     if (o.run) { const s = AX_SUGG.find(x => x[0] === o.run); if (s && s[3]) setTimeout(() => ask(s[1], s[3], true), 120); }
   }
   // ---------- Report a problem ----------
@@ -680,7 +682,10 @@ window.HushX = function (A) {
 
   // ---------------- Downloads: a live drop-down (like other browsers) and a clear, detailed list ----------------
   // Kept for this session only. Android reports progress; Windows reports start/finish (the bar then just moves).
-  const DL = { items: [], filter: 'all', hover: false, hideT: 0, dismissed: false, box: null, o: null };
+  const DLK = 'hush.dl';
+  const dlSave = () => { try { localStorage.setItem(DLK, JSON.stringify(DL.items.filter(d => d.state === 'done' || d.state === 'failed' || d.state === 'cancelled').slice(0, 100).map(d => ({ key: d.key, name: d.name, host: d.host, path: d.path, mime: d.mime, total: d.total, bytes: d.bytes, state: d.state, t0: d.t0, t1: d.t1, id: d.id, error: d.error })))); } catch {} };
+  const dlLoad = () => { try { const a = JSON.parse(localStorage.getItem(DLK) || '[]'); return Array.isArray(a) ? a.filter(d => d && d.name && d.state).map(d => Object.assign({ speed: 0, _b: 0, _t: 0 }, d)) : []; } catch { return []; } };
+  const DL = { items: dlLoad(), filter: 'all', q: '', hover: false, hideT: 0, dismissed: false, box: null, o: null };
   const dlBytes = n => { n = +n || 0; if (n < 1024) return n + ' B'; const u = ['KB', 'MB', 'GB', 'TB']; let i = -1; do { n /= 1024; i++; } while (n >= 1024 && i < 3); return (n >= 100 ? n.toFixed(0) : n.toFixed(1)) + ' ' + u[i]; };
   const dlTime = s => { s = Math.max(0, Math.round(s)); return s < 60 ? s + ' s' : s < 3600 ? Math.round(s / 60) + ' min' : (s / 3600).toFixed(1) + ' h'; };
   const DLT = [[/^(pdf)$/, '#ef4444'], [/^(zip|rar|7z|tar|gz|xz|iso)$/, '#f59e0b'], [/^(png|jpe?g|gif|webp|avif|svg|heic|bmp)$/, '#22c55e'], [/^(mp4|mkv|mov|webm|avi|m4v)$/, '#a855f7'],
@@ -700,7 +705,7 @@ window.HushX = function (A) {
     if (p.total) d.total = +p.total; if (p.size) { d.total = +p.size; d.bytes = +p.size; }
     if (p.bytes != null) { const dt = (now - d._t) / 1000; if (dt > 0.25 && p.bytes >= d._b) { const inst = (p.bytes - d._b) / dt; d.speed = d.speed ? d.speed * 0.6 + inst * 0.4 : inst; d._b = p.bytes; d._t = now; } d.bytes = +p.bytes; }
     d.state = p.state === 'progress' || p.state === 'started' ? 'active' : p.state === 'paused' ? 'paused' : p.state; if (p.error) { const c = (String(p.error).match(/reason (\d+)/) || [])[1]; d.error = ({ 1006: 'not enough storage', 1007: 'no storage found', 1009: 'file already exists', 1008: 'could not resume', 1004: 'network error', 1002: 'server refused it', 1001: 'could not save the file', 1005: 'too many redirects' })[c] || String(p.error).slice(0, 120); }
-    if (d.state === 'done' || d.state === 'failed' || d.state === 'cancelled') { d.t1 = now; d.speed = 0; }
+    if (d.state === 'done' || d.state === 'failed' || d.state === 'cancelled') { d.t1 = now; d.speed = 0; dlSave(); }
     dlDrop(); if (DL.list) DL.list();
   }
   const dlKind = (n, m) => { const e = dlExt(n), k = { pdf: 'PDF document', zip: 'ZIP archive', rar: 'RAR archive', '7z': '7-Zip archive', apk: 'Android app', exe: 'Windows program', msi: 'Windows installer', mp4: 'MP4 video', mkv: 'MKV video', webm: 'WebM video', mov: 'QuickTime video', mp3: 'MP3 audio', m4a: 'M4A audio', wav: 'WAV audio', flac: 'FLAC audio', ogg: 'Ogg audio', jpg: 'JPEG image', jpeg: 'JPEG image', png: 'PNG image', gif: 'GIF image', webp: 'WebP image', svg: 'SVG image', txt: 'Text file', csv: 'CSV spreadsheet', xlsx: 'Excel spreadsheet', xls: 'Excel spreadsheet', docx: 'Word document', doc: 'Word document', pptx: 'PowerPoint', epub: 'E-book', torrent: 'Torrent', iso: 'Disc image', json: 'JSON file', html: 'Web page' }[e];
@@ -715,7 +720,7 @@ window.HushX = function (A) {
       ${act ? `<div class=dl-bar><span style="width:${pct == null ? 38 : pct}%" class="${pct == null ? 'ind' : ''}"></span></div>` : ''}<small>${esc(meta)}</small></div>
       <div class=dl-a>${act ? (A.dlCancel && d.id ? `<button data-a=cancel title="Cancel" aria-label="Cancel">✕</button>` : '') : d.state === 'done' ? `<button data-a=open title="${dlRisky(d.name) && !A.mobile ? 'Show in folder' : 'Open'}">${dlRisky(d.name) && !A.mobile ? 'Folder' : 'Open'}</button>${!compact && !A.mobile ? '<button data-a=show title="Show in folder">Folder</button>' : ''}` : ''}${!act && !compact ? '<button data-a=rm title="Remove from list" aria-label="Remove">✕</button>' : ''}</div></div>`; };
   function dlAct(k, a) { const d = DL.items.find(x => x.key === k); if (!d) return;
-    if (a === 'rm') { DL.items.splice(DL.items.indexOf(d), 1); dlDrop(); if (DL.list) DL.list(); return; }
+    if (a === 'rm') { DL.items.splice(DL.items.indexOf(d), 1); dlSave(); dlDrop(); if (DL.list) DL.list(); return; }
     if (a === 'cancel') return A.dlCancel && A.dlCancel(d);
     if (a === 'show' || (a === 'open' && dlRisky(d.name) && !A.mobile)) return A.dlShow && A.dlShow(d);
     if (a === 'open') return A.dlOpen && A.dlOpen(d); }
@@ -730,13 +735,15 @@ window.HushX = function (A) {
     #dldrop.on{transform:none;opacity:1;pointer-events:auto}#dldrop .dl-h{padding:6px 8px 6px}#dldrop .dl-h b{font-size:14px}#dldrop .dl-h button{all:unset;cursor:pointer;color:var(--mute);font:600 12.5px system-ui;padding:4px 8px;border-radius:99px}#dldrop .dl-h button:hover{background:color-mix(in srgb,var(--ink) 10%,transparent)}`;
   function dlList(el, o) { // full list, filter chips, remove / clear
     if (!document.getElementById('dl-css')) { const st = document.createElement('style'); st.id = 'dl-css'; st.textContent = DLCSS; document.head.append(st); }
-    const draw = () => { const items = DL.items.filter(d => DL.filter === 'all' || (DL.filter === 'active' ? (d.state === 'active' || d.state === 'paused') : d.state === 'done')), act = dlActive().length, done = DL.items.filter(d => d.state === 'done').length;
+    const draw = () => { const qq = (DL.q || '').toLowerCase(), items = DL.items.filter(d => (DL.filter === 'all' || (DL.filter === 'active' ? (d.state === 'active' || d.state === 'paused') : d.state === 'done')) && (!qq || ((d.name || '') + ' ' + (d.host || '')).toLowerCase().includes(qq))), act = dlActive().length, done = DL.items.filter(d => d.state === 'done').length;
       el.innerHTML = `<div class=dl-h><div style="flex:1">${o && o.title === false ? '' : '<b>Downloads</b><br>'}<small>${act ? act + ' in progress' : ''}</small></div>${DL.items.some(d => d.state !== 'active' && d.state !== 'paused') ? '<button data-clear style="all:unset;cursor:pointer;font:600 12.5px system-ui;color:var(--mute);padding:6px 10px;border-radius:99px">Clear</button>' : ''}</div>
+        ${DL.items.length > 5 ? `<input data-dq type=search placeholder="Search downloads" value="${esc(DL.q || '')}" style="width:100%;box-sizing:border-box;padding:9px 13px;border-radius:99px;border:1px solid var(--line);background:var(--card);color:inherit;font:14px system-ui;margin:0 0 10px;outline:none">` : ''}
         <div class=dl-seg>${[['all', 'All'], ['active', 'Active'], ['done', 'Finished']].map(([k, l]) => `<button data-f=${k} class="${DL.filter === k ? 'on' : ''}">${l}</button>`).join('')}</div>
         ${items.length ? items.map(d => dlRow(d, false)).join('') : `<div class=dl-empty><svg viewBox="0 0 24 24"><path d="M12 4v10m0 0l-4-4m4 4l4-4M5 19h14" stroke-linecap="round" stroke-linejoin="round"/></svg><br>${DL.filter === 'all' ? 'Nothing downloaded yet.<br>Files go to your Downloads folder.' : 'Nothing here.'}</div>`}
         ${o && o.footer ? `<div style="text-align:center;margin-top:10px"><button data-foot style="all:unset;cursor:pointer;color:var(--mute);font:600 13px system-ui;padding:8px 14px">${esc(o.footer)}</button></div>` : ''}`;
       el.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { DL.filter = b.dataset.f; draw(); });
-      el.querySelector('[data-clear]')?.addEventListener('click', () => { DL.items.splice(0, DL.items.length, ...DL.items.filter(d => d.state === 'active' || d.state === 'paused')); draw(); dlDrop(); });
+      const dq = el.querySelector('[data-dq]'); if (dq) dq.oninput = () => { DL.q = dq.value; const p = dq.selectionStart; draw(); const n = el.querySelector('[data-dq]'); if (n) { n.focus(); n.setSelectionRange(p, p); } };
+      el.querySelector('[data-clear]')?.addEventListener('click', () => { DL.items.splice(0, DL.items.length, ...DL.items.filter(d => d.state === 'active' || d.state === 'paused')); dlSave(); draw(); dlDrop(); });
       el.querySelector('[data-foot]')?.addEventListener('click', () => o.onFooter && o.onFooter());
       el.querySelectorAll('.dl-r').forEach(r => r.querySelectorAll('[data-a]').forEach(b => b.onclick = e => { e.stopPropagation(); dlAct(r.dataset.k, b.dataset.a); }));
       el.querySelectorAll('.dl-r.done').forEach(r => r.onclick = () => dlAct(r.dataset.k, 'open')); };

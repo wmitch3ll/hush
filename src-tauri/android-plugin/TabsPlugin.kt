@@ -583,7 +583,11 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         }
         // Split screen: touching a pane gives it the sound (native, so it works on any site and on fullscreen video).
         w.setOnTouchListener { _, e -> if (e.actionMasked == android.view.MotionEvent.ACTION_DOWN) paneTouched(t.id); false }
-        w.setDownloadListener { url, ua, cd, mime, _ -> if (!t.priv) download(url, ua, cd, mime) else emit("download", JSObject().apply {
+        w.setDownloadListener { url, ua, cd, mime, _ ->
+          val pdf = (mime ?: "").contains("pdf", true) || (Uri.parse(url).path ?: "").endsWith(".pdf", true)
+          // PDFs open in Hush's own viewer (the chrome decides; "Save" there calls downloadUrl). Not for private or Tor tabs.
+          if (!t.priv && pdf && !torOn && url.startsWith("https://")) emit("pdf", JSObject().apply { put("url", url); put("name", URLUtil.guessFileName(url, cd, mime)); put("ua", ua ?: ""); put("cookie", CookieManager.getInstance().getCookie(url) ?: "") })
+          else if (!t.priv) download(url, ua, cd, mime) else emit("download", JSObject().apply {
             put("name", URLUtil.guessFileName(url, cd, mime)); put("state", "failed"); put("error", "downloads are off in private tabs") }) }
         w.setFindListener { index, count, done -> if (done) emit("find", JSObject().apply { put("index", if (count == 0) 0 else index + 1); put("count", count) }) }
         // Long-press a link or image: let the chrome UI show its own menu (open in new tab, copy, share...).
@@ -674,6 +678,15 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
         if (dlNames.isNotEmpty()) act.window.decorView.postDelayed(dlTick, 700) }
     @InvokeArg class DlArgs { var id: String = "" }
     /** Open a finished download with the app that handles its type. */
+    @InvokeArg class UrlArgs { var url: String = ""; var ua: String = "" }
+    /** Save a link to Downloads (used by the PDF viewer's Save button). */
+    @Command fun downloadUrl(i: Invoke) { val a = i.parseArgs(UrlArgs::class.java); act.runOnUiThread { download(a.url, a.ua, null, if (a.url.contains(".pdf", true)) "application/pdf" else null); i.resolve() } }
+    /** Is Hush exempt from battery optimization? Without it Android may freeze the app and delay Murmur messages and game alerts. */
+    @Command fun batteryState(i: Invoke) { val pm = act.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+        i.resolve(JSObject().put("ok", pm.isIgnoringBatteryOptimizations(act.packageName))) }
+    /** Ask Android (one system dialog) to let Hush run in the background. */
+    @Command fun batteryExempt(i: Invoke) { try { act.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + act.packageName))); i.resolve() }
+        catch (e: Throwable) { try { act.startActivity(android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)); i.resolve() } catch (e2: Throwable) { i.reject("Couldn’t open the setting") } } }
     @Command fun downloadOpen(i: Invoke) { val id = i.parseArgs(DlArgs::class.java).id.toLongOrNull() ?: return i.reject("bad id")
         act.runOnUiThread { try { val m = dm(); val u = m.getUriForDownloadedFile(id) ?: return@runOnUiThread i.reject("File is gone")
             val intent = Intent(Intent.ACTION_VIEW).setDataAndType(u, m.getMimeTypeForDownloadedFile(id) ?: "*/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -860,6 +873,10 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     /** Paste and go: the text you last copied (read only when you ask, while Hush is on screen). */
     @Command fun clipText(i: Invoke) { act.runOnUiThread { try { val cm = act.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
         val t = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(act)?.toString() ?: ""; i.resolve(JSObject().put("text", t.take(4000))) } catch (e: Throwable) { i.resolve(JSObject().put("text", "")) } } }
+    /** Run one of Rust's fixed page queries in the active tab and return its text answer. */
+    @Command fun pageEval(i: Invoke) { val js = i.parseArgs(JsArgs::class.java).js
+        act.runOnUiThread { val w = active?.let { tabs[it]?.wv } ?: return@runOnUiThread i.reject("no tab")
+            w.evaluateJavascript(js) { v -> try { i.resolve(JSObject().put("text", org.json.JSONTokener(v).nextValue() as? String ?: "")) } catch (e: Exception) { i.resolve(JSObject().put("text", "")) } } } }
     @Command fun pageText(i: Invoke) { act.runOnUiThread { val w = active?.let { tabs[it]?.wv } ?: return@runOnUiThread i.reject("no tab")
         w.evaluateJavascript(Native.pageTextJs()) { v -> try { i.resolve(JSObject().put("text", org.json.JSONTokener(v).nextValue() as? String ?: "")) } catch (e: Throwable) { i.resolve(JSObject().put("text", "")) } } } }
     /** Split screen: show this tab under the active one ("" turns split off). */

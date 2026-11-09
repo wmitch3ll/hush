@@ -333,12 +333,16 @@ fn keep_awake(on: bool) {
 
 /// The current tab's text, for the on-device assistant (summaries stay on this computer).
 #[tauri::command]
-pub async fn page_text(app: AppHandle) -> Result<String, String> {
+pub async fn page_text(app: AppHandle) -> Result<String, String> { page_query(app, "text".into()).await }
+/// Ask the active page one of the fixed read-only questions in `page_query_js` ("text", "forms").
+#[tauri::command]
+pub async fn page_query(app: AppHandle, q: String) -> Result<String, String> {
+    let script = crate::page_query_js(&q).ok_or("unknown query")?;
     let l = app.state::<AppState>().active.lock().clone().ok_or("no tab")?;
     let w = app.get_webview(&l).ok_or("no tab")?;
-    #[cfg(windows)] { let (tx, rx) = std::sync::mpsc::channel(); crate::intercept_win::page_text(&w, tx);
+    #[cfg(windows)] { let (tx, rx) = std::sync::mpsc::channel(); crate::intercept_win::page_text(&w, tx, script);
         return tauri::async_runtime::spawn_blocking(move || rx.recv_timeout(std::time::Duration::from_secs(8)).map_err(|_| "The page didn’t answer".to_string())).await.map_err(|e| e.to_string())?; }
-    #[cfg(not(windows))] { let _ = w; Err("Not available on this system".into()) }
+    #[cfg(not(windows))] { let _ = (w, script); Err("Not available on this system".into()) }
 }
 static SPLIT_MORE: std::sync::LazyLock<parking_lot::Mutex<Vec<String>>> = std::sync::LazyLock::new(Default::default);
 /// Split view with 3–4 tabs: up to two more tabs below the first two (empty list = back to two).
@@ -499,6 +503,13 @@ pub fn arc_import() -> Result<Vec<serde_json::Value>, String> {
     walk(&v, &mut out, &mut seen);
     if out.is_empty() { return Err("No saved tabs found in Arc".into()); }
     Ok(out)
+}
+/// Read a finished PDF download so Hush's viewer can show it. Only files Hush downloaded, PDFs only.
+#[tauri::command]
+pub async fn download_read(app: AppHandle, path: String) -> Result<tauri::ipc::Response, String> {
+    let p = known_download(&app, &path).ok_or("not a Hush download")?;
+    tauri::async_runtime::spawn_blocking(move || -> Result<tauri::ipc::Response, String> { let b = std::fs::read(&p).map_err(|e| e.to_string())?; if b.len() > (200 << 20) || !b.starts_with(b"%PDF") { return Err("not a PDF".to_string()); } Ok(tauri::ipc::Response::new(b)) })
+        .await.map_err(|e| e.to_string())?
 }
 /// Open a finished download with its default app. Executables are revealed in their folder instead.
 #[tauri::command]

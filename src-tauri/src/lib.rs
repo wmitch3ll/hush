@@ -216,6 +216,10 @@ mod sec_tests { use super::*;
         PAGE_PREFS.write().sec = "safer".into(); assert!(js_allowed("https://x.org/")); assert!(!js_allowed("http://x.org/"));
         PAGE_PREFS.write().sec = "standard".into(); assert!(js_allowed("http://x.org/"));
     } }
+/// Fixed read-only questions the chrome may ask the active page (answer comes back as text).
+pub fn page_query_js(q: &str) -> Option<String> {
+    match q { "text" => Some(PAGE_TEXT_JS.to_string()), "forms" => Some(format!("{PAGE_JS};__hushPage.forms()")), _ => None }
+}
 pub fn page_action_js(action: &str, arg: &str) -> Result<String, String> {
     let a = serde_json::to_string(arg).map_err(|e| e.to_string())?;
     let call = match action {
@@ -230,6 +234,8 @@ pub fn page_action_js(action: &str, arg: &str) -> Result<String, String> {
         "scroll-bottom" => "scrollTo({top:document.documentElement.scrollHeight,behavior:'smooth'})".to_string(),
         "dark-off" => "__hushPage.dark(false)".to_string(),
         "reader" => "__hushPage.reader()".to_string(),
+        // Password vault: fill the login form. `arg` is JSON text {"u":..,"p":..}; it is parsed in the page, never run as code.
+        "fill" => format!("__hushPage.fill(JSON.parse({a}))"),
         "find" => format!("__hushPage.find({a},false)"),
         "find-prev" => format!("__hushPage.find({a},true)"),
         "find-back" => format!("__hushPage.find({a},true)"),
@@ -594,6 +600,29 @@ async fn check_update() -> Result<Value, String> {
     Ok(json!({ "current": BUILD, "latest": latest, "newer": mine > 0 && latest > mine, "name": r["name"], "page": r["html_url"],
                "apk": r["assets"].as_array().and_then(|a| a.iter().find(|x| x["name"].as_str().map(|n| n.ends_with(".apk")).unwrap_or(false))).map(|x| x["browser_download_url"].clone()) }))
 }
+/// Fetch a PDF so Hush's own viewer can show it (phone: a link the browser would otherwise download). https only, PDFs only, 120 MB max.
+/// `cookie` / `ua` come from the tab that met the link so signed-in documents open too.
+#[tauri::command]
+async fn pdf_fetch(url: String, ua: Option<String>, cookie: Option<String>) -> Result<tauri::ipc::Response, String> {
+    if !url.starts_with("https://") || url.len() > 4096 { return Err("only https links".into()); }
+    tauri::async_runtime::spawn_blocking(move || -> Result<tauri::ipc::Response, String> {
+        use std::io::Read;
+        let mut r = ureq::get(&url).set("User-Agent", ua.as_deref().filter(|u| u.len() < 400).unwrap_or("Mozilla/5.0 Hush")).timeout(std::time::Duration::from_secs(60));
+        if let Some(c) = cookie.as_deref().filter(|c| c.len() < 8192 && !c.contains(['\r', '\n'])) { r = r.set("Cookie", c); }
+        let resp = r.call().map_err(|e| e.to_string())?;
+        let mut buf = Vec::new(); resp.into_reader().take(120 << 20).read_to_end(&mut buf).map_err(|e| e.to_string())?;
+        if !buf.starts_with(b"%PDF") { return Err("not a PDF".to_string()); }
+        Ok(tauri::ipc::Response::new(buf))
+    }).await.map_err(|e| e.to_string())?
+}
+/// Vault breach check: the "Have I Been Pwned" range lookup. Only the first 5 hex characters of a SHA-1 hash are sent (k-anonymity).
+#[tauri::command]
+async fn pwned_range(prefix: String) -> Result<String, String> {
+    if prefix.len() != 5 || !prefix.chars().all(|c| c.is_ascii_hexdigit()) { return Err("bad prefix".into()); }
+    tauri::async_runtime::spawn_blocking(move || -> Result<String, String> { ureq::get(&format!("https://api.pwnedpasswords.com/range/{}", prefix.to_uppercase()))
+        .set("Add-Padding", "true").timeout(std::time::Duration::from_secs(10)).call().map_err(|e| e.to_string())?.into_string().map_err(|e| e.to_string()) })
+        .await.map_err(|e| e.to_string())?
+}
 #[tauri::command]
 async fn app_info() -> Value { json!({ "build": BUILD, "version": env!("CARGO_PKG_VERSION"), "platform": std::env::consts::OS }) }
 /// Merge bookmarks sent from another device (QR code / hush: link). Only web URLs are accepted.
@@ -602,9 +631,9 @@ async fn import_bookmarks(app: AppHandle, items: Vec<store::Bookmark>) -> usize 
     let st = app.state::<AppState>();
     let mut s = st.store.lock();
     let mut n = 0;
-    for b in items.into_iter().take(500) {
+    for b in items.into_iter().take(5000) {
         if (b.url.starts_with("https://") || b.url.starts_with("http://")) && b.url.len() < 2048 && !s.bookmarks.iter().any(|x| x.url == b.url) {
-            s.bookmarks.push(store::Bookmark { title: b.title.chars().take(200).collect(), url: b.url, folder: b.folder.chars().take(30).collect() }); n += 1;
+            s.bookmarks.push(store::Bookmark { title: b.title.chars().take(200).collect(), url: b.url, folder: b.folder.chars().take(60).collect() }); n += 1;
         }
     }
     store::save(&app, &s);
@@ -657,21 +686,21 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![toggle_shield, get_state, set_setting, bookmark_add, bookmark_remove,
             add_custom_filter, export_data, import_data, update_lists,
             site_dark, get_stats, history_add, history_list, history_clear, suggest, session_save,
-            check_update, app_info, import_bookmarks,
+            check_update, app_info, import_bookmarks, pwned_range, pdf_fetch,
             desktop::page_action, desktop::set_split, desktop::set_rail, desktop::set_zoom, desktop::set_muted,
             desktop::toggle_fullscreen, desktop::capture_tab, desktop::peek_open, desktop::peek_close, desktop::peek_expand,
             desktop::screenshot, desktop::save_png, desktop::attention, boost_set, remove_custom_filter, bookmarks_reorder,
             extensions::extension_list, extensions::extension_install, extensions::extension_remove,
-            desktop::arc_import, desktop::set_split_more, desktop::set_split_mode, desktop::set_split_ratio, desktop::split_swap, desktop::page_text, desktop::open_tab, desktop::switch_tab, desktop::close_tab, desktop::navigate, desktop::nav,
+            desktop::arc_import, desktop::set_split_more, desktop::set_split_mode, desktop::set_split_ratio, desktop::split_swap, desktop::page_text, desktop::page_query, desktop::open_tab, desktop::switch_tab, desktop::close_tab, desktop::navigate, desktop::nav,
             desktop::clear_data, desktop::start_picker, desktop::set_layout, desktop::show_content,
-            desktop::download_open, desktop::download_reveal, desktop::float_tab, desktop::float_close, tor::tor_start, tor::tor_new_identity, tor::tor_state, watch_check, msgnet::msg_ws_open, msgnet::site_icon, msgnet::public_feed, msgnet::scores_get, msgnet::groq_chat, msgnet::msg_ws_send, msgnet::msg_ws_close, msgnet::blob_put, msgnet::blob_get, msgnet::secret_set, msgnet::secret_get, msgnet::secret_del])
+            desktop::download_open, desktop::download_reveal, desktop::download_read, desktop::float_tab, desktop::float_close, tor::tor_start, tor::tor_new_identity, tor::tor_state, watch_check, msgnet::msg_ws_open, msgnet::site_icon, msgnet::public_feed, msgnet::scores_get, msgnet::groq_chat, msgnet::msg_ws_send, msgnet::msg_ws_close, msgnet::blob_put, msgnet::blob_get, msgnet::secret_set, msgnet::secret_get, msgnet::secret_del])
         .setup(desktop::setup);
     #[cfg(mobile)] let b = b
         .invoke_handler(tauri::generate_handler![toggle_shield, get_state, set_setting, bookmark_add, bookmark_remove,
             add_custom_filter, export_data, import_data, update_lists,
             site_dark, get_stats, history_add, history_list, history_clear, suggest, session_save,
-            check_update, app_info, import_bookmarks,
-            mobile::page_action, mobile::native_call, boost_set, remove_custom_filter, bookmarks_reorder, tor::tor_start, tor::tor_new_identity, tor::tor_state, watch_check, msgnet::msg_ws_open, msgnet::site_icon, msgnet::public_feed, msgnet::scores_get, msgnet::groq_chat, msgnet::msg_ws_send, msgnet::msg_ws_close, msgnet::blob_put, msgnet::blob_get,
+            check_update, app_info, import_bookmarks, pwned_range, pdf_fetch,
+            mobile::page_action, mobile::page_query, mobile::native_call, boost_set, remove_custom_filter, bookmarks_reorder, tor::tor_start, tor::tor_new_identity, tor::tor_state, watch_check, msgnet::msg_ws_open, msgnet::site_icon, msgnet::public_feed, msgnet::scores_get, msgnet::groq_chat, msgnet::msg_ws_send, msgnet::msg_ws_close, msgnet::blob_put, msgnet::blob_get,
             mobile::open_tab, mobile::switch_tab, mobile::close_tab, mobile::navigate, mobile::nav,
             mobile::clear_data, mobile::set_chrome_inset, mobile::set_web_prefs])
         .setup(mobile::setup);
@@ -728,6 +757,11 @@ mod security_tests {
         assert!(page_action_js("eval", "x").is_err());
         let js = page_action_js("find", "\");fetch('//evil');(\"").unwrap();
         assert!(js.ends_with(r#"__hushPage.find("\");fetch('//evil');(\"",false);"#));
+    }
+    #[test] fn vault_fill_arg_cannot_break_out() {
+        let js = page_action_js("fill", "{\"u\":\"a\"});fetch('//evil');({\"").unwrap();
+        assert!(js.contains("JSON.parse(\"") && !js.contains("JSON.parse({"));
+        assert!(page_query_js("forms").is_some() && page_query_js("eval").is_none());
     }
     #[test] fn search_shortcuts() {
         let mut s = store::Settings::default();

@@ -162,6 +162,7 @@ kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:
 <script src="icons.js"></script>
 <script src="qr.js"></script>
 <script src="extras.js"></script>
+<script src="importer.js"></script><script src="vault.js"></script><script src="vault-ui.js"></script><script src="pdf.js"></script>
 <script src="ghost.js"></script>
 <script src="scores.js"></script>
 <script src="guide.js"></script>
@@ -473,7 +474,7 @@ const KEYS=[
   ['Hush','shift+h','Hub — show / hide the side panel',()=>dockTab?closeDock():openDock('murmur')],['Hush','shift+o','Open this page in Tor (onion)',()=>torTab()],
   ['Hush','shift+s','Screenshot the whole page',()=>{if(curT())snapshot(true)}],['Hush','shift+r','Read the page aloud',()=>{if(curT())listenToggle()}],
   ['Hush','shift+x','Panic — close private & Tor tabs, lock messages',()=>panic()],
-  ['Open','h','History',()=>panel=='history'?closePanel():openPanel('history')],['Open','j','Downloads',()=>$('#dls').click()],
+  ['Open','h','History',()=>panel=='history'?closePanel():openPanel('history')],['Open','j','Downloads',()=>$('#dls').click()],['Open','l','Vault (passwords)',()=>panel=='vault'?closePanel():openPanel('vault')],
   ['Open','shift+b','Bookmarks',()=>panel=='bookmarks'?closePanel():openPanel('bookmarks')],['Open',',','Settings',()=>$('#gear').click()],
   ['Open','/','Keyboard shortcuts',()=>panel=='keys'?closePanel():openPanel('keys')],
 ];
@@ -520,7 +521,12 @@ T.event.listen('https-failed',({payload:p})=>{if(p.tab==cur){$('#load').classLis
 T.event.listen('download',({payload:p})=>{HX.dl.event(p);draw()});
 
 // ---------- panels ----------
-const RENDER={privacy:()=>{const p=$('#panel');p.innerHTML=`<h2>Privacy report ${closeBtn}</h2><div id=pvb></div>`;HX.privacyReport($('#pvb'),{});wire(p)},ai:()=>HX.assistant($('#panel'),{pageText:()=>inv('page_text')}),bookmarks:()=>renderBookmarks(),ext:()=>renderExt(),reading:()=>renderReading(),focus:()=>renderFocus(),about:()=>renderAbout(),send:()=>renderSend(),settings:()=>renderSettings(),downloads:()=>renderDownloads(),suggest:()=>renderSuggest(),pal:()=>renderPalette(),
+let pdfFile=null;function openPdfFile(d){pdfFile=d;openPanel('pdf')}
+const RENDER={pdf:()=>{const p=$('#panel'),d=pdfFile;p.innerHTML='<div id=pvh style="position:relative;height:calc(100vh - var(--bar-h,46px) - 28px);margin:-6px"></div>';
+    inv('download_read',{path:d.path}).then(buf=>HXPDF.open($('#pvh'),{data:buf,name:d.name||'Document.pdf',close:()=>closePanel(),toast,save:()=>inv('download_reveal',{path:d.path}).catch(()=>{}),
+      summarize:t=>{window.__pdfText=t;window.__aiRun='sumdoc';closePanel();closeDock();openDock('ai')}})).catch(e=>{toast('Couldn’t open it here');closePanel();inv('download_open',{path:d.path}).catch(()=>{})})},vault:()=>{const p=$('#panel');p.innerHTML='<div id=vxh></div>';const t=tab(cur),h=t&&/^https?:/.test(t.url)&&!t.priv?hostOf(t.url).replace(/^www\./,''):'';
+    HXVUI.open($('#vxh'),{host:h,readForm:h?()=>inv('page_query',{q:'forms'}):null,fill:it=>inv('page_action',{action:'fill',arg:JSON.stringify({u:it.user,p:it.pass})}),copy:s=>navigator.clipboard.writeText(s).catch(()=>{}),
+      toast,range:x=>inv('pwned_range',{prefix:x}),openUrl:u=>{closePanel();openTab(u)},close:()=>closePanel(),bookmarks:async items=>{const n=await inv('import_bookmarks',{items});await loadState();return n}})},privacy:()=>{const p=$('#panel');p.innerHTML=`<h2>Privacy report ${closeBtn}</h2><div id=pvb></div>`;HX.privacyReport($('#pvb'),{});wire(p)},ai:()=>HX.assistant($('#panel'),{pageText:()=>inv('page_text')}),bookmarks:()=>renderBookmarks(),ext:()=>renderExt(),reading:()=>renderReading(),focus:()=>renderFocus(),about:()=>renderAbout(),send:()=>renderSend(),settings:()=>renderSettings(),downloads:()=>renderDownloads(),suggest:()=>renderSuggest(),pal:()=>renderPalette(),
   history:()=>renderHistory(),site:()=>renderSite(),ws:()=>renderWs(),
   boost:()=>{const p=$('#panel'),t=tab(cur),h=t?HX.host(t.url):'';if(!h){closePanel();return}p.innerHTML=`<h2>Boosts · ${esc(h)} ${closeBtn}</h2><div id=bx></div>`;
     HX.boost($('#bx'),h,()=>inv('nav',{action:'reload'}).catch(()=>{}));wire(p)},
@@ -552,7 +558,7 @@ const RENDER={privacy:()=>{const p=$('#panel');p.innerHTML=`<h2>Privacy report $
   watch:()=>{const p=$('#panel');p.innerHTML=`<h2>Change watch ${closeBtn}</h2><div id=wx></div>`;HX.watchPanel($('#wx'),u=>openTab(u));wire(p)},
   shot:()=>{$('#panel').innerHTML='<p style="color:var(--mute);padding:40px;text-align:center">Screenshot editor</p>'}};
 // ---------- start page, Listen, Peek, screenshots, auto-archive (shared code in extras.js) ----------
-const HX=HushX({alert:(t,x)=>{try{if(Notification.permission==='granted'&&document.visibilityState==='hidden'){new Notification(t,{body:x});return}}catch(e){}toast(t+': '+x)},askNotify:()=>{try{Notification.requestPermission()}catch(e){}},dlOpen:d=>inv('download_open',{path:d.path}).catch(e=>toast(String(e))),dlShow:d=>inv('download_reveal',{path:d.path}).catch(e=>toast(String(e))),inv,pref,setPref,toast,open:u=>openTab(u),state:()=>state,reload:()=>loadState(),mobile:false,act:id=>runAction(id),
+const HX=HushX({alert:(t,x)=>{try{if(Notification.permission==='granted'&&document.visibilityState==='hidden'){new Notification(t,{body:x});return}}catch(e){}toast(t+': '+x)},askNotify:()=>{try{Notification.requestPermission()}catch(e){}},dlOpen:d=>/\.pdf$/i.test(d.path||'')&&pref('pdf_viewer')!='false'?openPdfFile(d):inv('download_open',{path:d.path}).catch(e=>toast(String(e))),dlShow:d=>inv('download_reveal',{path:d.path}).catch(e=>toast(String(e))),inv,pref,setPref,toast,open:u=>openTab(u),state:()=>state,reload:()=>loadState(),mobile:false,act:id=>runAction(id),
   watchPick:()=>{if(!tab(cur))return toast('Open the page you want to watch first');closePanel();inv('start_picker',{mode:'watch'});toast('Click the price or text to watch')},
   zap:()=>{closePanel();inv('start_picker');toast('Click an element to remove it from this site · Esc to cancel')}});
 function renderHome(){const el=$('#home');HX.home(el,{top:`<h1 class="wordmark">hush<i class=wm-dot>.</i></h1>${pref('sp_stats')!='off'?'<div class=stats id=stats></div>':''}`,
@@ -594,7 +600,7 @@ function sharePick(){const t=tab(cur);if(!t||!/^https?:/.test(t.url))return toas
 async function panic(){closePanel(true);try{closeDock()}catch(e){}try{HM.api.lockNow()}catch(e){}
   const gone=tabs.filter(t=>t.priv||t.tor).map(t=>t.id);for(const id of gone)await closeTab(id,true).catch(()=>{});
   inv('tor_new_identity').catch(()=>{});if(!tabs.length||gone.includes(cur))await newTab(false);toast('Panic: private & Tor tabs closed, Murmur locked')}
-function runAction(id){const t=tab(cur);const A={panic,back:()=>inv('nav',{action:'back'}),forward:()=>inv('nav',{action:'fwd'}),reload:()=>inv('nav',{action:'reload'}),newtab:()=>newTab(false),
+function runAction(id){const t=tab(cur);const A={summarize:()=>{window.__aiRun='sum';closeDock();openDock('ai')},vault:()=>openPanel('vault'),panic,back:()=>inv('nav',{action:'back'}),forward:()=>inv('nav',{action:'fwd'}),reload:()=>inv('nav',{action:'reload'}),newtab:()=>newTab(false),
   closetab:()=>cur&&closeTab(cur),reopen:()=>shortcut('shift+t'),nexttab:()=>cycle(1),prevtab:()=>cycle(-1),top:()=>inv('page_action',{action:'scroll-top'}),bottom:()=>inv('page_action',{action:'scroll-bottom'}),
   find:()=>findMode(true),reader:()=>inv('page_action',{action:'reader'}),listen:()=>listenToggle(),screenshot:()=>snapshot(true),tor:()=>torTab(),newid:()=>newIdentity(),bookmark:()=>$('#star').click(),
   copylink:async()=>{if(t)try{await navigator.clipboard.writeText(t.url)}catch(e){}},dark:async()=>{await setPref('force_dark',pref('force_dark')=='true'?'false':'true');applyDarkNow()},
@@ -707,6 +713,8 @@ const ACTIONS=()=>withKeys([
   ['Keep screen awake in split view: '+(pref('split_awake')!='false'?'on':'off'),'While a split is open',async()=>{closePanel();await setPref('split_awake',pref('split_awake')!='false'?'false':'true');splitModeSync()}],
   ['Save split as a scene','Reopen these tabs side by side later',()=>{closePanel();sceneSave()}],
   ...scenes().map(x=>['Scene: '+x.name,x.urls.length+' tabs · '+(x.mode=='spot'?'Spotlight':'Grid'),()=>{closePanel();sceneOpen(x)}]),
+  ['Vault: passwords & logins','Encrypted on this device · fill, save, generate, import',()=>{closePanel();openPanel('vault')}],
+  ['Import from another browser','Bookmarks and saved logins from Chrome, Firefox, Safari…',()=>{closePanel();openPanel('vault');setTimeout(()=>document.querySelector('#vxh [data-v=import]')?.click(),400)}],
   ['Import from Arc','Pinned tabs & folders → bookmarks',async()=>{closePanel();try{const l=await inv('arc_import');let n=0;for(const b of l){try{await inv('bookmark_add',{title:b.title||b.url,url:b.url});n++}catch(e){}}await loadState();toast('Imported '+n+' tabs from Arc as bookmarks')}catch(e){toast(String(e))}}],
   ['Send this page to a friend','Murmur',()=>sharePick()],['Panic: close private & Tor tabs, lock Murmur','Ctrl+Shift+X',()=>panic()],['Note on this page','',()=>tab(cur)&&openPanel('site')],
   ['New tab','Ctrl+T',()=>newTab(false)],['New private tab','Ctrl+Shift+N',()=>newTab(true)],
