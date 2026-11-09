@@ -218,7 +218,8 @@ mod sec_tests { use super::*;
     } }
 /// Fixed read-only questions the chrome may ask the active page (answer comes back as text).
 pub fn page_query_js(q: &str) -> Option<String> {
-    match q { "text" => Some(PAGE_TEXT_JS.to_string()), "forms" => Some(format!("{PAGE_JS};__hushPage.forms()")), _ => None }
+    match q { "text" => Some(PAGE_TEXT_JS.to_string()), "forms" => Some(format!("{PAGE_JS};__hushPage.forms()")), "policy" => Some(format!("{PAGE_JS};__hushPage.policy()")),
+        "scroll" => Some("(()=>{const m=document.documentElement.scrollHeight-innerHeight;return String(m>0?Math.round(scrollY/m*1000)/1000:0)})()".to_string()), _ => None }
 }
 pub fn page_action_js(action: &str, arg: &str) -> Result<String, String> {
     let a = serde_json::to_string(arg).map_err(|e| e.to_string())?;
@@ -234,6 +235,8 @@ pub fn page_action_js(action: &str, arg: &str) -> Result<String, String> {
         "scroll-bottom" => "scrollTo({top:document.documentElement.scrollHeight,behavior:'smooth'})".to_string(),
         "dark-off" => "__hushPage.dark(false)".to_string(),
         "reader" => "__hushPage.reader()".to_string(),
+        // Rooms: scroll to a fraction (0..1) of the page. `+` turns the JSON text into a number (NaN is ignored).
+        "scroll-frac" => format!("(()=>{{const f=+{a};if(isFinite(f)){{const m=document.documentElement.scrollHeight-innerHeight;scrollTo({{top:Math.max(0,Math.min(1,f))*Math.max(0,m),behavior:'smooth'}})}}}})()"),
         // Password vault: fill the login form. `arg` is JSON text {"u":..,"p":..}; it is parsed in the page, never run as code.
         "fill" => format!("__hushPage.fill(JSON.parse({a}))"),
         "find" => format!("__hushPage.find({a},false)"),
@@ -600,6 +603,50 @@ async fn check_update() -> Result<Value, String> {
     Ok(json!({ "current": BUILD, "latest": latest, "newer": mine > 0 && latest > mine, "name": r["name"], "page": r["html_url"],
                "apk": r["assets"].as_array().and_then(|a| a.iter().find(|x| x["name"].as_str().map(|n| n.ends_with(".apk")).unwrap_or(false))).map(|x| x["browser_download_url"].clone()) }))
 }
+/// https URL on a public website: no raw IP addresses, no localhost / .local / .internal / single-label names, no ports.
+pub fn public_https_host(url: &str) -> Option<String> {
+    let u = url::Url::parse(url).ok()?; if u.scheme() != "https" || u.port().is_some() { return None; }
+    let h = u.host_str()?.to_ascii_lowercase();
+    if h.is_empty() || h == "localhost" || h.ends_with(".local") || h.ends_with(".internal") || h.ends_with(".localhost") || !h.contains('.') || h.parse::<std::net::IpAddr>().is_ok() || h.starts_with('[') { return None; }
+    Some(h)
+}
+/// Read a public web page (direct, short timeout, `limit` bytes). Redirects that land on a non-public host are refused.
+pub fn fetch_public(url: &str, accept: &str, limit: u64) -> Result<String, String> {
+    use std::io::Read;
+    public_https_host(url).ok_or("only public https websites")?;
+    let resp = ureq::get(url).set("User-Agent", "Mozilla/5.0 Hush").set("Accept", accept).timeout(std::time::Duration::from_secs(15)).call().map_err(|e| e.to_string())?;
+    if public_https_host(resp.get_url()).is_none() { return Err("not a public website".into()); }
+    let mut raw = Vec::new(); resp.into_reader().take(limit).read_to_end(&mut raw).map_err(|e| e.to_string())?;
+    Ok(String::from_utf8_lossy(&raw).into_owned())
+}
+/// Plain text of a web page (used by the privacy check to read a site's privacy policy). 400 KB read, 250k characters back.
+#[tauri::command]
+async fn fetch_text(url: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || fetch_public(&url, "text/html,text/plain", 400_000).map(|h| html_to_text(&h))).await.map_err(|e| e.to_string())?
+}
+/// A news feed (RSS / Atom) for the Game Day screen. Raw XML back; the screen parses it. 1 MB max.
+#[tauri::command]
+async fn feed_get(url: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || fetch_public(&url, "application/rss+xml,application/atom+xml,application/xml,text/xml", 1 << 20)).await.map_err(|e| e.to_string())?
+}
+/// Very small HTML -> text: drops script/style/noscript, turns tags into spaces, decodes the common entities.
+pub fn html_to_text(html: &str) -> String {
+    let mut out = String::with_capacity(html.len() / 2); let lower = html.to_ascii_lowercase(); let (b, lb) = (html.as_bytes(), lower.as_bytes()); let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'<' {
+            let mut skipped = false;
+            for t in ["script", "style", "noscript", "svg"] {
+                if lb[i..].starts_with(format!("<{t}").as_bytes()) { if let Some(e) = lower[i..].find(&format!("</{t}")) { i += e + t.len() + 2; while i < b.len() && b[i] != b'>' { i += 1; } i += 1; skipped = true; break; } }
+            }
+            if skipped { out.push(' '); continue; }
+            let block = ["<p", "<br", "<li", "<div", "<h1", "<h2", "<h3", "<h4", "<tr"].iter().any(|t| lb[i..].starts_with(t.as_bytes()));
+            while i < b.len() && b[i] != b'>' { i += 1; } i += 1; out.push(if block { '\n' } else { ' ' });
+        } else { let n = html[i..].chars().next().map(|c| c.len_utf8()).unwrap_or(1); out.push_str(&html[i..i + n]); i += n; }
+    }
+    let out = out.replace("&amp;", "&").replace("&nbsp;", " ").replace("&quot;", "\"").replace("&#39;", "'").replace("&rsquo;", "’").replace("&lt;", "<").replace("&gt;", ">");
+    let mut res = String::new(); for line in out.lines() { let l = line.split_whitespace().collect::<Vec<_>>().join(" "); if !l.is_empty() { res.push_str(&l); res.push('\n'); } }
+    res.chars().take(250_000).collect()
+}
 /// Fetch a PDF so Hush's own viewer can show it (phone: a link the browser would otherwise download). https only, PDFs only, 120 MB max.
 /// `cookie` / `ua` come from the tab that met the link so signed-in documents open too.
 #[tauri::command]
@@ -686,21 +733,21 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![toggle_shield, get_state, set_setting, bookmark_add, bookmark_remove,
             add_custom_filter, export_data, import_data, update_lists,
             site_dark, get_stats, history_add, history_list, history_clear, suggest, session_save,
-            check_update, app_info, import_bookmarks, pwned_range, pdf_fetch,
+            check_update, app_info, import_bookmarks, pwned_range, pdf_fetch, fetch_text, feed_get,
             desktop::page_action, desktop::set_split, desktop::set_rail, desktop::set_zoom, desktop::set_muted,
             desktop::toggle_fullscreen, desktop::capture_tab, desktop::peek_open, desktop::peek_close, desktop::peek_expand,
             desktop::screenshot, desktop::save_png, desktop::attention, boost_set, remove_custom_filter, bookmarks_reorder,
             extensions::extension_list, extensions::extension_install, extensions::extension_remove,
             desktop::arc_import, desktop::set_split_more, desktop::set_split_mode, desktop::set_split_ratio, desktop::split_swap, desktop::page_text, desktop::page_query, desktop::open_tab, desktop::switch_tab, desktop::close_tab, desktop::navigate, desktop::nav,
             desktop::clear_data, desktop::start_picker, desktop::set_layout, desktop::show_content,
-            desktop::download_open, desktop::download_reveal, desktop::download_read, desktop::float_tab, desktop::float_close, tor::tor_start, tor::tor_new_identity, tor::tor_state, watch_check, msgnet::msg_ws_open, msgnet::site_icon, msgnet::public_feed, msgnet::scores_get, msgnet::groq_chat, msgnet::msg_ws_send, msgnet::msg_ws_close, msgnet::blob_put, msgnet::blob_get, msgnet::secret_set, msgnet::secret_get, msgnet::secret_del])
+            desktop::download_open, desktop::download_reveal, desktop::download_read, desktop::float_tab, desktop::float_close, tor::tor_start, tor::tor_new_identity, tor::tor_state, watch_check, msgnet::msg_ws_open, msgnet::site_icon, msgnet::public_feed, msgnet::scores_get, msgnet::news_get, msgnet::groq_chat, msgnet::msg_ws_send, msgnet::msg_ws_close, msgnet::blob_put, msgnet::blob_get, msgnet::secret_set, msgnet::secret_get, msgnet::secret_del])
         .setup(desktop::setup);
     #[cfg(mobile)] let b = b
         .invoke_handler(tauri::generate_handler![toggle_shield, get_state, set_setting, bookmark_add, bookmark_remove,
             add_custom_filter, export_data, import_data, update_lists,
             site_dark, get_stats, history_add, history_list, history_clear, suggest, session_save,
-            check_update, app_info, import_bookmarks, pwned_range, pdf_fetch,
-            mobile::page_action, mobile::page_query, mobile::native_call, boost_set, remove_custom_filter, bookmarks_reorder, tor::tor_start, tor::tor_new_identity, tor::tor_state, watch_check, msgnet::msg_ws_open, msgnet::site_icon, msgnet::public_feed, msgnet::scores_get, msgnet::groq_chat, msgnet::msg_ws_send, msgnet::msg_ws_close, msgnet::blob_put, msgnet::blob_get,
+            check_update, app_info, import_bookmarks, pwned_range, pdf_fetch, fetch_text, feed_get,
+            mobile::page_action, mobile::page_query, mobile::native_call, boost_set, remove_custom_filter, bookmarks_reorder, tor::tor_start, tor::tor_new_identity, tor::tor_state, watch_check, msgnet::msg_ws_open, msgnet::site_icon, msgnet::public_feed, msgnet::scores_get, msgnet::news_get, msgnet::groq_chat, msgnet::msg_ws_send, msgnet::msg_ws_close, msgnet::blob_put, msgnet::blob_get,
             mobile::open_tab, mobile::switch_tab, mobile::close_tab, mobile::navigate, mobile::nav,
             mobile::clear_data, mobile::set_chrome_inset, mobile::set_web_prefs])
         .setup(mobile::setup);
@@ -761,7 +808,18 @@ mod security_tests {
     #[test] fn vault_fill_arg_cannot_break_out() {
         let js = page_action_js("fill", "{\"u\":\"a\"});fetch('//evil');({\"").unwrap();
         assert!(js.contains("JSON.parse(\"") && !js.contains("JSON.parse({"));
-        assert!(page_query_js("forms").is_some() && page_query_js("eval").is_none());
+        assert!(page_query_js("forms").is_some() && page_query_js("eval").is_none() && page_query_js("scroll").is_some() && page_query_js("policy").is_some());
+        let js = page_action_js("scroll-frac", "1);fetch('//evil');(0").unwrap();
+        assert!(js.contains("const f=+\"1);fetch('//evil');(0\";"));
+    }
+    #[test] fn html_text_keeps_words_and_drops_scripts() {
+        let t = html_to_text("<html><head><title>x</title><style>a{}</style></head><body><script>var s=1;</script><h1>Privacy</h1><p>We do not sell your data &amp; never will.</p><noscript>no</noscript><li>Item</li></body></html>");
+        assert!(t.contains("Privacy") && t.contains("We do not sell your data & never will.") && t.contains("Item"));
+        assert!(!t.contains("var s") && !t.contains("a{}") && !t.contains("<"));
+    }
+    #[test] fn only_public_https_sites_can_be_fetched() {
+        assert_eq!(public_https_host("https://www.Example.com/privacy").as_deref(), Some("www.example.com"));
+        for bad in ["http://example.com", "https://localhost/", "https://192.168.1.1/", "https://[::1]/", "https://printer.local/", "https://intranet/", "https://example.com:8443/", "file:///etc/passwd", "https://x.internal/"] { assert!(public_https_host(bad).is_none(), "{bad}"); }
     }
     #[test] fn search_shortcuts() {
         let mut s = store::Settings::default();

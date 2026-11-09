@@ -170,7 +170,7 @@ window.HushMsg = function (A) {
         return fileUrl(id); } catch {} }
     return null;
   }
-  const api = { avatarHTML: (k, z) => avatarHTML(k, z), hydrate: el => hydrate(el), myProfile: () => profile(), ready: () => loadKey(), gate: (el, then) => gate(el, then), me: () => me, start, req, unreq, sign, broadcast, wrapTo, uploadEncrypted, mediaUrl, shrink,
+  const api = { togetherNav: u => together.nav(u), avatarHTML: (k, z) => avatarHTML(k, z), hydrate: el => hydrate(el), myProfile: () => profile(), ready: () => loadKey(), gate: (el, then) => gate(el, then), me: () => me, start, req, unreq, sign, broadcast, wrapTo, uploadEncrypted, mediaUrl, shrink,
     onEcho: f => hooks.echo.push(f), onReset: f => hooks.reset.push(f), onBackup: (get, put) => { hooks.backup.push(get); hooks.restore.push(put); }, npub, nameOf, colorOf, initials, contacts, profile, setProfile: p => LS.set('profile', p), status: () => status, okRelays,
     chatList: () => { if (!sk) return []; const c = contacts(); return [...new Set([...Object.keys(chats()), ...Object.keys(c).filter(k => !c[k].blocked && !c[k].request), ...Object.keys(groups())])].filter(k => k && k !== 'self').map(k => ({ key: k, name: chatName(k) })); },
     // Device sync: end-to-end encrypted messages from this ID to itself; every linked device (same ID) receives them.
@@ -360,29 +360,41 @@ window.HushMsg = function (A) {
   // apply on your screen and are sent to the others, encrypted like any message. Nothing is streamed — each person
   // plays the page themselves, so it works with any site that has a video.
   const together = (() => {
-    let s = null;
+    let s = null, poll = 0, lastScroll = -1;
     const label = { play: 'played', pause: 'paused', start: 'is starting it from the top', go: 'moved everyone to a new page' };
     function bar() { if (!A.togetherBar) return; if (!s) return A.togetherBar(null);
-      A.togetherBar({ title: '' + chatName(s.key), items: [['⏪ 10 s', 'skip:-10'], ['▶ Play', 'play'], ['⏸ Pause', 'pause'], ['⏩ 10 s', 'skip:10'], ['⟲ Start together', 'start'], ['Bring everyone to this page', 'go'], ['✕ Leave', 'end']] }, act); }
+      const rm = A.scrollGet ? [[s.drive ? '✋ Stop driving' : '🧭 Drive: everyone follows me', 'drive'], [s.follow === false ? '👀 Follow the driver' : '🚶 Browse on my own', 'follow']] : [];
+      A.togetherBar({ title: '' + chatName(s.key) + (s.drive ? ' · you are driving' : s.driver ? ' · ' + first(s.driver) + ' is driving' : ''),
+        items: [['⏪ 10 s', 'skip:-10'], ['▶ Play', 'play'], ['⏸ Pause', 'pause'], ['⏩ 10 s', 'skip:10'], ['⟲ Start together', 'start'], ...rm, ['Bring everyone to this page', 'go'], ['✕ Leave', 'end']] }, act); }
     function apply(o) {
       if (o.a === 'play' || o.a === 'pause') A.media(o.a);
       else if (o.a === 'skip' && isFinite(o.v)) A.media('skip', Math.max(-600, Math.min(600, +o.v)));
       else if (o.a === 'start') { A.media('pause'); A.media('seek', 0); setTimeout(() => A.media('play'), Math.max(0, Math.min(6000, (+o.at || 0) * 1000 - Date.now()))); }
       else if (o.a === 'go' && /^https?:\/\//.test(o.url || '')) { s.url = String(o.url).slice(0, 2000); A.open(s.url); } }
     function send(o) { if (s) publish(s.key, K_TOG, JSON.stringify(o), [], { noSelf: true, spread: 2 }); }
+    // Driving: your page changes and scrolling are sent to the others (a small message about once a second while you scroll). Nothing else is shared.
+    function startPoll() { clearInterval(poll); lastScroll = -1; poll = setInterval(async () => { if (!s || !s.drive || !A.scrollGet) return clearInterval(poll); try { const f = await A.scrollGet(); if (isFinite(f) && Math.abs(f - lastScroll) > 0.01) { lastScroll = f; send({ a: 'scroll', v: Math.round(f * 1000) / 1000 }); } } catch {} }, 1200); }
     function act(a) { if (!s) return;
-      if (a === 'end') { send({ a: 'end' }); s = null; bar(); return A.toast('You left Watch Together'); }
+      if (a === 'end') { send({ a: 'end' }); clearInterval(poll); s = null; bar(); return A.toast('You left Watch Together'); }
+      if (a === 'drive') { s.drive = !s.drive; s.driver = null; if (s.drive) { s.follow = true; send({ a: 'drive' }); startPoll(); A.toast('You are driving — everyone follows your page and scrolling'); } else { clearInterval(poll); send({ a: 'park' }); A.toast('You stopped driving'); } return bar(); }
+      if (a === 'follow') { s.follow = s.follow === false; bar(); return A.toast(s.follow === false ? 'Browsing on your own' : 'Following the driver'); }
       const [x, v] = a.split(':'), o = { a: x };
       if (v) o.v = +v; if (x === 'start') o.at = now() + 3;
       if (x === 'go') { const p = A.page && A.page(); if (!p) return A.toast('Open a page first'); o.url = p.url; s.url = p.url; send(o); return A.toast('Everyone is moving to this page'); }
       apply(o); send(o); if (x === 'start') A.toast('Starting from the top in 3 seconds…'); }
     return {
-      join(key, url, host) { s = { key, url }; A.open(url); bar(); send({ a: 'join' });
+      join(key, url, host) { s = { key, url, drive: false, driver: null, follow: true }; A.open(url); bar(); send({ a: 'join' });
         A.toast(host ? 'Started — when they join, use the controls so everyone stays in sync' : 'Joined — use the controls; play, pause and skip happen for everyone'); },
+      /** The chrome tells us when the page you are on changes; while you drive, the others are taken there too. */
+      nav(url) { if (!s || !s.drive || !/^https?:\/\//.test(url || '') || url === s.url) return; s.url = String(url).slice(0, 2000); lastScroll = -1; send({ a: 'go', url: s.url }); },
       remote(key, pk, o) { if (!s || s.key !== key) return;
         if (o.a === 'join') return A.toast('' + first(pk) + ' joined');
-        if (o.a === 'end') return A.toast('' + first(pk) + ' left');
+        if (o.a === 'end') { if (s.driver === pk) { s.driver = null; bar(); } return A.toast('' + first(pk) + ' left'); }
+        if (o.a === 'drive') { s.drive = false; clearInterval(poll); s.driver = pk; bar(); return A.toast('' + first(pk) + ' is driving — you follow their page'); }
+        if (o.a === 'park') { if (s.driver === pk) { s.driver = null; bar(); } return; }
+        if (o.a === 'scroll') { if (s.follow !== false && !s.drive && A.scroll && isFinite(o.v)) A.scroll(Math.max(0, Math.min(1, +o.v))); return; }
         if (!['play', 'pause', 'skip', 'start', 'go'].includes(o.a)) return;
+        if (o.a === 'go' && s.follow === false && s.driver === pk) { A.toast('' + first(pk) + ' went to a new page — tap “Follow the driver” to join'); return; }
         apply(o); A.toast('' + first(pk) + ' ' + (o.a === 'skip' ? 'skipped ' + (o.v > 0 ? '+' : '') + o.v + ' s' : label[o.a])); },
       active: () => !!s };
   })();

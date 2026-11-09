@@ -167,7 +167,7 @@ body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
 <script src="icons.js"></script>
 <script src="qr.js"></script>
 <script src="extras.js"></script>
-<script src="importer.js"></script><script src="vault.js"></script><script src="vault-ui.js"></script><script src="pdf.js"></script>
+<script src="importer.js"></script><script src="vault.js"></script><script src="vault-ui.js"></script><script src="pdf.js"></script><script src="autopilot.js"></script><script src="gameday.js"></script><script src="brain.js"></script>
 <script src="ghost.js"></script>
 <script src="scores.js"></script>
 <script src="guide.js"></script>
@@ -428,7 +428,7 @@ window.__hushEvent=(name,d)=>{
   if(name==="tabUrl"){const t=tabs.find(x=>x.native===d.id);if(!t)return;t.url=d.url;t.title=d.title||t.title;t.canBack=d.canBack;t.canFwd=d.canFwd;
     if(d.state==="finished"&&torOn)HX.bump("tor");
     if(d.state==="finished"&&t.id===cur){const n=HX.tabNote.get(d.url);if(n)toast(""+n.slice(0,90))}
-    if(d.state==="finished"){if(!t.priv&&d.url.startsWith("http"))inv("history_add",{url:d.url,title:t.title||bare(d.url)}).catch(()=>{});saveSession()}
+    if(d.state==="finished"){if(!t.priv&&d.url.startsWith("http"))inv("history_add",{url:d.url,title:t.title||bare(d.url)}).catch(()=>{});if(!t.priv&&!torOn&&t.id===cur)HXBR.seen(d.url,brainA());if(t.id===cur)try{HM.api.togetherNav(d.url)}catch(e){}saveSession()}
     if(d.state==="started"&&!torOn&&/^https?:/.test(d.url)&&listHas("tor_sites",bare(d.url))){setTor(true);toast("Tor mode on — you set this site to always use Tor")}
     if(t.id===cur){progress(d.state==="started");toolsShow(true);render();requestAnimationFrame(insets)}}
   else if(name==="pdf"){if(pref("pdf_viewer")==="false")native("downloadUrl",{url:d.url,ua:d.ua}).catch(()=>{});else openPdf(d)}
@@ -488,6 +488,7 @@ const HM=HushMsg({ai:{ready:()=>HX.ai.status()==="ready",ask:(p,on)=>HX.ai.ask(p
   onIncoming:(key,txt,color)=>{if(sheet==="msgs")return;bubbleKey=key;native("bubble",{show:true,text:txt,color}).catch(()=>{})},
   saveImage:d=>native("saveImage",{data:d}).then(()=>toast("Saved to Photos")).catch(e=>toast(String(e))),
   media:(a,v)=>inv("page_action",{action:"media-"+a,arg:v==null?undefined:String(v)}).catch(()=>{}),
+  scrollGet:async()=>parseFloat(await inv("page_query",{q:"scroll"})),scroll:f=>inv("page_action",{action:"scroll-frac",arg:String(f)}).catch(()=>{}),
   togetherBar:(st,cb)=>{togSt=st?[st,cb]:null;$("#tog").style.display=st?"grid":"none"}});
 var togSt=null;$("#tog").onclick=()=>{if(!togSt)return;const [st,cb]=togSt;actions(st.title,st.items.map(([l,a])=>[l,()=>cb(a)]))};
 function noteDraw(){let n=0;try{const t=T();if(t&&t.native&&!t.priv&&/^https?:/.test(t.url))n=EC.notesFor(t.url).length}catch(e){}$("#mnote").style.display=n?"grid":"none";$("#mnote b").textContent=n||""}
@@ -596,7 +597,7 @@ function openWatch(){$("#xs").innerHTML=head("Change watch")+'<div id="wx" style
 async function panic(){show(null);try{HM.api.lockNow();EC.close()}catch(e){}
   const gone=tabs.filter(t=>t.priv).map(t=>t.id);for(const id of gone)await closeTab(id).catch(()=>{});if(torOn)inv("tor_new_identity").catch(()=>{});
   native("bubble",{show:false}).catch(()=>{});toast("Panic: private tabs closed, Murmur locked")}
-function runAction(id){const t=T();const A={summarize:()=>openAssistant("sum"),vault:()=>openVault(),panic,back:()=>inv("nav",{action:"back"}),forward:()=>inv("nav",{action:"fwd"}),reload:()=>inv("nav",{action:"reload"}),newtab:()=>newTab(),closetab:()=>closeTab(cur),
+function runAction(id){const t=T();const A={memory:()=>openMemory(),gameday:()=>openGameDay(),privacy:()=>openPolicy(),summarize:()=>openAssistant("sum"),vault:()=>openVault(),panic,back:()=>inv("nav",{action:"back"}),forward:()=>inv("nav",{action:"fwd"}),reload:()=>inv("nav",{action:"reload"}),newtab:()=>newTab(),closetab:()=>closeTab(cur),
   reopen:()=>toast("Nothing to reopen"),nexttab:()=>step(1),prevtab:()=>step(-1),top:()=>inv("page_action",{action:"scroll-top"}),bottom:()=>inv("page_action",{action:"scroll-bottom"}),find:()=>findMode(true),
   reader:()=>inv("page_action",{action:"reader"}),listen:()=>{native("listen",{action:listenSt?"stop":"start",rate:lRate});listenSt=listenSt?"":"playing"},screenshot:()=>native("screenshot").catch(e=>toast(String(e))),
   tor:()=>setTor(!torOn),newid:()=>inv("tor_new_identity").then(()=>inv("nav",{action:"reload"})).catch(e=>toast(String(e))),bookmark:()=>t&&inv("bookmark_add",{title:t.title||bare(t.url),url:t.url}).then(loadState),
@@ -746,6 +747,19 @@ async function openPdf(d){const x=$("#xs");x.innerHTML="";x.style.padding="0";co
     v=await HXPDF.open(inner,{data:buf,name:d.name||"Document.pdf",close:()=>show(null),toast,save:()=>native("downloadUrl",{url:d.url,ua:d.ua||""}).then(()=>toast("Saving to Downloads")).catch(e=>toast(String(e&&e.message||e))),
       summarize:t=>{window.__pdfText=t;show(null);openAssistant("sumdoc")}})}
   catch(e){show(null);toast("Couldn’t open it here — saving instead");native("downloadUrl",{url:d.url,ua:d.ua||""}).catch(()=>{})}}
+function openPolicy(){const t=T();if(!t||!/^https?:/.test(t.url))return toast("Open a website first");const x=$("#xs");x.innerHTML="";x.style.padding="0";const d=document.createElement("div");d.style.cssText="flex:1;min-height:0;overflow:auto;padding:calc(env(safe-area-inset-top,0px) + 14px) 14px 28px";x.append(d);
+  const obs=new MutationObserver(()=>{if(!x.classList.contains("on")){x.style.padding="";obs.disconnect()}});obs.observe(x,{attributes:true,attributeFilter:["class"]});
+  HXPA.open(d,{host:hostOf(t.url).replace(/^www\./,""),close:()=>show(null),open:u=>{show(null);newTab();go(u)},ask:HX.ai.on()&&HX.ai.status()==="ready"?(pr,on)=>HX.ai.ask(pr,on,260):null,
+    getPolicy:async()=>{const q=JSON.parse(await inv("page_query",{q:"policy"})||"{}");if(q.self)return{url:q.url,text:await inv("page_query",{q:"text"})};if(!q.url)return null;
+      if(torOn)return{err:"Privacy checks read the policy straight from the site, so they are off in Tor mode. Open the policy page here and run the check on it."};return{url:q.url,text:await inv("fetch_text",{url:q.url})}}});show("xs")}
+function openGameDay(){const x=$("#xs");x.innerHTML="";x.style.padding="0";const d=document.createElement("div");d.style.cssText="flex:1;min-height:0;overflow:auto;padding:calc(env(safe-area-inset-top,0px) + 14px) 14px 28px";x.append(d);let h=null;
+  const obs=new MutationObserver(()=>{if(!x.classList.contains("on")){x.style.padding="";obs.disconnect();h&&h.stop()}});obs.observe(x,{attributes:true,attributeFilter:["class"]});
+  h=HXGD.open(d,{inv,pref,setPref,toast,open:u=>{show(null);newTab();go(u)},close:()=>show(null)});show("xs")}
+const brainA=()=>({on:()=>pref("brain")==="on",blocked:()=>String(pref("brain_skip")||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean),current:()=>{const t=T();return t?{url:t.url,priv:t.priv,tor:!!torOn}:null},
+  read:async()=>{const f=JSON.parse(await inv("page_query",{q:"forms"})||"{}");const x=await inv("page_query",{q:"text"});const i=x.indexOf("\n\n");return{hasPassword:!!f.has,title:i>0?x.slice(0,i):"",text:i>0?x.slice(i+2):x}}});
+function openMemory(){const x=$("#xs");x.innerHTML="";x.style.padding="0";const d=document.createElement("div");d.style.cssText="flex:1;min-height:0;overflow:auto;padding:calc(env(safe-area-inset-top,0px) + 14px) 14px 28px";x.append(d);
+  const obs=new MutationObserver(()=>{if(!x.classList.contains("on")){x.style.padding="";obs.disconnect()}});obs.observe(x,{attributes:true,attributeFilter:["class"]});
+  HXBR.open(d,{pref,setPref,toast,open:u=>{show(null);newTab();go(u)},close:()=>show(null),aiName:HX.aiName(),ask:HX.ai.on()&&HX.ai.status()==="ready"?(pr,on)=>HX.ai.ask(pr,on,300):null});show("xs")}
 function openVault(imp){const x=$("#xs");x.innerHTML="";x.style.padding="0";const d=document.createElement("div");d.style.cssText="flex:1;min-height:0;overflow:auto;padding:calc(env(safe-area-inset-top,0px) + 14px) 14px 28px";x.append(d);
   const obs=new MutationObserver(()=>{if(!x.classList.contains("on")){x.style.padding="";obs.disconnect()}});obs.observe(x,{attributes:true,attributeFilter:["class"]});
   const t=T(),h=t&&/^https?:/.test(t.url)&&!t.priv?hostOf(t.url).replace(/^www\./,""):"";
@@ -759,7 +773,7 @@ function openCmd(){vibe();const el=$("#cmd");
     ["Dark mode for websites: "+(pref("force_dark")==="true"?"on → off":"off → on"),async()=>{await setPref("force_dark",pref("force_dark")==="true"?"false":"true");applyDarkNow();show(null)}],
     ["Address bar to "+(pref("bar_pos")==="top"?"bottom":"top"),()=>{setPref("bar_pos",pref("bar_pos")==="top"?"bottom":"top");show(null)}],
     ["Site settings & QR",()=>{if(T()?.native){drawSite();show("site")}}],["All tabs",openSwitcher],["History",()=>{drawHistory();show("history")}],
-    ["Vault: passwords & logins",()=>openVault()],["Import from another browser",()=>openVault(true)],["Downloads",()=>{drawDownloads();show("downloads")}],["Settings",()=>{drawSettings();show("settings")}],
+    ["Privacy check: what does this site do with my data?",()=>openPolicy()],["Vault: passwords & logins",()=>openVault()],["Import from another browser",()=>openVault(true)],["Downloads",()=>{drawDownloads();show("downloads")}],["Settings",()=>{drawSettings();show("settings")}],
     ["Audio only (hide video)",()=>{const t=T();if(!t||!t.native)return toast("Open a page with a video first");show(null);native("evalJs",{js:"window.__hushAO&&window.__hushAO(!window.__hushAOon)"}).catch(()=>{});toast("Audio only toggled — tap the screen to bring the video back")}],["Send page to my computer",()=>{const t=T();if(!t||!t.native||t.priv)return toast("Open a normal (non-private) page first");show(null);HX.syncSendTab(t.url,t.title)}],["Reading list",()=>{drawReading();show("reading")}],["Focus mode",()=>{drawFocus();show("focus")}],["Voice search",()=>{show(null);voice()}],
     ["Save page as PDF",()=>{show(null);native("printPage")}],["Pop-out video (picture-in-picture)",()=>{show(null);native("pip")}],["About & updates",()=>{drawAbout();show("about")}],["Close tab",()=>{show(null);closeTab(cur)}],[HX.aiName()+" — AI assistant on this phone",()=>openAssistant()],["⬒ Split screen…",()=>splitMenu()],["Hush guide",()=>openGuide()],["Report a problem",()=>openReport()],["Sleep timer for this video",()=>{show(null);actions("Pause the video in…",[[15,"15 min"],[30,"30 min"],[60,"1 hour"],[0,"Off"]].map(([n,l])=>[l,()=>{clearTimeout(window.__sleepT);if(!n)return toast("Sleep timer off");window.__sleepT=setTimeout(()=>{inv("page_action",{action:"media-pause"}).catch(()=>{});toast("Paused")},n*60000);toast("Pausing in "+l)}]))}],["Send this page to a friend",()=>{const t=T();if(!t||!/^https?:/.test(t.url))return toast("Open a page first");const l=(()=>{try{return HM.api.chatList()}catch(e){return[]}})();if(!l.length){openMsgs();return toast("Add a friend in Murmur first")}actions("Send to…",l.slice(0,20).map(c=>[c.name,()=>{HM.api.sendTo(c.key,t.url);toast("Sent privately through Tor")}]))}],["Panic: close private tabs, lock Murmur",()=>panic()],
     ...wsList().filter(w=>w!==curWs()).map(w=>["Workspace: "+w,()=>{show(null);switchWs(w)}])];

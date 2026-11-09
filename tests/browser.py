@@ -35,6 +35,38 @@ try:
     ok(pg.evaluate("document.querySelectorAll('#hush-reader p').length") >= 8, 'reader: keeps the article paragraphs')
     ok(not pg.evaluate("!!document.querySelector('#hush-reader nav, #hush-reader footer, #hush-reader .side')"), 'reader: drops navigation and sidebars')
     ok('Daily Paper' in pg.inner_text('#hush-reader .by') and 'min read' in pg.inner_text('#hush-reader .by'), 'reader: byline and reading time')
+    pg = page(); pg.goto(B + 'tests/article.html'); pg.add_script_tag(url=B + 'src-tauri/src/page.js')
+    pg.evaluate("document.querySelector('footer').innerHTML='<a href=\"/legal/privacy-policy\">Privacy Policy</a> <a href=/terms>Terms</a>'")
+    ok(pg.evaluate("JSON.parse(__hushPage.policy()).url").endswith('/legal/privacy-policy'), 'privacy: finds the policy link in the footer')
+    # ---- privacy check screen ----
+    pg = page(); pg.add_script_tag(url=B + 'ui/autopilot.js')
+    pol = ' We provide the service and keep things running every day for everyone who uses it around the world.' * 14
+    pg.evaluate("t=>HXPA.open(document.getElementById('r'),{host:'example.com',getPolicy:async()=>({url:'https://example.com/privacy',text:t}),ask:null,close(){}})", 'We may sell your personal information to data brokers. We share your information with advertising partners. We use tracking pixels.' + pol)
+    pg.wait_for_selector('.pa .g'); ok(pg.inner_text('.pa .g') in ('D', 'F'), 'privacy: grade shown for an invasive policy')
+    ok(pg.evaluate("document.querySelectorAll('.pa .f').length") >= 2, 'privacy: evidence cards shown')
+    # ---- game day ----
+    pg = page(); pg.add_script_tag(url=B + 'ui/scores.js'); pg.add_script_tag(url=B + 'ui/gameday.js')
+    pg.evaluate("""()=>{const ev=(id,hs,as,state,win)=>({id,date:new Date(Date.now()+36e5).toISOString(),status:{type:{state,shortDetail:state==='post'?'Final':'7:30 PM'}},competitions:[{odds:[{details:'BOS -3.5',overUnder:221.5}],competitors:[{homeAway:'home',score:String(hs),winner:win==='h',team:{id:'2',abbreviation:'BOS',shortDisplayName:'Celtics'}},{homeAway:'away',score:String(as),winner:win==='a',team:{id:'5',abbreviation:'NYK',shortDisplayName:'Knicks'}}]}]});
+      const A={pref:k=>k==='sp_leagues'?'nba':'',setPref:async()=>{},toast(){},open(u){window.__o=u},inv:async(c,a)=>{if(c==='scores_get')return JSON.stringify({events:[ev('g1',0,0,'pre',''),ev('g2',110,102,'post','h')]});
+        if(c==='news_get')return JSON.stringify({articles:[{headline:'Celtics win again',description:'d',published:new Date().toISOString(),links:{web:{href:'https://www.espn.com/nba/story/_/id/1'}}}]});
+        if(c==='feed_get')return '<rss><channel><item><title>Feed story</title><link>https://hyperfeast.com/p/1</link><pubDate>Mon, 09 Nov 2026 10:00:00 GMT</pubDate></item></channel></rss>';}};
+      HXGD.open(document.getElementById('r'),A)}""")
+    pg.wait_for_selector('.gd .g'); ok(pg.evaluate("document.querySelectorAll('.gd .g').length") == 2, 'gameday: games listed')
+    ok('BOS -3.5' in pg.inner_text('.gd'), 'gameday: betting line shown')
+    pg.click('[data-pick$=":2"]'); ok(pg.evaluate("JSON.parse(localStorage.getItem('hush.gd.picks'))['nba:g1'].t") == '2', 'gameday: pick saved')
+    pg.evaluate("localStorage.setItem('hush.gd.picks',JSON.stringify({'nba:g2':{t:'2',at:1}}))"); pg.click('[data-tab=news]'); pg.click('[data-tab=games]'); pg.wait_for_timeout(300)
+    pg.evaluate("HXGD.grade([{lg:'nba',id:'g2',state:'post',a:{id:'5',win:false},h:{id:'2',win:true}}])"); ok(pg.evaluate("JSON.parse(localStorage.getItem('hush.gd.rec')).w") == 1, 'gameday: pick graded as a win')
+    pg.click('[data-tab=news]'); pg.wait_for_selector('.gd .n'); ok(pg.evaluate("document.querySelectorAll('.gd .n').length") == 2, 'gameday: headlines from ESPN and the feed')
+    # ---- memory ----
+    pg = page(); pg.add_script_tag(url=B + 'ui/brain.js')
+    ok(pg.evaluate("HXBR.skipUrl('https://www.chase.com/accounts')") and pg.evaluate("HXBR.skipUrl('http://example.com/a')") and not pg.evaluate("HXBR.skipUrl('https://news.example.com/story/1')"), 'memory: skips banking, login and non-https pages')
+    pg.evaluate("""async()=>{await HXBR.clear();const t='The city council debated the new stadium financing plan for hours before voting. '.repeat(8);
+      await HXBR.save({url:'https://news.example.com/stadium',host:'news.example.com',title:'Council votes on stadium plan',text:t});
+      await HXBR.save({url:'https://cooking.example.com/bread',host:'cooking.example.com',title:'Sourdough bread guide',text:'Flour water salt and a long slow rise. '.repeat(20)});
+      window.__st={pref:()=>'on',setPref:async()=>{},toast(){},open(u){window.__o=u},ask:async(p,on)=>{window.__p=p;on('Answer [1]')}};HXBR.open(document.getElementById('r'),window.__st)}""")
+    pg.wait_for_selector('#q'); pg.fill('#q', 'stadium vote'); ok(pg.evaluate("document.querySelectorAll('.br .r').length") == 1 and 'stadium' in pg.inner_text('.br .r').lower(), 'memory: search finds the right page only')
+    pg.click('[data-ask]'); pg.wait_for_timeout(300); ok('ONLY these pages' in pg.evaluate('window.__p') and 'Answer [1]' in pg.inner_text('.br .ai'), 'memory: AI answers from the saved pages')
+    pg.click('.br .r'); ok(pg.evaluate('window.__o') == 'https://news.example.com/stadium', 'memory: result opens the page')
     # ---- PDF ----
     pg = br.new_page(); pg.set_content('<h1>Report</h1>' + ''.join(f'<h2 style="page-break-before:always">Section {i}</h2><p>Revenue grew in Q{i}.</p>' for i in range(1, 5))); pdf = pg.pdf(format='A4')
     pg = page(); pg.add_script_tag(url=B + 'ui/pdf.js')

@@ -156,5 +156,12 @@ window.__hushPage = window.__hushPage || (() => {
     const set = (el, v) => { if (!el || typeof v !== "string") return; const d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value"); d.set.call(el, v);
       el.dispatchEvent(new Event("input", { bubbles: true })); el.dispatchEvent(new Event("change", { bubbles: true })); };
     set(f.u, o.u); set(f.p, o.p); }
-  return { dark, reader, find, text, listen, forms, fill };
+  /** Where is this site's privacy policy? (this page, or the best matching link) */
+  function policy() {
+    if (/privacy|datenschutz|confidential/i.test(location.pathname) && document.body && document.body.innerText.length > 1500) return JSON.stringify({ self: true, url: location.href });
+    let best = null, bs = 0; for (const a of document.querySelectorAll("a[href]")) { const t = (a.innerText || a.getAttribute("aria-label") || "").trim().toLowerCase(), h = (a.getAttribute("href") || "").toLowerCase(); let s = 0;
+      if (/^(privacy( policy| notice| statement)?|your privacy( choices| rights)?|datenschutz.*)$/.test(t)) s = 10; else if (/privacy/.test(t)) s = 6; else if (/privacy|datenschutz/.test(h)) s = 4; if (!s) continue; if (a.closest("footer,[role=contentinfo]")) s += 2; if (/^(javascript|mailto|tel):/.test(h)) continue;
+      if (s > bs) { bs = s; best = a; } }
+    return JSON.stringify(best ? { url: new URL(best.getAttribute("href"), location.href).href } : {}); }
+  return { dark, reader, find, text, listen, forms, fill, policy };
 })();

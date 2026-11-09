@@ -24,7 +24,8 @@ window.HUSH_SCORES = (function () {
         const a = team('away'), h = team('home'); if (!a || !h) continue;
         const state = ['pre', 'in', 'post'].includes(st.state) ? st.state : 'pre';
         const link = ((e.links || []).find(l => (l.rel || []).includes('summary') || (l.rel || []).includes('desktop')) || {}).href;
-        out.push({ id: String(e.id || ''), at: Date.parse(e.date) || 0, state, detail: String(st.shortDetail || st.detail || '').slice(0, 40), a, h, link: /^https:\/\/(www\.)?espn\.com\//.test(link || '') ? link : '' });
+        const od = (c.odds && c.odds[0]) || null;
+        out.push({ odds: od ? { d: String(od.details || '').slice(0, 24), ou: od.overUnder != null ? String(od.overUnder).slice(0, 6) : '' } : null, id: String(e.id || ''), at: Date.parse(e.date) || 0, state, detail: String(st.shortDetail || st.detail || '').slice(0, 40), a, h, link: /^https:\/\/(www\.)?espn\.com\//.test(link || '') ? link : '' });
       } catch {}
     }
     return out.sort((x, y) => (x.state === 'in' ? 0 : x.state === 'pre' ? 1 : 2) - (y.state === 'in' ? 0 : y.state === 'pre' ? 1 : 2) || x.at - y.at);

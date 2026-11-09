@@ -168,6 +168,18 @@ pub fn scores_url(league: &str, date: Option<&str>) -> Option<String> {
     let d = match date { Some(d) if d.len() == 8 && d.bytes().all(|b| b.is_ascii_digit()) => format!("&dates={d}"), Some(_) => return None, None => String::new() };
     Some(format!("https://site.api.espn.com/apis/site/v2/sports/{sport}/{lg}/scoreboard?limit=300{extra}{d}"))
 }
+/// Headlines for a league from ESPN's public news feed (fixed leagues only, like scores).
+pub fn news_url(league: &str) -> Option<String> {
+    let (sport, lg) = match league { "nfl" => ("football", "nfl"), "cfb" => ("football", "college-football"), "nba" => ("basketball", "nba"), "cbb" => ("basketball", "mens-college-basketball"),
+        "wcbb" => ("basketball", "womens-college-basketball"), "nhl" => ("hockey", "nhl"), "mlb" => ("baseball", "mlb"), "mls" => ("soccer", "usa.1"), _ => return None };
+    Some(format!("https://site.api.espn.com/apis/site/v2/sports/{sport}/{lg}/news?limit=12"))
+}
+#[tauri::command]
+pub async fn news_get(league: String) -> Result<String, String> {
+    let url = news_url(&league).ok_or("not a supported league")?;
+    tauri::async_runtime::spawn_blocking(move || match ureq::get(&url).set("Accept", "application/json").timeout(std::time::Duration::from_secs(10)).call() {
+        Ok(r) => r.into_string().map_err(|_| "bad reply".to_string()), Err(_) => Err("couldn't reach the news service".to_string()) }).await.map_err(|e| e.to_string())?
+}
 #[tauri::command]
 pub async fn scores_get(league: String, date: Option<String>) -> Result<String, String> {
     let url = scores_url(&league, date.as_deref()).ok_or("not a supported league")?;
@@ -182,6 +194,7 @@ pub async fn scores_get(league: String, date: Option<String>) -> Result<String, 
         assert!(super::scores_url("nfl", None).unwrap().starts_with("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"));
         assert!(super::scores_url("nba", Some("20261107")).unwrap().ends_with("&dates=20261107"));
         assert!(super::scores_url("evil", None).is_none());
+        assert!(super::news_url("nba").unwrap().ends_with("/basketball/nba/news?limit=12") && super::news_url("x/../y").is_none());
         assert!(super::scores_url("nfl", Some("2026/../x")).is_none());
         assert!(super::scores_url("nfl", Some("2026110a")).is_none());
     }

@@ -1,0 +1,13 @@
+const P = require('../ui/autopilot.js');
+const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) process.exitCode = 1; };
+const pad = ' We provide the service and keep things running every day for everyone who uses it around the world.'.repeat(14);
+const bad = 'We collect your name, email, precise location and device identifiers. We may sell your personal information to data brokers and other companies. We share your information with advertising partners and our affiliates. We use tracking pixels and track you across websites and devices. We combine information we receive from other sources with what we collect. We retain your data for as long as we deem necessary. We may build a profile of your interests.' + pad;
+const good = 'We do not sell your personal information. We never share your data with advertisers or third parties. Messages use end-to-end encryption. You can request that we delete your account and data at any time. We only collect the data that is necessary to run the service. We honor Global Privacy Control signals.' + pad;
+const b = P.analyze(bad), g = P.analyze(good);
+ok(b.grade === 'F' || b.grade === 'D', 'invasive policy gets D/F, got ' + b.grade + ' ' + b.score);
+ok(g.grade === 'A', 'respectful policy gets A, got ' + g.grade + ' ' + g.score);
+ok(b.findings.some(f => f.id === 'sell' && f.kind === 'bad'), 'detects data sale');
+ok(!g.findings.some(f => f.kind === 'bad'), 'negated sentences are not flagged as bad: ' + g.findings.filter(f => f.kind === 'bad').map(f => f.id));
+ok(g.findings.some(f => f.id === 'nosell' && f.kind === 'good'), 'credits "does not sell"');
+ok(P.analyze('too short').grade === '?', 'short text is not graded');
+ok(b.findings.every(f => !f.quote || f.quote.length <= 260), 'quotes are trimmed');

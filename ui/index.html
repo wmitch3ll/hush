@@ -162,7 +162,7 @@ kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:
 <script src="icons.js"></script>
 <script src="qr.js"></script>
 <script src="extras.js"></script>
-<script src="importer.js"></script><script src="vault.js"></script><script src="vault-ui.js"></script><script src="pdf.js"></script>
+<script src="importer.js"></script><script src="vault.js"></script><script src="vault-ui.js"></script><script src="pdf.js"></script><script src="autopilot.js"></script><script src="gameday.js"></script><script src="brain.js"></script>
 <script src="ghost.js"></script>
 <script src="scores.js"></script>
 <script src="guide.js"></script>
@@ -474,7 +474,7 @@ const KEYS=[
   ['Hush','shift+h','Hub — show / hide the side panel',()=>dockTab?closeDock():openDock('murmur')],['Hush','shift+o','Open this page in Tor (onion)',()=>torTab()],
   ['Hush','shift+s','Screenshot the whole page',()=>{if(curT())snapshot(true)}],['Hush','shift+r','Read the page aloud',()=>{if(curT())listenToggle()}],
   ['Hush','shift+x','Panic — close private & Tor tabs, lock messages',()=>panic()],
-  ['Open','h','History',()=>panel=='history'?closePanel():openPanel('history')],['Open','j','Downloads',()=>$('#dls').click()],['Open','l','Vault (passwords)',()=>panel=='vault'?closePanel():openPanel('vault')],
+  ['Open','h','History',()=>panel=='history'?closePanel():openPanel('history')],['Open','j','Downloads',()=>$('#dls').click()],['Open','g','Game day',()=>panel=='gameday'?closePanel():openPanel('gameday')],['Open','l','Vault (passwords)',()=>panel=='vault'?closePanel():openPanel('vault')],
   ['Open','shift+b','Bookmarks',()=>panel=='bookmarks'?closePanel():openPanel('bookmarks')],['Open',',','Settings',()=>$('#gear').click()],
   ['Open','/','Keyboard shortcuts',()=>panel=='keys'?closePanel():openPanel('keys')],
 ];
@@ -509,7 +509,7 @@ T.event.listen('tab-url',({payload:p})=>{const t=tab(p.tab);if(!t)return;t.url=p
   if(p.state=='started'&&!t.tor&&!t.priv&&/^https?:/.test(p.url)&&torSite(hostOf(p.url))){const id=t.id;openTab(p.url,{tor:true}).then(()=>closeTab(id,true));toast('Opened through Tor — you set this site to always use Tor');return}
   if(p.state=='finished'&&t.tor)HX.bump('tor');
   if(p.state=='finished'&&p.tab==cur){const n=HX.tabNote.get(p.url);if(n)toast(''+n.slice(0,90))}
-  if(p.state=='finished'){if(!t.priv)inv('history_add',{url:p.url,title:hostOf(p.url).replace(/^www\./,'')}).catch(()=>{});saveSession()}
+  if(p.state=='finished'){if(!t.priv)inv('history_add',{url:p.url,title:hostOf(p.url).replace(/^www\./,'')}).catch(()=>{});if(!t.priv&&!t.tor&&p.tab==cur)HXBR.seen(p.url,brainA());if(p.tab==cur)try{HM.api.togetherNav(p.url)}catch(e){}saveSession()}
   if(p.tab==cur)$('#load').classList.toggle('on',p.state=='started');draw()});
 T.event.listen('focus-blocked',({payload:p})=>{if(p.tab==cur){$('#load').classList.remove('on');toast('Focus mode: '+hostOf(p.url).replace(/^www\./,'')+' is paused — Ctrl+K → Focus mode to end')}});
 // Memory saver: background tabs you haven't opened for a while are closed in the background and reload when you click them.
@@ -522,7 +522,12 @@ T.event.listen('download',({payload:p})=>{HX.dl.event(p);draw()});
 
 // ---------- panels ----------
 let pdfFile=null;function openPdfFile(d){pdfFile=d;openPanel('pdf')}
-const RENDER={pdf:()=>{const p=$('#panel'),d=pdfFile;p.innerHTML='<div id=pvh style="position:relative;height:calc(100vh - var(--bar-h,46px) - 28px);margin:-6px"></div>';
+const brainA=()=>({on:()=>pref('brain')==='on',blocked:()=>String(pref('brain_skip')||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean),current:()=>{const t=tab(cur);return t?{url:t.url,priv:t.priv,tor:!!t.tor}:null},
+  read:async()=>{const f=JSON.parse(await inv('page_query',{q:'forms'})||'{}');const x=await inv('page_query',{q:'text'});const i=x.indexOf('\n\n');return{hasPassword:!!f.has,title:i>0?x.slice(0,i):'',text:i>0?x.slice(i+2):x}}});
+const RENDER={memory:()=>{const p=$('#panel');p.innerHTML='<div id=brh></div>';HXBR.open($('#brh'),{pref,setPref,toast,open:u=>{closePanel();openTab(u)},close:()=>closePanel(),aiName:HX.aiName(),ask:HX.ai.on()&&HX.ai.status()=='ready'?(pr,on)=>HX.ai.ask(pr,on,300):null})},gameday:()=>{const p=$('#panel');p.innerHTML='<div id=gdh></div>';HXGD.open($('#gdh'),{inv,pref,setPref,toast,open:u=>{closePanel();openTab(u)},close:()=>closePanel()})},policy:()=>{const p=$('#panel');p.innerHTML='<div id=pah></div>';const t=tab(cur),h=t&&/^https?:/.test(t.url)?hostOf(t.url).replace(/^www\./,''):'';
+    HXPA.open($('#pah'),{host:h,close:()=>closePanel(),open:u=>{closePanel();openTab(u)},ask:HX.ai.on()&&HX.ai.status()=='ready'?(pr,on)=>HX.ai.ask(pr,on,260):null,
+      getPolicy:async()=>{const q=JSON.parse(await inv('page_query',{q:'policy'})||'{}');if(q.self){return{url:q.url,text:await inv('page_query',{q:'text'})}}
+        if(!q.url)return null;if(t&&t.tor)return{err:'Privacy checks read the policy straight from the site, so they are off in Tor tabs. Open the policy page here and run the check on it.'};return{url:q.url,text:await inv('fetch_text',{url:q.url})}}})},pdf:()=>{const p=$('#panel'),d=pdfFile;p.innerHTML='<div id=pvh style="position:relative;height:calc(100vh - var(--bar-h,46px) - 28px);margin:-6px"></div>';
     inv('download_read',{path:d.path}).then(buf=>HXPDF.open($('#pvh'),{data:buf,name:d.name||'Document.pdf',close:()=>closePanel(),toast,save:()=>inv('download_reveal',{path:d.path}).catch(()=>{}),
       summarize:t=>{window.__pdfText=t;window.__aiRun='sumdoc';closePanel();closeDock();openDock('ai')}})).catch(e=>{toast('Couldn’t open it here');closePanel();inv('download_open',{path:d.path}).catch(()=>{})})},vault:()=>{const p=$('#panel');p.innerHTML='<div id=vxh></div>';const t=tab(cur),h=t&&/^https?:/.test(t.url)&&!t.priv?hostOf(t.url).replace(/^www\./,''):'';
     HXVUI.open($('#vxh'),{host:h,readForm:h?()=>inv('page_query',{q:'forms'}):null,fill:it=>inv('page_action',{action:'fill',arg:JSON.stringify({u:it.user,p:it.pass})}),copy:s=>navigator.clipboard.writeText(s).catch(()=>{}),
@@ -600,7 +605,7 @@ function sharePick(){const t=tab(cur);if(!t||!/^https?:/.test(t.url))return toas
 async function panic(){closePanel(true);try{closeDock()}catch(e){}try{HM.api.lockNow()}catch(e){}
   const gone=tabs.filter(t=>t.priv||t.tor).map(t=>t.id);for(const id of gone)await closeTab(id,true).catch(()=>{});
   inv('tor_new_identity').catch(()=>{});if(!tabs.length||gone.includes(cur))await newTab(false);toast('Panic: private & Tor tabs closed, Murmur locked')}
-function runAction(id){const t=tab(cur);const A={summarize:()=>{window.__aiRun='sum';closeDock();openDock('ai')},vault:()=>openPanel('vault'),panic,back:()=>inv('nav',{action:'back'}),forward:()=>inv('nav',{action:'fwd'}),reload:()=>inv('nav',{action:'reload'}),newtab:()=>newTab(false),
+function runAction(id){const t=tab(cur);const A={memory:()=>openPanel('memory'),gameday:()=>openPanel('gameday'),privacy:()=>{if(tab(cur)&&/^https?:/.test(tab(cur).url))openPanel('policy')},summarize:()=>{window.__aiRun='sum';closeDock();openDock('ai')},vault:()=>openPanel('vault'),panic,back:()=>inv('nav',{action:'back'}),forward:()=>inv('nav',{action:'fwd'}),reload:()=>inv('nav',{action:'reload'}),newtab:()=>newTab(false),
   closetab:()=>cur&&closeTab(cur),reopen:()=>shortcut('shift+t'),nexttab:()=>cycle(1),prevtab:()=>cycle(-1),top:()=>inv('page_action',{action:'scroll-top'}),bottom:()=>inv('page_action',{action:'scroll-bottom'}),
   find:()=>findMode(true),reader:()=>inv('page_action',{action:'reader'}),listen:()=>listenToggle(),screenshot:()=>snapshot(true),tor:()=>torTab(),newid:()=>newIdentity(),bookmark:()=>$('#star').click(),
   copylink:async()=>{if(t)try{await navigator.clipboard.writeText(t.url)}catch(e){}},dark:async()=>{await setPref('force_dark',pref('force_dark')=='true'?'false':'true');applyDarkNow()},
@@ -635,6 +640,7 @@ T.event.listen('float-action',({payload:p})=>{if(p.a=='open'){floating=null;sele
 const HM=HushMsg({ai:{ready:()=>HX.ai.status()=='ready',ask:(p,on)=>HX.ai.ask(p,on,200)},inv,secret:{get:n=>inv('secret_get',{name:n}),set:(n,v)=>inv('secret_set',{name:n,value:v}),del:n=>inv('secret_del',{name:n})},invRaw:(c,d,h)=>T.core.invoke(c,d,{headers:h}),listen:(e,f)=>T.event.listen(e,f),toast,mobile:false,open:u=>{closePanel();openTab(u)},page:()=>{const t=tab(cur);return t&&/^https?:/.test(t.url)&&!t.priv?{url:t.url}:null},
   banner:m=>msgBanner(m),badge:n=>{for(const id of ['#msgcnt','#dmc']){$(id).textContent=n>99?'99+':n;$(id).style.display=n?'grid':'none'}},qr:s=>{try{return hushQR.svg(s)}catch(e){return ''}},close:()=>{closePanel();closeDock()},
   media:(a,v)=>inv('page_action',{action:'media-'+a,arg:v==null?undefined:String(v)}).catch(()=>{}),
+  scrollGet:async()=>parseFloat(await inv('page_query',{q:'scroll'})),scroll:f=>inv('page_action',{action:'scroll-frac',arg:String(f)}).catch(()=>{}),
   togetherBar:(st,cb)=>{const e=$('#tog');if(!st){e.classList.remove('on');e.textContent='';return}e.innerHTML='';const t=document.createElement('span');t.textContent=st.title;e.append(t);
     for(const [l,a] of st.items){const b=document.createElement('button');const ic=l.split(' ')[0];b.textContent=a=='go'?'':ic;b.title=l.slice(ic.length+1)||l;b.setAttribute('aria-label',b.title);b.onclick=()=>cb(a);e.append(b)}e.classList.add('on')}});
 // Margin Notes: a chip appears when friends left Echo notes on the page you're on.
@@ -713,6 +719,9 @@ const ACTIONS=()=>withKeys([
   ['Keep screen awake in split view: '+(pref('split_awake')!='false'?'on':'off'),'While a split is open',async()=>{closePanel();await setPref('split_awake',pref('split_awake')!='false'?'false':'true');splitModeSync()}],
   ['Save split as a scene','Reopen these tabs side by side later',()=>{closePanel();sceneSave()}],
   ...scenes().map(x=>['Scene: '+x.name,x.urls.length+' tabs · '+(x.mode=='spot'?'Spotlight':'Grid'),()=>{closePanel();sceneOpen(x)}]),
+  ['Privacy check: what does this site do with my data?','Reads its privacy policy on this device and grades it',()=>{closePanel();if(tab(cur)&&/^https?:/.test(tab(cur).url))openPanel('policy');else toast('Open a website first')}],
+  ['Memory: search what I’ve read','Your private second brain — on this device only, off until you turn it on',()=>{closePanel();openPanel('memory')}],
+  ['Game day: scores, lines, picks & headlines','Your teams, live games with the betting line, pick’em, news',()=>{closePanel();openPanel('gameday')}],
   ['Vault: passwords & logins','Encrypted on this device · fill, save, generate, import',()=>{closePanel();openPanel('vault')}],
   ['Import from another browser','Bookmarks and saved logins from Chrome, Firefox, Safari…',()=>{closePanel();openPanel('vault');setTimeout(()=>document.querySelector('#vxh [data-v=import]')?.click(),400)}],
   ['Import from Arc','Pinned tabs & folders → bookmarks',async()=>{closePanel();try{const l=await inv('arc_import');let n=0;for(const b of l){try{await inv('bookmark_add',{title:b.title||b.url,url:b.url});n++}catch(e){}}await loadState();toast('Imported '+n+' tabs from Arc as bookmarks')}catch(e){toast(String(e))}}],

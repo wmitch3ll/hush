@@ -233,7 +233,7 @@ window.HushX = function (A) {
   // ---------------------------------------------------------------- actions, gestures, quick wheel
   // A.act(id) runs an action on the current platform; ids are shared with tools.js (the in-page wheel).
   const ACTIONS = { none: 'Do nothing', back: 'Back', forward: 'Forward', reload: 'Reload', newtab: 'New tab', closetab: 'Close tab', reopen: 'Reopen closed tab',
-    nexttab: 'Next tab', prevtab: 'Previous tab', top: 'Scroll to top', bottom: 'Scroll to bottom', find: 'Find in page', reader: 'Reader view', summarize: 'Summarize this page', vault: 'Open the vault', listen: 'Listen to page',
+    nexttab: 'Next tab', prevtab: 'Previous tab', top: 'Scroll to top', bottom: 'Scroll to bottom', find: 'Find in page', reader: 'Reader view', summarize: 'Summarize this page', privacy: 'Privacy check of this site', gameday: 'Game day', memory: 'Search my memory', vault: 'Open the vault', listen: 'Listen to page',
     screenshot: 'Screenshot', tor: A.mobile ? 'Tor mode on/off' : 'Open in Tor tab', newid: 'New Tor identity', bookmark: 'Bookmark page', copylink: 'Copy link', dark: 'Dark mode on/off',
     alltabs: 'All tabs', home: 'Start page', private: 'New private tab', mute: 'Mute tab', boosts: 'Boosts', destruct: 'Self-destruct tab…', panic: 'Panic: close private & Tor tabs, lock Murmur' };
   const SLOTS = A.mobile
