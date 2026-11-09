@@ -389,7 +389,7 @@
   // ---------------------------------------------------------------- leaderboard
   const ago = t => { if (!t) return ''; const d = (now() - t) / 864e5; return d < 1 ? 'today' : d < 2 ? 'yesterday' : Math.floor(d) + ' days ago'; };
   G.board = tab => {
-    css(); document.querySelector('.gm-sheet')?.remove(); const el = document.createElement('div'); el.className = 'gm-sheet'; tab = tab || 'all';
+    css(); fit(); document.querySelector('.gm-sheet')?.remove(); const el = document.createElement('div'); el.className = 'gm-sheet'; tab = tab || 'all';
     const R = recGet(), TABS = [['all', 'All games'], ...Object.entries(TYPES)];
     const pct = o => o.w + o.l + o.d ? Math.round(100 * (o.w + o.d / 2) / (o.w + o.l + o.d)) : 0;
     const line = o => `${o.w}-${o.l}${o.d ? '-' + o.d : ''}`;
@@ -418,7 +418,7 @@
   // ---------------------------------------------------------------- picker
   // key: a chat to challenge, or null for the Games hub (computer only).
   G.pick = key => {
-    css(); document.querySelector('.gm-sheet')?.remove();
+    css(); fit(); document.querySelector('.gm-sheet')?.remove();
     const el = document.createElement('div'); el.className = 'gm-sheet'; let secs = 180, lvl = 2, mode = key ? 'friend' : 'cpu';
     const rows = [['chess', 'Chess', 'Full rules. Take your time.'], ['sea', 'Battleship Blitz', 'Hidden fleets. Plan 3 shots, fire together, sink them all.'], ['word', 'Word race', 'Same secret word, six guesses, beat the clock.'], ['ball', 'Mini golf', 'Three holes with walls, sand and water. Fewest strokes wins.'], ['disc', 'Disc golf', 'Curve your throws around the trees. Fewest throws wins.']];
     const solos = G.solos();
@@ -448,10 +448,17 @@
     const g = G.get(id); if (!g) return; css();
     document.querySelector('.gm-ov')?.remove();
     const root = document.createElement('div'); root.className = 'gm-ov'; document.body.append(root);
-    cur = { id, root, ui: {} }; if (g.type === 'word') cur.timer = setInterval(() => { if (cur && cur.id === id) tickWord(); else clearInterval(cur && cur.timer); }, 250);
+    cur = { id, root, ui: {} }; fit(); cur.fit = setInterval(fit, 700); if (g.type === 'word') cur.timer = setInterval(() => { if (cur && cur.id === id) tickWord(); else clearInterval(cur && cur.timer); }, 250);
     paint(true); if (g.key === 'cpu') cpuTurn(g);
   };
-  const closeGame = () => { if (cur) { clearInterval(cur.timer); cancelAnimationFrame(cur.raf); cur.root.remove(); cur = null; document.removeEventListener('keydown', onKey); } H.repaint(); };
+  // Keep the game clear of the browser's own bars (address bar, and the back / tabs / menu row), wherever they sit.
+  function fit() {
+    let top = 0, bot = 0;
+    try { for (const id of ['top', 'tools']) { const e = document.getElementById(id); if (!e) continue; const q = e.getBoundingClientRect(); if (q.height < 4 || getComputedStyle(e).display === 'none') continue;
+      if (q.top + q.height / 2 < innerHeight / 2) top = Math.max(top, q.bottom); else bot = Math.max(bot, innerHeight - q.top); } } catch {}
+    const st = document.documentElement.style; st.setProperty('--gm-top', Math.max(0, Math.round(top)) + 'px'); st.setProperty('--gm-bot', Math.max(0, Math.round(bot)) + 'px');
+  }
+  const closeGame = () => { if (cur) { clearInterval(cur.fit); clearInterval(cur.timer); cancelAnimationFrame(cur.raf); cur.root.remove(); cur = null; document.removeEventListener('keydown', onKey); } H.repaint(); };
   G.close = closeGame;
 
   function shell(g, bodyHtml, foot) {
@@ -705,7 +712,10 @@
       return shell(g, `${res}<div class="gm-two w"><div><div class="gm-lab">You</div><div class="gm-grid mini">${tiles(m.pat, m.gs.concat([]), '')}</div></div><div><div class="gm-lab">${esc(peerName(g))}</div><div class="gm-grid mini">${tiles(g.th.pat, done && g.th.fin ? g.th.fin.gs : null, '')}</div></div></div>`,
         done ? `<button class="gm-b pri" data-do="rematch">Rematch</button><button class="gm-b" data-do="close">Close</button>` : `<button class="gm-b" data-do="close">Close</button>`);
     }
-    if (!m.start) return shell(g, `<div class="gm-wait"><div class="gm-big">${GICON.word}</div><h3>${fmt(secs * 1000)} on the clock</h3><p>Six guesses at the same secret five-letter word as ${esc(peerName(g))}. Fewest guesses wins, then fastest. The clock starts when you tap Start, and you do not have to play at the same time. ${esc(peerName(g))} ${esc(oppLine)}.</p></div>`, `<button class="gm-b pri" data-do="start">Start</button><button class="gm-b" data-do="close">Later</button>`);
+    if (!m.start) { const ex = (w, p) => `<div class="gm-wr ex">${[...w].map((c, i) => `<div class="gm-t s${p[i]}">${c.toUpperCase()}</div>`).join('')}</div>`;
+      return shell(g, `<div class="gm-wait"><h3>Word race</h3><p>Guess the secret 5-letter word in 6 tries. ${esc(peerName(g))} has the same word. Fewest guesses wins, then fastest time.</p>
+        <div class="gm-how">${ex('crane', '02001')}<small><b class="g">Green</b> right letter, right spot &middot; <b class="y">Yellow</b> in the word, wrong spot &middot; <b class="x">Grey</b> not in the word</small></div>
+        <p class="gm-clk">${fmt(secs * 1000)} on the clock. It starts when you tap Start, and you don't need to play at the same time.</p><p class="gm-oppl">${esc(peerName(g))} ${esc(oppLine)}.</p></div>`, `<button class="gm-b pri" data-do="start">Start - ${fmt(secs * 1000)}</button><button class="gm-b" data-do="close">Later</button>`); }
     const ks = {}; m.gs.forEach((w, r) => { for (let i = 0; i < 5; i++) ks[w[i]] = Math.max(ks[w[i]] == null ? -1 : ks[w[i]], +m.pat[r][i]); });
     const key = k => `<button class="gm-k ${ks[k] != null ? 'k' + ks[k] : ''} ${k.length > 1 ? 'w' : ''}" data-k="${k}">${k === 'enter' ? 'Enter' : k === 'del' ? '<svg viewBox="0 0 24 24"><path d="M9 6h11v12H9l-6-6zM13 10l4 4M17 10l-4 4"/></svg>' : k}</button>`;
     const kb = ROWS.map(r => `<div class="gm-kr">${r.map(key).join('')}</div>`).join('');
@@ -755,6 +765,7 @@
   // ---------------------------------------------------------------- mini golf and disc golf view
   const sum = a => a.reduce((x, y) => x + y, 0);
   const scoreName = (n, par) => n === 1 ? 'Hole in one!' : n <= par - 2 ? 'Eagle!' : n === par - 1 ? 'Birdie!' : n === par ? 'Par' : n === par + 1 ? 'Bogey' : '+' + (n - par);
+  const golfHinted = t => { try { return !!localStorage.getItem('hush.gm.hint.' + t); } catch { return true; } };
   function viewGolf(g) {
     const m = g.mine, disc = g.type === 'disc', done = m.holes.length >= Golf.HOLES;
     if (done || g.status === 'done') {
@@ -766,17 +777,24 @@
     }
     const h = m.holes.length, c = Golf.course(g.type, g.seed, h); if (!m.cur || m.cur.h !== h) m.cur = { h, n: 0, pos: { x: c.tee.x, y: c.tee.y }, last: { x: c.tee.x, y: c.tee.y } };
     cur.ui.c = c;
-    return shell(g, `<div class="gm-hud"><span>Hole <b>${h + 1}</b> of ${Golf.HOLES}</span><span>Par <b>${c.par}</b></span><span>${disc ? 'Throws' : 'Strokes'} <b id="gm-n">${m.cur.n}</b></span></div>
-      <div class="gm-opp2">${esc(peerName(g))}: ${g.th.holes.length} of ${Golf.HOLES} holes${g.th.holes.length ? ' (' + sum(g.th.holes) + ')' : ''}</div>
-      <canvas id="gm-cv" class="gm-cv"></canvas><div class="gm-turn" id="gm-msg">${m.cur.n ? '' : 'Drag back from the ' + (disc ? 'disc' : 'ball') + ', then let go to ' + (disc ? 'throw' : 'hit') + '.'}</div>
-      ${disc ? `<div class="gm-curve"><span>Curve left</span><input type="range" id="gm-cu" min="-100" max="100" value="${cur.ui.curve || 0}" aria-label="Curve"><span>right</span></div>` : ''}`, `<button class="gm-b danger" data-do="resign">Give up</button>`);
+    const chips = [0, 1, 2].map(i => { const par = Golf.course(g.type, g.seed, i).par, n = m.holes[i]; return `<span class="gm-hc ${i === h ? 'on' : n != null ? 'done' : ''}"><small>Hole ${i + 1} &middot; par ${par}</small><b>${n != null ? n : i === h ? '<i id="gm-n">' + m.cur.n + '</i>' : '-'}</b></span>`; }).join('');
+    const first = !golfHinted(g.type);
+    return shell(g, `<div class="gm-hcs">${chips}</div>
+      <div class="gm-opp2">${esc(peerName(g))}: ${g.th.holes.length} of ${Golf.HOLES} holes done${g.th.holes.length ? ' (' + sum(g.th.holes) + ' total)' : ''} &middot; Total so far <b>${sum(m.holes) + m.cur.n}</b></div>
+      <div class="gm-cvw"><canvas id="gm-cv" class="gm-cv"></canvas>${first && !m.cur.n ? `<div class="gm-coach" id="gm-coach"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 20h14"/></svg><b>Pull back, then let go</b><span>Drag anywhere on the course. The ${disc ? 'disc' : 'ball'} goes the opposite way. Pull farther for more power.</span></div>` : ''}</div>
+      <div class="gm-turn" id="gm-msg">${m.cur.n ? '' : disc ? 'Drag to aim and set power. Use the slider to curve the throw.' : 'Drag back to aim. Aim at the cup, avoid water.'}</div>
+      ${disc ? `<div class="gm-curve"><span>&#8630; Left</span><input type="range" id="gm-cu" min="-100" max="100" value="${cur.ui.curve || 0}" aria-label="Curve the throw left or right"><span>Right &#8631;</span></div><div class="gm-cvt" id="gm-cvt">Straight</div>` : ''}`, `<button class="gm-b danger" data-do="resign">Give up</button>`);
   }
   function wireGolf(g) {
     const cv = cur.root.querySelector('#gm-cv'); if (!cv) return; const disc = g.type === 'disc', c = cur.ui.c, m = g.mine, ctx = cv.getContext('2d');
-    const bw = Math.max(200, Math.min(innerWidth - 24, (innerHeight - 290) * (Golf.W / Golf.H), 440)), bh = bw * Golf.H / Golf.W, dpr = Math.min(2, window.devicePixelRatio || 1), K = bw / Golf.W;
+    const body = cur.root.querySelector('.gm-body'), wrap = cur.root.querySelector('.gm-cvw'); let used = 0;
+    if (body) for (const e of body.children) if (e !== wrap) used += e.getBoundingClientRect().height + 8;
+    const availH = body ? body.clientHeight - used - 34 : innerHeight - 330, bw = Math.max(180, Math.min(body ? body.clientWidth - 24 : innerWidth - 24, availH * (Golf.W / Golf.H), 440)), bh = bw * Golf.H / Golf.W, dpr = Math.min(2, window.devicePixelRatio || 1), K = bw / Golf.W;
     cv.style.width = bw + 'px'; cv.style.height = bh + 'px'; cv.width = Math.round(bw * dpr); cv.height = Math.round(bh * dpr); ctx.setTransform(dpr * K, 0, 0, dpr * K, 0, 0);
     const msg = t => { const e = cur.root.querySelector('#gm-msg'); if (e) e.textContent = t; };
-    const cu = cur.root.querySelector('#gm-cu'); if (cu) cu.oninput = () => { cur.ui.curve = +cu.value; frame(); };
+    const cu = cur.root.querySelector('#gm-cu'), cvt = cur.root.querySelector('#gm-cvt');
+    const curveText = () => { const v = cur.ui.curve || 0; if (cvt) cvt.textContent = Math.abs(v) < 6 ? 'Straight throw' : 'Curves ' + (v < 0 ? 'left' : 'right') + ' ' + Math.abs(v) + '%'; }; curveText();
+    if (cu) cu.oninput = () => { cur.ui.curve = +cu.value; curveText(); frame(); };
     const curve = () => disc ? (cur.ui.curve || 0) / 100 : 0;
     let aim = null, anim = null;
     function frame(pos, h) {
@@ -795,8 +813,10 @@
       const p = pos || m.cur.pos;
       // aim guide
       if (aim && aim.p > .03) { const sh = { a: aim.a, p: aim.p, c: curve() }; let pts;
-        if (disc) pts = Golf.sim(c, p, sh).trace; else { const L = 30 + aim.p * 150; pts = [[p.x, p.y], [p.x + Math.cos(aim.a) * L, p.y + Math.sin(aim.a) * L]]; }
+        const full = Golf.sim(c, p, sh).trace; pts = full;
+        if (!disc) { pts = [full[0]]; let h0 = null; for (let i = 1; i < full.length; i++) { const dx = full[i][0] - full[i - 1][0], dy = full[i][1] - full[i - 1][1]; if (Math.hypot(dx, dy) < .05) continue; const hd = Math.atan2(dy, dx); if (h0 == null) h0 = hd; else if (Math.abs(Math.atan2(Math.sin(hd - h0), Math.cos(hd - h0))) > .3) break; pts.push(full[i]); } }
         g2.strokeStyle = '#ffffffcc'; g2.lineWidth = 2; g2.setLineDash([2, 5]); g2.lineCap = 'round'; g2.beginPath(); pts.forEach((q, i) => i ? g2.lineTo(q[0], q[1]) : g2.moveTo(q[0], q[1])); g2.stroke(); g2.setLineDash([]);
+        if (pts.length > 2) { const e = pts[pts.length - 1], q = pts[Math.max(0, pts.length - 4)], an = Math.atan2(e[1] - q[1], e[0] - q[0]); g2.fillStyle = '#fff'; g2.beginPath(); g2.moveTo(e[0] + Math.cos(an) * 7, e[1] + Math.sin(an) * 7); g2.lineTo(e[0] + Math.cos(an + 2.5) * 7, e[1] + Math.sin(an + 2.5) * 7); g2.lineTo(e[0] + Math.cos(an - 2.5) * 7, e[1] + Math.sin(an - 2.5) * 7); g2.fill(); }
         g2.fillStyle = '#fff'; g2.font = '600 11px system-ui'; g2.textAlign = 'center'; g2.fillText(Math.round(aim.p * 100) + '%', p.x, p.y + 20); }
       // ball or disc (shadow shows height while it flies)
       const lift = h || 0; g2.fillStyle = '#00000040'; g2.beginPath(); g2.ellipse(p.x + 1.5, p.y + 2.5 + lift * .2, disc ? 8 : 5.5, disc ? 3.4 : 3, 0, 0, 7); g2.fill();
@@ -808,6 +828,7 @@
       const pos = m.cur.pos, r = Golf.sim(c, pos, shot), n = r.trace.length; let t0 = 0; vib(14);
       anim = true; const step = ts => { if (!cur || cur.root !== cv.closest('.gm-ov')) return; if (!t0) t0 = ts; const f = Math.min(n - 1, (ts - t0) / 1000 * 30), i = Math.floor(f), fr = f - i, a = r.trace[i], b = r.trace[Math.min(n - 1, i + 1)];
         const q = { x: a[0] + (b[0] - a[0]) * fr, y: a[1] + (b[1] - a[1]) * fr }, lift = disc ? Math.sin(Math.min(1, f / Math.max(1, n - 4)) * Math.PI) * 16 : 0; frame(q, lift);
+        ctx.save(); ctx.lineCap = 'round'; for (let k = Math.max(1, i - 14); k <= i; k++) { ctx.strokeStyle = 'rgba(255,255,255,' + (.5 * (k - (i - 14)) / 14) + ')'; ctx.lineWidth = disc ? 2.2 : 3; ctx.beginPath(); ctx.moveTo(r.trace[k - 1][0], r.trace[k - 1][1] - (disc ? Math.sin(Math.min(1, (k - 1) / Math.max(1, n - 4)) * Math.PI) * 16 : 0)); ctx.lineTo(r.trace[k][0], r.trace[k][1] - (disc ? Math.sin(Math.min(1, k / Math.max(1, n - 4)) * Math.PI) * 16 : 0)); ctx.stroke(); } ctx.restore();
         if (f < n - 1) cur.raf = requestAnimationFrame(step); else land(r); }; cur.raf = requestAnimationFrame(step);
     }
     function land(r) {
@@ -821,7 +842,7 @@
     // slingshot: drag back from anywhere, the shot goes the opposite way; longer drag = more power
     const pt = e => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / K, y: (e.clientY - r.top) / K }; };
     let p0 = null;
-    cv.onpointerdown = e => { if (anim) return; p0 = pt(e); aim = { a: 0, p: 0 }; try { cv.setPointerCapture(e.pointerId); } catch {} e.preventDefault(); };
+    cv.onpointerdown = e => { if (anim) return; const co = cur.root.querySelector('#gm-coach'); if (co) { co.remove(); try { localStorage.setItem('hush.gm.hint.' + g.type, '1'); } catch {} } p0 = pt(e); aim = { a: 0, p: 0 }; try { cv.setPointerCapture(e.pointerId); } catch {} e.preventDefault(); };
     cv.onpointermove = e => { if (!p0) return; const q = pt(e), dx = p0.x - q.x, dy = p0.y - q.y, len = Math.hypot(dx, dy); aim = { a: Math.round(Math.atan2(dy, dx) * 1000) / 1000, p: Math.min(1, len / 120) }; frame(); };
     const end = e => { if (!p0) return; p0 = null; const a = aim; aim = null; if (a && a.p > .06) shoot({ a: a.a, p: Math.round(a.p * 100) / 100, c: curve() }); else frame(); };
     cv.onpointerup = end; cv.onpointercancel = () => { p0 = null; aim = null; frame(); };
@@ -837,7 +858,7 @@
     if (document.getElementById('gm-css')) return; const s = document.createElement('style'); s.id = 'gm-css'; s.textContent = CSS; document.head.append(s);
   }
   const CSS = `
-.gm-ov{position:fixed;inset:0;z-index:90;background:var(--bg);color:var(--ink);display:flex;flex-direction:column;font:14px/1.4 ui-sans-serif,system-ui,"Segoe UI",sans-serif;animation:gmIn .22s cubic-bezier(.2,.8,.2,1);-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+.gm-ov{position:fixed;left:0;right:0;top:var(--gm-top,0px);bottom:var(--gm-bot,0px);z-index:90;background:var(--bg);color:var(--ink);display:flex;flex-direction:column;font:14px/1.4 ui-sans-serif,system-ui,"Segoe UI",sans-serif;animation:gmIn .22s cubic-bezier(.2,.8,.2,1);-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
 @keyframes gmIn{from{transform:translateY(14px);opacity:0}to{transform:none;opacity:1}}
 .gm-ov *,.gm-sheet *,.gm-card *{box-sizing:border-box}:where(.gm-ov,.gm-sheet,.gm-card) button{all:unset;cursor:pointer;box-sizing:border-box}
 .gm-top{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);flex:none}
@@ -859,7 +880,7 @@
 .gm-card.hot{border-color:var(--ink)}.gm-ci{width:46px;height:46px;border-radius:13px;background:var(--bg);display:grid;place-items:center;flex:none}.gm-ci svg{width:34px;height:34px}
 .gm-ct{flex:1;min-width:0}.gm-ct b{display:block;font:650 15px system-ui}.gm-ct span{display:block;font-size:12.5px;color:var(--mute)}.gm-card.hot .gm-ct span{color:var(--ink)}
 .gm-cb{display:flex;gap:6px;flex:none}.gm-cb .gm-b{flex:none;padding:8px 13px;font-size:13px;border-radius:99px}
-.gm-sheet{position:fixed;inset:0;z-index:95;background:#0008;display:flex;align-items:flex-end;justify-content:center;animation:gmFade .15s}@keyframes gmFade{from{opacity:0}}
+.gm-sheet{position:fixed;inset:0;padding-bottom:var(--gm-bot,0px);z-index:95;background:#0008;display:flex;align-items:flex-end;justify-content:center;animation:gmFade .15s}@keyframes gmFade{from{opacity:0}}
 .gm-sc{width:min(520px,100%);background:var(--bg);color:var(--ink);border-radius:22px 22px 0 0;padding:14px 14px calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:10px;animation:gmUp .22s cubic-bezier(.2,.8,.2,1);font:14px system-ui}
 @keyframes gmUp{from{transform:translateY(40px)}}.gm-sh{display:flex;align-items:center;justify-content:space-between;padding:2px 4px}.gm-sh b{font:650 17px system-ui}.gm-x{font-size:26px;width:34px;height:34px;display:grid!important;place-items:center;color:var(--mute)}
 .gm-opt{display:flex!important;align-items:center;gap:14px;padding:12px;border-radius:16px;background:var(--card);border:1px solid var(--line)}.gm-opt:active{transform:scale(.985)}
@@ -927,12 +948,18 @@
 .gm-t.s0,.gm-mr .s0,.gm-mini i.s0{background:#6a6d73;border-color:#6a6d73;color:#fff}.gm-t.s1,.gm-mini i.s1{background:#c9a227;border-color:#c9a227;color:#fff}.gm-t.s2,.gm-mini i.s2{background:#3e9b5a;border-color:#3e9b5a;color:#fff}
 .gm-mr i.s1{background:#c9a227;border-color:#c9a227}.gm-mr i.s2{background:#3e9b5a;border-color:#3e9b5a}.gm-mr i.s0{background:#6a6d73;border-color:#6a6d73}
 .gm-grid.mini{width:100%;gap:3px}.gm-grid.mini .gm-wr{gap:3px}.gm-grid.mini .gm-t{font-size:15px;border-width:1.5px;border-radius:5px}
-.gm-kb{width:min(100%,500px);display:flex;flex-direction:column;gap:6px;margin-top:auto;padding-bottom:2px}.gm-kr{display:flex;gap:5px;justify-content:center}
-.gm-k{flex:1;max-width:44px;height:50px;border-radius:8px;background:var(--card);border:1px solid var(--line);display:grid!important;place-items:center;font:600 15px system-ui;text-transform:uppercase}.gm-k.w{flex:1.6;max-width:70px;font-size:11.5px}.gm-k:active{transform:scale(.94)}.gm-k svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.gm-kb{width:min(100%,480px);display:flex;flex-direction:column;gap:7px;margin-top:6px;padding-bottom:2px}.gm-kr{display:flex;gap:5px;justify-content:center}
+.gm-k{flex:1;max-width:42px;height:clamp(44px,7.2vh,54px);border-radius:10px;background:var(--card);border:1px solid var(--line);display:grid!important;place-items:center;font:650 16px system-ui;text-transform:uppercase;box-shadow:0 1px 0 var(--line);transition:transform .06s,background .2s}.gm-k.w{flex:1.55;max-width:66px;font-size:12px;letter-spacing:.02em}.gm-k:active{transform:scale(.92)}
+.gm-k.k0{background:#6a6d73;border-color:#6a6d73;color:#fff;opacity:.55}.gm-k.k1{background:#c9a227;border-color:#c9a227;color:#fff}.gm-k.k2{background:#3e9b5a;border-color:#3e9b5a;color:#fff}.gm-k.w:not(.k0):not(.k1):not(.k2){background:var(--ink);color:var(--bg);border-color:var(--ink)}.gm-k svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.gm-t-word .gm-body{justify-content:center;gap:10px}.gm-t-word .gm-grid{width:min(100%,300px,calc((100vh - var(--gm-top,0px) - var(--gm-bot,0px) - 360px) * 5 / 6));min-width:200px}
+.gm-how{display:flex;flex-direction:column;align-items:center;gap:8px;margin:14px 0 4px}.gm-how .gm-wr{width:210px}.gm-how .gm-t{font-size:20px}.gm-how small{color:var(--mute);font-size:12px;line-height:1.5;max-width:300px}.gm-how b{font-weight:700}.gm-how b.g{color:#3e9b5a}.gm-how b.y{color:#c9a227}.gm-how b.x{color:#6a6d73}
+.gm-clk{margin:10px 0 0!important}.gm-oppl{margin:2px 0 0!important;font-size:12.5px}
 .gm-k.k0{background:#6a6d73;color:#fff;border-color:#6a6d73}.gm-k.k1{background:#c9a227;color:#fff;border-color:#c9a227}.gm-k.k2{background:#3e9b5a;color:#fff;border-color:#3e9b5a}
 .gm-toast{position:absolute;top:96px;left:50%;transform:translate(-50%,-6px);background:var(--ink);color:var(--bg);padding:7px 13px;border-radius:10px;font:600 13px system-ui;opacity:0;pointer-events:none;transition:.18s}.gm-toast.on{opacity:1;transform:translate(-50%,0)}
 
-.gm-hud{display:flex;gap:18px;justify-content:center;font-size:13px;color:var(--mute)}.gm-hud b{color:var(--ink);font-size:15px}.gm-opp2{font-size:12px;color:var(--mute)}
+.gm-hcs{display:flex;gap:8px;width:min(100%,420px)}.gm-hc{flex:1;display:flex;flex-direction:column;align-items:center;padding:6px 4px;border-radius:12px;background:var(--card);border:1px solid var(--line);color:var(--mute)}.gm-hc small{font-size:10.5px;letter-spacing:.02em}.gm-hc b{font:700 18px system-ui;color:var(--ink)}.gm-hc b i{font-style:normal}.gm-hc.on{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}.gm-hc.done{background:transparent}.gm-opp2 b{color:var(--ink)}
+.gm-cvw{position:relative;flex:none;display:grid;place-items:center}.gm-coach{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(78%,260px);padding:14px 16px;border-radius:16px;background:#0b0b0cd9;color:#fff;text-align:center;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:4px;animation:gmPulse2 2.2s infinite}.gm-coach svg{width:30px;height:30px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.gm-coach b{font:650 15px system-ui}.gm-coach span{font-size:12.5px;opacity:.85;line-height:1.4}@keyframes gmPulse2{50%{transform:translate(-50%,-52%)}}
+.gm-cvt{font:600 12px system-ui;color:var(--mute);text-align:center;margin-top:-4px}.gm-hud{display:flex;gap:18px;justify-content:center;font-size:13px;color:var(--mute)}.gm-hud b{color:var(--ink);font-size:15px}.gm-opp2{font-size:12px;color:var(--mute)}
 .gm-cv{border-radius:14px;touch-action:none;box-shadow:0 8px 28px #0003,0 0 0 1px var(--line);flex:none;cursor:crosshair}
 .gm-curve{display:flex;align-items:center;gap:10px;width:min(100%,380px);font-size:12px;color:var(--mute)}.gm-curve input{flex:1;accent-color:var(--ink)}
 .gm-tb{width:100%;border-collapse:collapse;font-size:13px}.gm-tb th{font:600 11px system-ui;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);text-align:center;padding:4px}.gm-tb td{text-align:center;padding:6px;border-top:1px solid var(--line)}.gm-tb tr.tot td{font-weight:700}

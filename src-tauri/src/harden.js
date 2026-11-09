@@ -242,3 +242,32 @@ window.__hushPipFill = on => { try { const id = '__hushpip'; document.getElement
   const st = document.createElement('style'); st.id = id;
   st.textContent = 'html,body{overflow:hidden!important;background:#000!important}body *{visibility:hidden!important}[data-hush-pip-anc]{visibility:visible!important;transform:none!important;filter:none!important;contain:none!important;will-change:auto!important;perspective:none!important;clip-path:none!important;mask:none!important}video[data-hush-pip]::-webkit-media-controls{display:none!important}video[data-hush-pip]{visibility:visible!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;z-index:2147483640!important;object-fit:contain!important;background:#000!important;transform:none!important;margin:0!important;border:0!important}';
   (document.head || document.documentElement).append(st); if (v.paused) v.play().catch(() => {}); } catch (_) {} };
+
+// ---- "Join our Discord" pop-ups: modals, floating banners and widgets that sites put over the page. Only floating things
+// (fixed / high z-index) that ask you to join are removed; a Discord link in a menu, footer or article is left alone.
+(() => {
+  if (window.__hushNoDiscord || window !== top) return; window.__hushNoDiscord = true;
+  if (/(^|\.)discord(app)?\.(com|gg)$/i.test(location.hostname)) return;
+  const INV = /discord(app)?\.(gg|com\/(invite|widget))|widgetbot\.io/i, SEL = 'a[href*="discord"],iframe[src*="discord"],iframe[src*="widgetbot"]';
+  const floating = el => { try { const cs = getComputedStyle(el); return cs.position === "fixed" || (cs.position === "absolute" && +cs.zIndex > 999); } catch (_) { return false; } };
+  const navLike = el => { try { if (el.matches('nav,header,footer,[role=navigation],[role=banner]') || el.querySelector('nav')) return true;
+      const r = el.getBoundingClientRect(); return r.top < 6 && r.width > innerWidth * 0.9 && r.height < 130; } catch (_) { return true; } };
+  const kill = el => { el.style.setProperty("display", "none", "important"); el.dataset.hushNoDiscord = "1";
+    for (const b of [document.documentElement, document.body]) { try { if (b && /hidden|clip/.test(getComputedStyle(b).overflow)) b.style.setProperty("overflow", "auto", "important"); } catch (_) {} }
+    // the dimmed backdrop that came with it
+    for (const sib of [el.previousElementSibling, el.nextElementSibling]) { try { if (sib && floating(sib) && !sib.textContent.trim() && sib.getBoundingClientRect().width > innerWidth * 0.8) sib.style.setProperty("display", "none", "important"); } catch (_) {} } };
+  const asks = el => { const t = (el.textContent || ""); return t.length < 1500 && /discord/i.test(t) && /(join|invite)/i.test(t); };
+  const check = n => {
+    if (!n || n.nodeType !== 1 || n.dataset.hushNoDiscord) return;
+    let hit = null; const links = n.matches(SEL) ? [n] : [...n.querySelectorAll(SEL)].slice(0, 6);
+    for (const a of links) { if (!INV.test(a.href || a.src || "")) continue; let el = a;
+      for (let i = 0; i < 12 && el && el !== document.body && el !== document.documentElement; i++, el = el.parentElement) { if (floating(el) && !navLike(el) && (asks(el) || a.tagName === "IFRAME" || el.matches('[role=dialog],[aria-modal=true],dialog'))) { hit = el; break; } } if (hit) break; }
+    if (!hit && floating(n) && !navLike(n) && asks(n)) hit = n;
+    if (hit) kill(hit);
+  };
+  const sweep = () => { try { for (const a of document.querySelectorAll(SEL)) check(a); document.querySelectorAll('[role=dialog],[aria-modal=true],dialog,[class*=popup],[class*=modal],[id*=popup],[id*=modal]').forEach(check); } catch (_) {} };
+  let q = []; let tm = 0;
+  const flush = () => { tm = 0; const l = q; q = []; for (const n of l.slice(0, 80)) check(n); };
+  new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1) q.push(n); if (!tm && q.length) tm = setTimeout(flush, 250); }).observe(document, { childList: true, subtree: true });
+  for (const d of [800, 2500, 6000]) setTimeout(sweep, d);
+})();
