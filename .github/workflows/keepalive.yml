@@ -1,0 +1,16 @@
+# GitHub deletes cache entries nobody has used for 7 days. Hush's Android signing key lives in one, and losing it
+# (it happened between builds 136 and 138) means phones can't update in place. Touching it daily keeps it alive.
+name: keep signing key
+on:
+  schedule: [{ cron: "17 6 * * *" }]
+  workflow_dispatch:
+permissions: { contents: read }
+jobs:
+  touch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/cache/restore@v4
+        id: k
+        with: { path: ~/.hush, key: hush-signing-v1 }
+      - run: |
+          if [ "${{ steps.k.outputs.cache-hit }}" = "true" ]; then echo "signing key cache is alive"; else echo "::warning::signing key cache is missing - the next main build will create a NEW key and phones will need a reinstall"; fi
