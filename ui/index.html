@@ -74,8 +74,8 @@ body.tor #pill{border-color:#8b5cf6;box-shadow:0 0 0 3px #8b5cf622}#torb{display
 .panel h2{font-weight:300;font-size:30px;letter-spacing:-.5px;display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
 .panel h3{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute);margin:26px 0 8px;font-weight:600}
 .row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 14px;background:var(--card);border:1px solid var(--line);border-radius:12px;margin-bottom:6px;min-height:50px}
-.row>div:first-child{min-width:0}.row small{display:block;color:var(--mute);margin-top:2px;overflow:hidden;text-overflow:ellipsis}
-.seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:2px;flex:none}
+.row{flex-wrap:wrap}.row>div:first-child{min-width:0;flex:1 1 180px}.row>.seg,.row>select,.row>.btn{max-width:100%}.seg{flex-wrap:wrap}.row .txt,.row input.txt{min-width:0;max-width:100%}.row small{display:block;color:var(--mute);margin-top:2px;overflow:hidden;text-overflow:ellipsis}
+.seg{display:flex;flex-wrap:wrap;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:2px;flex:none}
 .seg button{width:auto;height:26px;padding:0 10px;border-radius:7px;font-size:12px}
 .seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 2px #0002}
 .btn{width:auto;height:30px;padding:0 12px;border:1px solid var(--line);border-radius:9px;color:var(--ink);font-size:12px}

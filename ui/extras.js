@@ -35,7 +35,7 @@ window.HushX = function (A) {
 .hx-pop{width:min(640px,100%);background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:12px;display:grid;gap:10px;text-shadow:none;font-size:12.5px}
 .hx-sw{width:30px;height:30px;border-radius:50%;border:2px solid var(--line);cursor:pointer}.hx-sw.on{border-color:var(--acc)}
 .hx-note{font-size:12px;color:var(--mute);text-align:center;margin-top:6px}.hx-add{display:flex;gap:6px;width:min(640px,100%)}.hx-add input,.hx-in{flex:1;min-width:0;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:13px system-ui}
-.hx-list{display:grid;gap:6px}.hx-item{display:flex;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.hx-list{display:grid;gap:6px}.hx-item{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
 .hx-item div{flex:1;min-width:0}.hx-item b{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hx-item small{color:var(--mute)}
 .hx-seg{display:flex;gap:4px;flex-wrap:wrap}.hx-seg .hx-b.on{background:var(--ink);color:var(--bg)}
 .hx-lbl{color:var(--mute);font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;margin-top:6px}
@@ -251,9 +251,9 @@ window.HushX = function (A) {
     const wheel = (A.pref('wheel') || WHEEL_DEF).split(',').filter(Boolean), opts = sel => Object.entries(ACTIONS).map(([k, l]) => `<option value=${k} ${k === sel ? 'selected' : ''}>${esc(l)}</option>`).join('');
     el.innerHTML = `<div class=hx-lbl>Gestures</div><div class=hx-seg><button class="hx-b ${A.pref('gestures') !== 'off' ? 'on' : ''}" data-gon>${A.pref('gestures') !== 'off' ? 'On' : 'Off'}</button></div>
       <p style="color:var(--mute);font-size:12px;margin:6px 0">${A.mobile ? 'Swipe on a page with two fingers. Two-finger touch-and-hold opens your quick wheel.' : 'Hold the right mouse button on a page and draw. A quick right-click still opens the normal menu; right-click and hold opens your quick wheel.'}</p>
-      <div class=hx-list>${SLOTS.map(([g, l, d]) => `<div class=hx-item><div><b>${esc(l)}</b></div><select class=hx-in style="flex:none;width:170px" data-slot="${g}">${opts(A.pref(slotPref(g)) || d)}</select></div>`).join('')}</div>
+      <div class=hx-list>${SLOTS.map(([g, l, d]) => `<div class=hx-item><div><b>${esc(l)}</b></div><select class=hx-in style="flex:0 1 170px;min-width:0;width:170px;max-width:55%" data-slot="${g}">${opts(A.pref(slotPref(g)) || d)}</select></div>`).join('')}</div>
       <div class=hx-lbl>Quick wheel · up to 8, in order clockwise from the top</div>
-      <div class=hx-list>${[0, 1, 2, 3, 4, 5, 6, 7].map(i => `<div class=hx-item><div><b>${i + 1}</b></div><select class=hx-in style="flex:none;width:170px" data-w=${i}>${opts(wheel[i] || 'none')}</select></div>`).join('')}</div>
+      <div class=hx-list>${[0, 1, 2, 3, 4, 5, 6, 7].map(i => `<div class=hx-item><div><b>${i + 1}</b></div><select class=hx-in style="flex:0 1 170px;min-width:0;width:170px;max-width:55%" data-w=${i}>${opts(wheel[i] || 'none')}</select></div>`).join('')}</div>
       <small style="color:var(--mute);display:block;margin-top:8px">Changes apply to pages you open or reload after this.</small>`;
     el.querySelector('[data-gon]').onclick = async () => { await A.setPref('gestures', A.pref('gestures') !== 'off' ? 'off' : 'on'); gesturePanel(el); };
     el.querySelectorAll('[data-slot]').forEach(x => x.onchange = () => A.setPref(slotPref(x.dataset.slot), x.value));
