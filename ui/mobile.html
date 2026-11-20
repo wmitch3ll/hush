@@ -432,6 +432,7 @@ window.__hushEvent=(name,d)=>{
     if(d.state==="started"&&!torOn&&/^https?:/.test(d.url)&&listHas("tor_sites",bare(d.url))){setTor(true);toast("Tor mode on — you set this site to always use Tor")}
     if(t.id===cur){progress(d.state==="started");toolsShow(true);render();requestAnimationFrame(insets)}}
   else if(name==="pdf"){if(pref("pdf_viewer")==="false")native("downloadUrl",{url:d.url,ua:d.ua}).catch(()=>{});else openPdf(d)}
+  else if(name==="update"){const t=$("#a-updt");if(t)t.textContent=d.state==="failed"?"The download didn’t finish — tap to try again":"Ready — confirm on the install screen";if(d.state==="failed")toast("Update download failed")}
   else if(name==="download"){HX.dl.event(d);if(d.state==="done")vibe();if(sheet==="downloads")drawDownloads()}
   else if(name==="tabAudio"){const t=tabs.find(x=>x.native===d.id);if(t&&t.audio!==!!d.audio){t.audio=!!d.audio;render();if(sheet==="switcher")drawSwitcher()}}
   else if(name==="listen"){listenSt=d.state;if(d.state==="empty")toast("Nothing to read on this page");else if(d.state==="unavailable")toast("No voice is installed — check Android text-to-speech settings");
@@ -937,7 +938,8 @@ async function drawAbout(){const el=$("#about");let info={build:"?"};try{info=aw
     Tauri, wry, tao — MIT / Apache 2.0<br>AndroidX libraries — Apache 2.0<br>QR code generator based on Project Nayuki’s algorithm — MIT</div>`;
   wire(el);
   $("#a-upd").onclick=async()=>{$("#a-updt").textContent="Checking…";try{const u=await inv("check_update");
-      if(u.newer){$("#a-updt").textContent=`Build ${u.latest} is ready — tap to open it`;$("#a-upd").onclick=()=>{show(null);newTab(false,true);go(u.page)}}
+      if(u.newer&&u.apk){$("#a-updt").textContent=`Build ${u.latest} is ready — tap to update now`;$("#a-upd").onclick=async()=>{$("#a-updt").textContent="Downloading… the install screen opens when it’s done";try{await native("installApk",{url:u.apk})}catch(e){$("#a-updt").textContent=String(e).includes("needs-permission")?"Allow Hush to install apps on the screen that just opened, then come back and tap again":"Couldn’t start the update — tap to try again"}}}
+      else if(u.newer){$("#a-updt").textContent=`Build ${u.latest} is still being built — try again in a few minutes`}
       else $("#a-updt").textContent="You’re on the newest build ("+u.latest+")"}
     catch(e){if(String(e).includes("private")){$("#a-updt").textContent="Your GitHub repo is private — tap to open the releases page";$("#a-upd").onclick=()=>{show(null);newTab(false,true);go("https://github.com/wmitch3ll/hush/releases")}}
       else $("#a-updt").textContent="Couldn’t check right now"}};

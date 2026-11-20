@@ -687,6 +687,30 @@ class TabsPlugin(private val act: Activity) : Plugin(act) {
     /** Ask Android (one system dialog) to let Hush run in the background. */
     @Command fun batteryExempt(i: Invoke) { try { act.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + act.packageName))); i.resolve() }
         catch (e: Throwable) { try { act.startActivity(android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)); i.resolve() } catch (e2: Throwable) { i.reject("Couldn’t open the setting") } } }
+    /** In-app update: download Hush's own release APK (same signing key, so Android installs it over this app), then open the system installer. */
+    @Command fun installApk(i: Invoke) { val u = i.parseArgs(UrlArgs::class.java).url
+        if (!Regex("^https://github\\.com/wmitch3ll/hush/releases/download/[\\w.-]+/[\\w.-]+\\.apk$").matches(u)) return i.reject("Not a Hush release link")
+        act.runOnUiThread { try {
+            if (Build.VERSION.SDK_INT >= 26 && !act.packageManager.canRequestPackageInstalls()) {
+                act.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + act.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return@runOnUiThread i.reject("needs-permission") }
+            java.io.File(act.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "Hush-update.apk").delete()
+            val m = dm()
+            val id = m.enqueue(DownloadManager.Request(Uri.parse(u)).setTitle("Hush update").setMimeType("application/vnd.android.package-archive")
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationInExternalFilesDir(act, Environment.DIRECTORY_DOWNLOADS, "Hush-update.apk"))
+            val rx = object : android.content.BroadcastReceiver() { override fun onReceive(c: Context?, intent: Intent?) {
+                if (intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L) != id) return
+                try { act.unregisterReceiver(this) } catch (e: Throwable) {}
+                try { val q = m.query(DownloadManager.Query().setFilterById(id)); val ok = q.use { it.moveToFirst() && it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) == DownloadManager.STATUS_SUCCESSFUL }
+                    val uri = if (ok) m.getUriForDownloadedFile(id) else null
+                    if (uri == null) { emit("update", JSObject().apply { put("state", "failed") }); return }
+                    act.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
+                    emit("update", JSObject().apply { put("state", "ready") })
+                } catch (e: Throwable) { emit("update", JSObject().apply { put("state", "failed") }) } } }
+            ContextCompat.registerReceiver(act, rx, android.content.IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), ContextCompat.RECEIVER_EXPORTED)
+            i.resolve(JSObject().put("id", id.toString()))
+        } catch (e: Throwable) { i.reject("Couldn’t start the update") } } }
     @Command fun downloadOpen(i: Invoke) { val id = i.parseArgs(DlArgs::class.java).id.toLongOrNull() ?: return i.reject("bad id")
         act.runOnUiThread { try { val m = dm(); val u = m.getUriForDownloadedFile(id) ?: return@runOnUiThread i.reject("File is gone")
             val intent = Intent(Intent.ACTION_VIEW).setDataAndType(u, m.getMimeTypeForDownloadedFile(id) ?: "*/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)

@@ -69,7 +69,7 @@ pub async fn page_query(app: AppHandle, q: String) -> Result<String, String> {
 #[tauri::command]
 pub async fn native_call(app: AppHandle, cmd: String, args: Option<Value>) -> Result<Value, String> {
     const ALLOWED: &[&str] = &["takeIntent", "askDefault", "isDefault", "pip", "permissionReply", "sitePerms", "resetSitePerms",
-        "printPage", "voice", "discardBackground", "muteTab", "listen", "peek", "peekClose", "screenshot", "saveImage", "pick", "torMode", "floatTab", "floatClose", "media", "splitTab", "splitMode", "splitMix", "splitRatio", "splitSwap", "msgLive", "downloadOpen", "downloadUrl", "batteryState", "batteryExempt", "downloadCancel", "downloadsApp", "notify", "clearNotif", "notifPerm", "pageText", "mediaLog", "allSitePerms", "clipText", "secretSet", "secretGet", "secretDel", "biometric", "secure", "bubble"];
+        "printPage", "voice", "discardBackground", "muteTab", "listen", "peek", "peekClose", "screenshot", "saveImage", "pick", "torMode", "floatTab", "floatClose", "media", "splitTab", "splitMode", "splitMix", "splitRatio", "splitSwap", "msgLive", "downloadOpen", "downloadUrl", "batteryState", "batteryExempt", "downloadCancel", "downloadsApp", "notify", "clearNotif", "notifPerm", "pageText", "mediaLog", "allSitePerms", "clipText", "secretSet", "secretGet", "secretDel", "biometric", "secure", "bubble", "installApk"];
     if !ALLOWED.contains(&cmd.as_str()) { return Err("not allowed".into()); }
     call(&app, &cmd, args.unwrap_or(json!({})))
 }

@@ -602,7 +602,34 @@ async fn check_update() -> Result<Value, String> {
     let latest: u64 = num(r);
     let mine: u64 = BUILD.parse().unwrap_or(0);
     Ok(json!({ "current": BUILD, "latest": latest, "newer": mine > 0 && latest > mine, "name": r["name"], "page": r["html_url"],
+               "exe": r["assets"].as_array().and_then(|a| a.iter().find(|x| x["name"].as_str() == Some(if cfg!(target_arch = "aarch64") { "Hush-setup-arm64.exe" } else { "Hush-setup.exe" }))).map(|x| x["browser_download_url"].clone()),
                "apk": r["assets"].as_array().and_then(|a| a.iter().find(|x| x["name"].as_str().map(|n| n.ends_with(".apk")).unwrap_or(false))).map(|x| x["browser_download_url"].clone()) }))
+}
+/// Only files attached to Hush's own GitHub releases may be installed by the in-app updater.
+pub fn update_url_ok(url: &str) -> bool {
+    let Ok(u) = url::Url::parse(url) else { return false };
+    u.scheme() == "https" && u.host_str() == Some("github.com") && u.port().is_none() && u.username().is_empty()
+        && u.path().starts_with("/wmitch3ll/hush/releases/download/") && !u.path().contains("..")
+}
+/// Windows: download the installer for this PC (x64 or ARM) and run it; Hush closes so the installer can replace it.
+#[cfg(desktop)]
+#[tauri::command]
+async fn install_update(app: AppHandle, url: String) -> Result<(), String> {
+    if !cfg!(windows) { return Err("In-app updates are for the Windows app".into()); }
+    if !update_url_ok(&url) || !url.ends_with(".exe") { return Err("Not a Hush release link".into()); }
+    let path = std::env::temp_dir().join("Hush-update-setup.exe");
+    let p2 = path.clone();
+    tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+        use std::io::Read;
+        let resp = ureq::get(&url).set("User-Agent", "Hush-browser").timeout(std::time::Duration::from_secs(300)).call().map_err(|e| e.to_string())?;
+        let mut raw = Vec::new();
+        resp.into_reader().take(400 * 1024 * 1024).read_to_end(&mut raw).map_err(|e| e.to_string())?;
+        if raw.len() < 1_000_000 || &raw[..2] != b"MZ" { return Err("The download wasn't a valid installer".into()); }
+        std::fs::write(&p2, &raw).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())??;
+    std::process::Command::new(&path).spawn().map_err(|e| e.to_string())?;
+    app.exit(0);
+    Ok(())
 }
 /// https URL on a public website: no raw IP addresses, no localhost / .local / .internal / single-label names, no ports.
 pub fn public_https_host(url: &str) -> Option<String> {
@@ -734,7 +761,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![toggle_shield, get_state, set_setting, bookmark_add, bookmark_remove,
             add_custom_filter, export_data, import_data, update_lists,
             site_dark, get_stats, history_add, history_list, history_clear, suggest, session_save,
-            check_update, app_info, import_bookmarks, pwned_range, pdf_fetch, fetch_text, feed_get,
+            install_update, check_update, app_info, import_bookmarks, pwned_range, pdf_fetch, fetch_text, feed_get,
             desktop::page_action, desktop::set_split, desktop::set_rail, desktop::set_zoom, desktop::set_muted,
             desktop::toggle_fullscreen, desktop::capture_tab, desktop::peek_open, desktop::peek_close, desktop::peek_expand,
             desktop::screenshot, desktop::save_png, desktop::attention, boost_set, remove_custom_filter, bookmarks_reorder,
@@ -817,6 +844,14 @@ mod security_tests {
         let t = html_to_text("<html><head><title>x</title><style>a{}</style></head><body><script>var s=1;</script><h1>Privacy</h1><p>We do not sell your data &amp; never will.</p><noscript>no</noscript><li>Item</li></body></html>");
         assert!(t.contains("Privacy") && t.contains("We do not sell your data & never will.") && t.contains("Item"));
         assert!(!t.contains("var s") && !t.contains("a{}") && !t.contains("<"));
+    }
+        #[test]
+    fn updater_only_accepts_hush_release_files() {
+        assert!(update_url_ok("https://github.com/wmitch3ll/hush/releases/download/build-137/Hush-setup.exe"));
+        assert!(!update_url_ok("https://github.com/evil/hush/releases/download/build-1/Hush-setup.exe"));
+        assert!(!update_url_ok("http://github.com/wmitch3ll/hush/releases/download/b/x.exe"));
+        assert!(!update_url_ok("https://github.com.evil.com/wmitch3ll/hush/releases/download/b/x.exe"));
+        assert!(!update_url_ok("https://user@github.com/wmitch3ll/hush/releases/download/b/x.exe"));
     }
     #[test] fn only_public_https_sites_can_be_fetched() {
         assert_eq!(public_https_host("https://www.Example.com/privacy").as_deref(), Some("www.example.com"));
