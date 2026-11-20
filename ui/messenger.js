@@ -98,7 +98,7 @@ window.HushMsg = function (A) {
 
   // ---------------------------------------------------------------- network (relays over Tor)
   const conns = {}, byId = {}, pending = {};
-  let status = 'off', started = false;
+  let status = 'off', started = false, lastErr = '';
   const okRelays = () => Object.values(conns).filter(c => c.open).length;
   function setStatus(s) { status = s; paintStatus(); }
   const syncLive = () => { try { A.live && A.live(!!sk && !prefs().nonotif && !prefs().nobg); } catch (e) {} };
@@ -111,7 +111,7 @@ window.HushMsg = function (A) {
     if (wait) await new Promise(r => setTimeout(r, wait));
     if (!sk) return;
     try { const id = await A.inv('msg_ws_open', { url: u }); conns[u] = { id, open: false, queue: conns[u]?.queue || [], tries: conns[u]?.tries || 0 }; byId[id] = u; }
-    catch (e) { setStatus(okRelays() ? 'on' : 'error:' + e); retry(u); }
+    catch (e) { lastErr = String(e).slice(0, 160); setStatus(okRelays() ? 'on' : 'error:' + e); retry(u); }
   }
   function retry(u) { const c = conns[u] || (conns[u] = { queue: [], tries: 0 }); c.open = false; c.tries = (c.tries || 0) + 1;
     openRelay(u, Math.min(120000, 3000 * 2 ** Math.min(c.tries, 5))); }
@@ -753,7 +753,7 @@ window.HushMsg = function (A) {
   function paintStatus() { const e = view.el && view.el.querySelector('.hm-st'); if (!e) return;
     if (view.screen === 'chat' && typingNames().length) return paintTyping();
     const s = status.startsWith('error') ? 'error' : status; e.className = 'hm-st ' + s;
-    e.innerHTML = `<i></i>${s === 'on' ? (view.screen === 'chat' && isGroup(view.chat) ? `${members(view.chat).length + 1} people · ` : '') + `Private${view.screen === 'chat' && pqOn(view.chat) ? ' · quantum-safe' : ''} · through Tor · ${okRelays()} relay${okRelays() === 1 ? '' : 's'}` : s === 'connecting' ? 'Connecting through Tor…' : s === 'error' ? 'Can’t reach Tor — retrying' : 'Offline'}`; }
+    e.innerHTML = `<i></i>${s === 'on' ? (view.screen === 'chat' && isGroup(view.chat) ? `${members(view.chat).length + 1} people · ` : '') + `Private${view.screen === 'chat' && pqOn(view.chat) ? ' · quantum-safe' : ''} · through Tor · ${okRelays()} relay${okRelays() === 1 ? '' : 's'}` : s === 'connecting' ? 'Connecting through Tor…' : s === 'error' ? 'Can’t reach Tor — retrying' + (lastErr ? `<small style="display:block;opacity:.7;font-weight:400">${esc(lastErr)}</small>` : '') : 'Offline'}`; }
   function typingNames() { const t = typing[view.chat] || {}, n = Date.now(); return Object.entries(t).filter(([, u]) => u > n).map(([pk]) => first(pk)); }
   function paintTyping() { const e = view.el && view.el.querySelector('.hm-st'); if (!e) return; const ns = typingNames();
     if (!ns.length) { e.classList.remove('hm-typing'); return paintStatus(); }
@@ -1251,7 +1251,8 @@ window.HushMsg = function (A) {
   async function finishRestore(k, data, msg) { await useKey(k, data && /^[0-9a-f]+:[0-9a-f]+$/.test(data.pq || '') ? data.pq : null); if (data) { LS.set('contacts', data.contacts || {}); LS.set('groups', data.groups || {}); if (data.profile) LS.set('profile', data.profile);
       if (data.prefs) LS.set('prefs', data.prefs); if (data.chats && typeof data.chats === 'object') LS.set('chats', { ...chats(), ...data.chats });
       for (const f of hooks.restore) { try { await f(data.extra || {}); } catch {} } }
-    LS.set('since', now() - 14 * 86400); view.screen = 'list'; start(); badge(); repaint(); A.toast(msg || 'Welcome back — your Hush ID is restored'); }
+    LS.set('since', now() - 14 * 86400); view.screen = data ? 'list' : 'me'; start(); badge(); repaint();
+    A.toast(msg || (data ? 'Welcome back — your Hush ID is restored' : 'Your ID is back. Words restore the ID only — add your name below; friends reappear as they message you')); }
   // ---------------------------------------------------------------- Link my devices
   // The old device packs your ID, contacts, chats (text) and Echo, locks it twice (a random key in the QR code + a
   // 6-digit code you type), and leaves it, encrypted, on a file host through Tor for 15 minutes. The new device scans,

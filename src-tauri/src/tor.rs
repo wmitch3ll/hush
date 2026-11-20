@@ -20,17 +20,29 @@ fn status(app: &AppHandle, state: &str, msg: &str) {
 /// Start Tor (if needed) and return the local SOCKS port. Bootstrapping takes ~5–30 s the first time.
 #[tauri::command]
 pub async fn tor_start(app: AppHandle) -> Result<u16, String> {
-    {
-        let mut t = TOR.lock();
-        if t.client.is_some() && t.port != 0 { return Ok(t.port); }
-        if t.starting { return Err("Tor is still starting".into()); }
-        t.starting = true;
+    // Several relay connections ask for Tor at once on launch: the first one starts it, the rest wait for that same attempt
+    // (before, they were told "still starting", failed, and backed off for many seconds).
+    let mut waited = false;
+    loop {
+        {
+            let mut t = TOR.lock();
+            if t.client.is_some() && t.port != 0 { return Ok(t.port); }
+            if waited { return Err(LAST_ERR.lock().clone().unwrap_or_else(|| "Couldn’t reach Tor".into())); }
+            if !t.starting { t.starting = true; break; }
+        }
+        waited = true;
+        while TOR.lock().starting { tokio::time::sleep(std::time::Duration::from_millis(300)).await; }
     }
-    let r = start(&app).await;
+    let r = match tokio::time::timeout(std::time::Duration::from_secs(150), start(&app)).await {
+        Ok(r) => r,
+        Err(_) => Err("Tor took too long to connect — check your internet connection, VPN or firewall".to_string()),
+    };
+    *LAST_ERR.lock() = r.as_ref().err().cloned();
     TOR.lock().starting = false;
     match &r { Ok(_) => status(&app, "ready", "Connected to Tor"), Err(e) => status(&app, "error", e) }
     r
 }
+static LAST_ERR: LazyLock<Mutex<Option<String>>> = LazyLock::new(Default::default);
 async fn start(app: &AppHandle) -> Result<u16, String> {
     status(app, "starting", "Connecting to the Tor network…");
     let base = app.path().app_data_dir().map_err(|e| e.to_string())?.join("tor");
