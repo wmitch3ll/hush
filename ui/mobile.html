@@ -110,7 +110,7 @@ textarea,input.txt{width:100%}
 .act p{color:var(--mute);font-size:12px;padding:0 6px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .act button{text-align:left;padding:13px 10px;border-radius:10px;font-size:15px}.act button:active{background:var(--line)}
 #scrim{position:fixed;inset:0;background:#0005;z-index:19;display:none}#scrim.on{display:block}
-#toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 84px);transform:translate(-50%,20px);opacity:0;background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:999px;font-size:13px;transition:.25s;z-index:30;pointer-events:none;max-width:90%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 84px);transform:translate(-50%,20px);opacity:0;background:#1d1d22;color:#fff;border:1px solid #ffffff2e;box-shadow:0 8px 28px #0006;padding:8px 14px;border-radius:999px;font-size:13px;transition:.25s;z-index:30;pointer-events:none;max-width:90%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 body.bottom #toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 16px)}
 #toast.on{opacity:1;transform:translate(-50%,0)}
 </style><link rel=stylesheet href="hush.css"></head><body>
@@ -433,7 +433,7 @@ window.__hushEvent=(name,d)=>{
     if(t.id===cur){progress(d.state==="started");toolsShow(true);render();requestAnimationFrame(insets)}}
   else if(name==="pdf"){if(pref("pdf_viewer")==="false")native("downloadUrl",{url:d.url,ua:d.ua}).catch(()=>{});else openPdf(d)}
   else if(name==="update"){const t=$("#a-updt");if(t)t.textContent=d.state==="failed"?"The download didn’t finish — tap to try again":"Ready — confirm on the install screen";if(d.state==="failed")toast("Update download failed")}
-  else if(name==="download"){HX.dl.event(d);if(d.state==="done")vibe();if(sheet==="downloads")drawDownloads()}
+  else if(name==="download"){if(d.state==="started")toast("Downloading "+(d.name||"file")+"…",["View",()=>{drawDownloads();show("downloads")}]);else if(d.state==="done")toast((d.name||"File")+" downloaded",["Open",()=>native("downloadOpen",{id:String(d.id)}).catch(()=>toast("No app can open this file"))]);else if(d.state==="failed")toast("Download failed"+(d.name?": "+d.name:""));HX.dl.event(d);if(d.state==="done")vibe();if(sheet==="downloads")drawDownloads()}
   else if(name==="tabAudio"){const t=tabs.find(x=>x.native===d.id);if(t&&t.audio!==!!d.audio){t.audio=!!d.audio;render();if(sheet==="switcher")drawSwitcher()}}
   else if(name==="listen"){listenSt=d.state;if(d.state==="empty")toast("Nothing to read on this page");else if(d.state==="unavailable")toast("No voice is installed — check Android text-to-speech settings");
     else if(d.state==="done")listenSt="";if(sheet==="menu")drawMenu()}
