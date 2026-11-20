@@ -122,17 +122,40 @@ pub async fn https(app: &AppHandle, method: &str, url: &str, headers: &[(String,
     }
     Ok((status, rest))
 }
-/// Upload an (already encrypted) blob: raw request body, headers x-hush-server + x-hush-auth. Returns the server's JSON.
-#[tauri::command]
-pub async fn blob_put(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<serde_json::Value, String> {
-    let tauri::ipc::InvokeBody::Raw(data) = request.body() else { return Err("expected bytes".into()) };
-    let h = |k: &str| request.headers().get(k).and_then(|v| v.to_str().ok()).map(str::to_string);
-    let server = h("x-hush-server").ok_or("no server")?; let auth = h("x-hush-auth").ok_or("no auth")?;
+async fn put_blob(app: &AppHandle, server: &str, auth: &str, data: &[u8]) -> Result<serde_json::Value, String> {
     if data.len() > 120 << 20 { return Err("file too large".into()); }
     let url = format!("{}/upload", server.trim_end_matches('/'));
-    let (st, body) = https(&app, "PUT", &url, &[("Authorization".into(), format!("Nostr {auth}")), ("Content-Type".into(), "application/octet-stream".into())], data, 1 << 20).await?;
+    let (st, body) = https(app, "PUT", &url, &[("Authorization".into(), format!("Nostr {auth}")), ("Content-Type".into(), "application/octet-stream".into())], data, 1 << 20).await?;
     if !(200..300).contains(&st) { return Err(format!("{} said {}: {}", server, st, String::from_utf8_lossy(&body).chars().take(160).collect::<String>())); }
     serde_json::from_slice(&body).map_err(|_| "bad reply from server".to_string())
+}
+/// Upload an (already encrypted) blob: raw request body, headers x-hush-server + x-hush-auth. Returns the server's JSON.
+/// Some Android WebViews can't send raw bodies, so the bytes may also arrive as a JSON array of numbers or a base64 string; the headers
+/// then come from `x-hush-*` or, failing that, the JSON object `{server, auth, data}`.
+#[tauri::command]
+pub async fn blob_put(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<serde_json::Value, String> {
+    let h = |k: &str| request.headers().get(k).and_then(|v| v.to_str().ok()).map(str::to_string);
+    let (mut server, mut auth) = (h("x-hush-server"), h("x-hush-auth"));
+    let data: Vec<u8> = match request.body() {
+        tauri::ipc::InvokeBody::Raw(d) => d.clone(),
+        tauri::ipc::InvokeBody::Json(v) => {
+            let from_val = |x: &serde_json::Value| -> Option<Vec<u8>> { use base64::Engine; match x {
+                serde_json::Value::Array(a) => a.iter().map(|n| n.as_u64().filter(|n| *n < 256).map(|n| n as u8)).collect(),
+                serde_json::Value::String(s) => base64::engine::general_purpose::STANDARD.decode(s).ok(), _ => None } };
+            if let Some(d) = from_val(v) { d } else if let Some(d) = v.get("data").and_then(from_val) {
+                if server.is_none() { server = v.get("server").and_then(|x| x.as_str()).map(str::to_string); }
+                if auth.is_none() { auth = v.get("auth").and_then(|x| x.as_str()).map(str::to_string); } d
+            } else { return Err("expected bytes".into()) }
+        }
+    };
+    put_blob(&app, &server.ok_or("no server")?, &auth.ok_or("no auth")?, &data).await
+}
+/// Same upload with the bytes as base64 text and everything in ordinary arguments (works on every platform; used when raw bodies don't).
+#[tauri::command]
+pub async fn blob_put_b64(app: AppHandle, server: String, auth: String, data: String) -> Result<serde_json::Value, String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data).map_err(|_| "bad data".to_string())?;
+    put_blob(&app, &server, &auth, &bytes).await
 }
 /// Download a blob through Tor; returns raw bytes (an ArrayBuffer in JS).
 #[tauri::command]

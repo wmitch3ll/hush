@@ -225,6 +225,7 @@ pub fn page_action_js(action: &str, arg: &str) -> Result<String, String> {
     let a = serde_json::to_string(arg).map_err(|e| e.to_string())?;
     let call = match action {
         "dark-on" => "__hushPage.dark(true)".to_string(),
+        "audio-only" => "window.__hushAO&&window.__hushAO(!window.__hushAOon)".to_string(),
         "media-pause" => "document.querySelectorAll('video,audio').forEach(v=>v.pause())".to_string(),
         "media-play" => "(document.querySelector('video')||document.querySelector('audio')||{play(){}}).play()".to_string(),
         // Watch Together: jump to a time / skip by seconds (arg is a JSON string; `+` turns it into a number or NaN).
@@ -740,14 +741,14 @@ pub fn run() {
             extensions::extension_list, extensions::extension_install, extensions::extension_remove,
             desktop::arc_import, desktop::set_split_more, desktop::set_split_mode, desktop::set_split_ratio, desktop::split_swap, desktop::page_text, desktop::page_query, desktop::open_tab, desktop::switch_tab, desktop::close_tab, desktop::navigate, desktop::nav,
             desktop::clear_data, desktop::start_picker, desktop::set_layout, desktop::show_content,
-            desktop::download_open, desktop::download_reveal, desktop::download_read, desktop::float_tab, desktop::float_close, tor::tor_start, tor::tor_new_identity, tor::tor_state, watch_check, msgnet::msg_ws_open, msgnet::site_icon, msgnet::public_feed, msgnet::scores_get, msgnet::news_get, msgnet::groq_chat, msgnet::msg_ws_send, msgnet::msg_ws_close, msgnet::blob_put, msgnet::blob_get, msgnet::secret_set, msgnet::secret_get, msgnet::secret_del])
+            desktop::download_open, desktop::download_reveal, desktop::download_read, desktop::float_tab, desktop::float_close, tor::tor_start, tor::tor_new_identity, tor::tor_state, watch_check, msgnet::msg_ws_open, msgnet::site_icon, msgnet::public_feed, msgnet::scores_get, msgnet::news_get, msgnet::groq_chat, msgnet::msg_ws_send, msgnet::msg_ws_close, msgnet::blob_put, msgnet::blob_put_b64, msgnet::blob_get, msgnet::secret_set, msgnet::secret_get, msgnet::secret_del])
         .setup(desktop::setup);
     #[cfg(mobile)] let b = b
         .invoke_handler(tauri::generate_handler![toggle_shield, get_state, set_setting, bookmark_add, bookmark_remove,
             add_custom_filter, export_data, import_data, update_lists,
             site_dark, get_stats, history_add, history_list, history_clear, suggest, session_save,
             check_update, app_info, import_bookmarks, pwned_range, pdf_fetch, fetch_text, feed_get,
-            mobile::page_action, mobile::page_query, mobile::native_call, boost_set, remove_custom_filter, bookmarks_reorder, tor::tor_start, tor::tor_new_identity, tor::tor_state, watch_check, msgnet::msg_ws_open, msgnet::site_icon, msgnet::public_feed, msgnet::scores_get, msgnet::news_get, msgnet::groq_chat, msgnet::msg_ws_send, msgnet::msg_ws_close, msgnet::blob_put, msgnet::blob_get,
+            mobile::page_action, mobile::page_query, mobile::native_call, boost_set, remove_custom_filter, bookmarks_reorder, tor::tor_start, tor::tor_new_identity, tor::tor_state, watch_check, msgnet::msg_ws_open, msgnet::site_icon, msgnet::public_feed, msgnet::scores_get, msgnet::news_get, msgnet::groq_chat, msgnet::msg_ws_send, msgnet::msg_ws_close, msgnet::blob_put, msgnet::blob_put_b64, msgnet::blob_get,
             mobile::open_tab, mobile::switch_tab, mobile::close_tab, mobile::navigate, mobile::nav,
             mobile::clear_data, mobile::set_chrome_inset, mobile::set_web_prefs])
         .setup(mobile::setup);

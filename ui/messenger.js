@@ -142,6 +142,12 @@ window.HushMsg = function (A) {
     for (const p of [...list, me]) { const w = wrapFor(rumor, p); if (p === me) seen.add(w.id); for (const u of relays()) send(u, ['EVENT', w]); }
     return rumor;
   }
+  /** Upload bytes to a media host. Tries a raw body first; if this device's WebView can't send one (Android: "expected bytes"), sends base64 instead. */
+  async function putBlob(host, auth, bytes) {
+    try { return await A.invRaw('blob_put', bytes, { 'x-hush-server': host, 'x-hush-auth': auth }); }
+    catch (e) { if (!/expected bytes|no server|no auth|invalid|raw|body/i.test(String(e && e.message || e))) throw e;
+      let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      return await A.inv('blob_put_b64', { server: host, auth, data: btoa(s) }); } }
   async function uploadEncrypted(blob) {      // returns {url, k, nonce, x, alt[], mime, size}
     const plain = new Uint8Array(await blob.arrayBuffer()), kb = crypto.getRandomValues(new Uint8Array(32)), iv = crypto.getRandomValues(new Uint8Array(12));
     const ck = await crypto.subtle.importKey('raw', kb, 'AES-GCM', false, ['encrypt']);
@@ -149,7 +155,7 @@ window.HushMsg = function (A) {
     const x = hex(new Uint8Array(await crypto.subtle.digest('SHA-256', enc))); const got = []; let err = '';
     for (const h of hosts()) { if (got.length >= 2) break;
       try { const t = N.finalizeEvent({ kind: 24242, created_at: now(), content: 'Upload', tags: [['t', 'upload'], ['x', x], ['expiration', String(now() + 900)]] }, N.generateSecretKey());
-        const res = await Promise.race([A.invRaw('blob_put', enc, { 'x-hush-server': h, 'x-hush-auth': btoa(unescape(encodeURIComponent(JSON.stringify(t)))) }), new Promise((_, rj) => setTimeout(() => rj(new Error('no answer from ' + h.replace(/^https:\/\//, '') + ' after 45 s (Tor may still be connecting)')), 45000))]);
+        const res = await Promise.race([putBlob(h, btoa(unescape(encodeURIComponent(JSON.stringify(t)))), enc), new Promise((_, rj) => setTimeout(() => rj(new Error('no answer from ' + h.replace(/^https:\/\//, '') + ' after 45 s (Tor may still be connecting)')), 45000))]);
         got.push(res && /^https:\/\//.test(res.url) ? res.url : h.replace(/\/$/, '') + '/' + x); } catch (e) { err = String(e); } }
     if (!got.length) throw new Error(err || 'no host accepted the file');
     await putFile(x.slice(0, 32), blob);
@@ -457,7 +463,7 @@ window.HushMsg = function (A) {
       for (const h of hosts()) { if (got.length >= 2) break;
         try { const t = N.finalizeEvent({ kind: 24242, created_at: now(), content: 'Upload', tags: [['t', 'upload'], ['x', x], ['expiration', String(now() + 900)]] }, N.generateSecretKey());
           const auth = btoa(unescape(encodeURIComponent(JSON.stringify(t))));
-          const res = await A.invRaw('blob_put', enc, { 'x-hush-server': h, 'x-hush-auth': auth });
+          const res = await putBlob(h, auth, enc);
           got.push(res && /^https:\/\//.test(res.url) ? res.url : h.replace(/\/$/, '') + '/' + x); } catch (e) { msg.lastErr = String(e); } }
       if (!got.length) throw new Error(msg.lastErr || 'no host accepted the file');
       const tags = [['file-type', o.mime], ['encryption-algorithm', 'aes-gcm'], ['decryption-key', hex(kb)], ['decryption-nonce', hex(iv)], ['x', x], ['ox', ox], ['size', String(blob.size)], ['name', o.name],

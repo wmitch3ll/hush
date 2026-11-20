@@ -30,7 +30,7 @@
       <div class=pv-sc></div><div class=pv-msg><b>Opening…</b></div>`;
     el.replaceChildren(root); const $ = s => root.querySelector(s), sc = $('.pv-sc'), msg = $('.pv-msg'); root.querySelector('.pv-t').textContent = o.name || 'Document';
     const toast = m => o.toast && o.toast(m);
-    let doc; try { const L = await load(); doc = await L.getDocument({ data: o.data, isEvalSupported: false, enableXfa: false, useSystemFonts: true }).promise; }
+    let doc; try { const L = await load(); doc = await L.getDocument({ data: (o.data instanceof Uint8Array ? o.data : new Uint8Array(o.data)), isEvalSupported: false, enableXfa: false, useSystemFonts: true }).promise; }
     catch (e) { const pw = e && e.name === 'PasswordException'; msg.innerHTML = `<b>${pw ? 'This PDF is password-protected' : 'Couldn’t open this PDF'}</b><span>${pw ? 'Password-protected files aren’t supported yet.' : 'The file may be damaged.'}</span>`; msg.style.pointerEvents = 'auto'; root.querySelector('[data-a=close]').onclick = () => o.close && o.close(); return { close() {} }; }
     msg.remove();
     const N = doc.numPages, pages = [], KEY = key(o.name || 'doc', N), dpr = Math.min(2.5, G.devicePixelRatio || 1);

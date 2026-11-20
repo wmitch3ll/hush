@@ -135,6 +135,7 @@ kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:
   </label>
   <span id=peekbar><button class=pb id=pk-open title="Keep it as a tab">Open as tab</button><button class=pb id=pk-close title="Close preview (Esc)">Close</button></span>
   <span id=lctl aria-label="Read aloud controls"><button id=l-prev title="Previous paragraph" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M6 5v14M18 6l-9 6 9 6z"/></svg></button><button id=l-pp title="Pause" aria-label="Pause"><svg viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></svg></button><button id=l-next title="Next paragraph" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M18 5v14M6 6l9 6-9 6z"/></svg></button><b id=l-rate title="Speed">1×</b><button id=l-stop title="Stop reading" aria-label="Stop"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>
+<div id="msgbn" role="alert" aria-live="polite"></div>
   <span id=np><span id=np-t title="Go to this tab"></span><button id=np-pp title="Pause / play" aria-label="Pause or play"></button><button id=np-mini title="Mini player" aria-label="Mini player"><svg viewBox="0 0 24 24"><rect x=3 y=5 width=18 height=14 rx=2 /><rect x=12 y=11 width=7 height=6 rx=1 /></svg></button><button id=np-x title="Stop" aria-label="Stop"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span><span id=tog></span><button id=mnote title="Friends’ notes on this page" aria-label="Notes on this page"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5"/></svg><b></b></button>
   <button id=echob title="Echo — private-first social (Ctrl+Shift+E)" aria-label="Echo"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 8-8M8 12a4 4 0 0 1 4-4M20 12a8 8 0 0 1-8 8M16 12a4 4 0 0 1-4 4"/><circle cx=12 cy=12 r=1.5 /></svg><b id=echocnt class=badge></b></button>
   <button id=aib title="AI assistant (Ctrl+Shift+A)" aria-label="AI assistant"><i class=ai-av>A</i></button>
@@ -613,7 +614,7 @@ function runAction(id){const t=tab(cur);const A={memory:()=>openPanel('memory'),
 T.event.listen('gesture',({payload:p})=>{if(p.tab&&p.tab!=cur)return;HX.gesture(p)});
 T.event.listen('watch-pick',({payload:p})=>{if(!p.url)return;HX.watchAdd({url:p.url,sel:p.sel,text:p.text});toast('Watching “'+(p.text||'').slice(0,40)+'” — Settings › Change watch');openPanel('watch')});
 setInterval(()=>{HX.destructSweep(tabs,id=>closeTab(id,true));railState()},20000);
-HX.syncInit(HM);HX.dl.drop({pos:{top:'calc(var(--bar-h,46px) + 10px)',right:'16px'},suppress:()=>panel=='downloads',onAll:()=>openPanel('downloads')});setInterval(()=>HX.watchSweep(),5*60000);setTimeout(()=>HX.watchSweep(),20000);
+HX.dl.drop({pos:{top:'calc(var(--bar-h,46px) + 10px)',right:'16px'},suppress:()=>panel=='downloads',onAll:()=>openPanel('downloads')});setInterval(()=>HX.watchSweep(),5*60000);setTimeout(()=>HX.watchSweep(),20000);
 // ---------- Floating video: leave a tab that's playing and it keeps playing in a small player you can drag and resize ----------
 let floating=null;
 // Diagnostics (Ctrl+K → Diagnostics): recent internal events, to help track down problems.
@@ -643,6 +644,7 @@ const HM=HushMsg({ai:{ready:()=>HX.ai.status()=='ready',ask:(p,on)=>HX.ai.ask(p,
   scrollGet:async()=>parseFloat(await inv('page_query',{q:'scroll'})),scroll:f=>inv('page_action',{action:'scroll-frac',arg:String(f)}).catch(()=>{}),
   togetherBar:(st,cb)=>{const e=$('#tog');if(!st){e.classList.remove('on');e.textContent='';return}e.innerHTML='';const t=document.createElement('span');t.textContent=st.title;e.append(t);
     for(const [l,a] of st.items){const b=document.createElement('button');const ic=l.split(' ')[0];b.textContent=a=='go'?'':ic;b.title=l.slice(ic.length+1)||l;b.setAttribute('aria-label',b.title);b.onclick=()=>cb(a);e.append(b)}e.classList.add('on')}});
+HX.syncInit(HM);
 // Margin Notes: a chip appears when friends left Echo notes on the page you're on.
 function noteDraw(){let n=0;try{const t=tab(cur);if(t&&!t.priv&&/^https?:/.test(t.url))n=EC.notesFor(t.url).length}catch(e){}const b=$('#mnote');b.classList.toggle('on',n>0);b.querySelector('b').textContent=n||''}
 $('#mnote').onclick=()=>{window.__ecPage=1;closeDock();openDock('echo')};
