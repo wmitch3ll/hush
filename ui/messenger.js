@@ -12,7 +12,7 @@ window.HushMsg = function (A) {
                set(k, v) { try { localStorage.setItem('hush.msg.' + k, JSON.stringify(v)) } catch (e) { A.toast('Storage is full — delete some old chats'); } } };
   const RELAYS_DEFAULT = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net', 'wss://offchain.pub'];
   const REACT = ['❤️', '👍', '😂', '😮', '😢', '🙏'];
-  const K_TYPING = 20014, K_READ = 20015, K_PCARD = 10414, K_TOG = 20016, K_SYNC = 10417;   // 20016: Watch Together controls (play/pause/skip/start/go)
+  const K_TYPING = 20014, K_READ = 20015, K_PCARD = 10414, K_TOG = 20016, K_SYNC = 10417, K_CALL = 20017;   // 20016: Watch Together controls (play/pause/skip/start/go)
     // 10414: your profile card (name, photo, status, aura), sent privately to contacts        // Hush-only signals, sent inside the same encrypted gift wraps
   const CHUNK = 24000, SMALL = 2.5 * 1024 * 1024, MAX_BIG = 100 * 1024 * 1024, AUTO_DL = 25 * 1024 * 1024;
   // Encrypted-file hosts (Blossom). Files are AES-256-GCM encrypted on this device before upload; uploads/downloads go through Tor.
@@ -98,13 +98,14 @@ window.HushMsg = function (A) {
 
   // ---------------------------------------------------------------- network (relays over Tor)
   const conns = {}, byId = {}, pending = {};
-  let status = 'off', started = false, lastErr = '';
+  let status = 'off', started = false, lastErr = '', torSt = { state: 'idle', msg: '' };
   const okRelays = () => Object.values(conns).filter(c => c.open).length;
   function setStatus(s) { status = s; paintStatus(); }
   const syncLive = () => { try { A.live && A.live(!!sk && !prefs().nonotif && !prefs().nobg); } catch (e) {} };
   function start() { syncLive();
     if (started || !sk) return; started = true; setStatus('connecting');
     A.listen('msg-ws', ({ payload: p }) => onWs(p));
+    try { A.listen('tor-status', ({ payload: p }) => { torSt = p || torSt; if (view.open && view.screen === 'conn') repaint(); }); } catch {}
     for (const u of relays()) openRelay(u);
   }
   // Outbox: every message we publish is kept (as the already-encrypted event) until a relay confirms it, and replayed to each relay
@@ -123,7 +124,7 @@ window.HushMsg = function (A) {
     if (wait) await new Promise(r => setTimeout(r, wait));
     if (!sk || c0.tok !== tok) return;
     try { const id = await A.inv('msg_ws_open', { url: u }); conns[u] = { id, open: false, queue: conns[u]?.queue || [], tries: conns[u]?.tries || 0, tok }; byId[id] = u; }
-    catch (e) { lastErr = String(e).slice(0, 160); setStatus(okRelays() ? 'on' : 'error:' + e); retry(u); }
+    catch (e) { lastErr = String(e).slice(0, 160); (conns[u] || (conns[u] = { queue: [], tries: 0 })).err = lastErr; setStatus(okRelays() ? 'on' : 'error:' + e); retry(u); }
   }
   // Coming back to the app, or the network coming back, shouldn't wait out a long back-off: reconnect right away.
   function kick() { if (!sk || !started) return; for (const u of relays()) { const c = conns[u]; if (!c || !c.open) { if (c) c.tries = 0; openRelay(u, 0); } else {
@@ -136,11 +137,11 @@ window.HushMsg = function (A) {
   function onWs(p) {
     const u = byId[p.id]; if (!u) return; const c = conns[u];
     if (!c || c.id !== p.id) { if (p.t === 'close') delete byId[p.id]; return; }   // an older socket we already replaced
-    if (p.t === 'open') { c.open = true; c.tries = 0; setStatus('on');
+    if (p.t === 'open') { c.open = true; c.tries = 0; c.err = ''; c.at = Date.now(); setStatus('on');
       send(u, ['REQ', 'hush', { kinds: [1059], '#p': [me], since: LS.get('since', 0) - 2 * 86400 }]);
       c.queue.splice(0).forEach(m => send(u, m)); outboxFlush(u);
       Object.entries(subs).forEach(([id, s]) => send(u, ['REQ', id, ...s.filters])); }
-    else if (p.t === 'close') { delete byId[p.id]; if (!okRelays()) setStatus(p.d ? 'error:' + p.d : 'connecting'); retry(u); }
+    else if (p.t === 'close') { c.err = p.d || c.err || ''; delete byId[p.id]; if (!okRelays()) setStatus(p.d ? 'error:' + p.d : 'connecting'); retry(u); }
     else if (p.t === 'msg') { let m; try { m = JSON.parse(p.d); } catch { return; }
       if (m[0] === 'EVENT' && m[2]) { if (m[1] === 'hush') receive(m[2]); else if (subs[m[1]]) { if (!subSeen.has(m[2].id)) { subSeen.add(m[2].id); try { if (N.verifyEvent(m[2])) subs[m[1]].onEvent(m[2]); } catch {} } } }
       else if (m[0] === 'EOSE' && subs[m[1]]) { const s = subs[m[1]]; s.eose = (s.eose || 0) + 1; if (s.eose === 1 && s.onEose) s.onEose(); }
@@ -194,7 +195,7 @@ window.HushMsg = function (A) {
         return fileUrl(id); } catch {} }
     return null;
   }
-  const api = { togetherNav: u => together.nav(u), avatarHTML: (k, z) => avatarHTML(k, z), hydrate: el => hydrate(el), myProfile: () => profile(), ready: () => loadKey(), gate: (el, then) => gate(el, then), me: () => me, start, req, unreq, sign, broadcast, wrapTo, uploadEncrypted, mediaUrl, shrink,
+  const api = { callRemote: (k, j) => call.remote(k, j), togetherNav: u => together.nav(u), avatarHTML: (k, z) => avatarHTML(k, z), hydrate: el => hydrate(el), myProfile: () => profile(), ready: () => loadKey(), gate: (el, then) => gate(el, then), me: () => me, start, req, unreq, sign, broadcast, wrapTo, uploadEncrypted, mediaUrl, shrink,
     onEcho: f => hooks.echo.push(f), onReset: f => hooks.reset.push(f), onBackup: (get, put) => { hooks.backup.push(get); hooks.restore.push(put); }, npub, nameOf, colorOf, initials, contacts, profile, setProfile: p => LS.set('profile', p), status: () => status, okRelays,
     chatList: () => { if (!sk) return []; const c = contacts(); return [...new Set([...Object.keys(chats()), ...Object.keys(c).filter(k => !c[k].blocked && !c[k].request), ...Object.keys(groups())])].filter(k => k && k !== 'self').map(k => ({ key: k, name: chatName(k) })); },
     // Device sync: end-to-end encrypted messages from this ID to itself; every linked device (same ID) receives them.
@@ -213,7 +214,8 @@ window.HushMsg = function (A) {
     if (seen.size % 25 === 0) LS.set('seen', [...seen].slice(-8000));
     let r; try { if (!N.verifyEvent(wrap)) return; r = N.nip59.unwrapEvent(wrap, sk); } catch { return; }
     if (ECHO_KINDS.has(r.kind)) { if (!contacts()[r.pubkey]?.blocked) hooks.echo.forEach(f => { try { f(r, 'private'); } catch (e) {} }); return; }   // Echo (private posts)
-    if (r.kind === K_SYNC) { if (r.pubkey !== me || now() - r.created_at > 14 * 86400) return; let j; try { j = JSON.parse(r.content); } catch { return; } hooks.sync.forEach(f => { try { f(j, r.created_at); } catch (e) {} }); return; }   // browser sync between my own devices
+    if (r.kind === K_SYNC) { if (r.pubkey !== me || now() - r.created_at > 14 * 86400) return; let j; try { j = JSON.parse(r.content); } catch { return; } if (j && j.t === 'read') { const un = LS.get('unread', {}); if (typeof j.k === 'string' && un[j.k]) { const last = (chats()[j.k] || []).filter(m => m.from !== 'me').pop(); if (!last || (last.at || 0) <= (+j.at || 0)) { delete un[j.k]; LS.set('unread', un); A.clearNotif && A.clearNotif(j.k); badge(); if (view.open) repaint(); } } return; }
+      hooks.sync.forEach(f => { try { f(j, r.created_at); } catch (e) {} }); return; }   // browser sync between my own devices
     const ps = r.tags.filter(t => t[0] === 'p').map(t => t[1]).filter(p => /^[0-9a-f]{64}$/.test(p));
     const key = keyOf([r.pubkey, ...ps]) || (r.pubkey === me ? 'self' : ''); if (!key) return;
     if (members(key).some(pk => contacts()[pk]?.blocked) && !isGroup(key)) return;
@@ -233,6 +235,7 @@ window.HushMsg = function (A) {
       try { const j = JSON.parse(r.content); const okm = m => m && /^[0-9a-f]{64}$/.test(m.x || '') && /^https:\/\//.test(m.url || '') ? m : null;
         c[r.pubkey] = { ...c[r.pubkey], pq: /^[0-9a-f]{2368}$/.test(j.pq || '') ? j.pq : (c[r.pubkey].pq || null), status: String(j.status || '').slice(0, 80), aura: /^#[0-9a-f]{6}$/i.test(j.aura || '') ? j.aura : '', avatar: okm(j.avatar), banner: okm(j.banner), cardAt: r.created_at,
           ...(c[r.pubkey].named || !j.name ? {} : { name: String(j.name).slice(0, 40) }) }; LS.set('contacts', c); if (view.open) repaint(); } catch {} return; }
+    if (r.kind === K_CALL) { if (mine || now() - r.created_at > 90 || isGroup(key)) return; try { call.remote(key, JSON.parse(r.content)); } catch {} return; }
     if (r.kind === K_TOG) { if (mine || now() - r.created_at > 120) return; try { together.remote(key, r.pubkey, JSON.parse(r.content)); } catch {} return; }
     if (r.kind === K_TYPING) { if (!mine && now() - r.created_at < 20) { (typing[key] = typing[key] || {})[r.pubkey] = Date.now() + 7000; if (view.open && view.chat === key) paintTyping(); setTimeout(() => view.open && view.chat === key && paintTyping(), 7100); } return; }
     const all = chats(), list = all[key] || (all[key] = []);
@@ -696,7 +699,7 @@ window.HushMsg = function (A) {
 .hm-view .bar{display:flex;gap:10px;margin-top:12px}.hm-view .bar button{color:#fff;background:#fff2;padding:9px 16px;border-radius:12px;font-weight:600}
 .hm-pick{display:flex!important;gap:12px;align-items:center;padding:8px 14px;width:100%}.hm-pick input{width:20px;height:20px;accent-color:var(--acc)}
 .hm-sw{width:44px;height:26px;border-radius:99px;background:var(--line);position:relative;flex:none}.hm-sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .15s}.hm-sw.on{background:var(--acc)}.hm-sw.on::after{left:21px}
-.hm-opt{display:flex;align-items:center;gap:10px;margin-top:10px}.hm-opt div{flex:1}.hm-opt small{display:block;color:var(--mute);font-size:12px}
+.hm-call{position:fixed;inset:0;z-index:2000;background:#0b0b0e;color:#fff;display:none;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui}.hm-call.on{display:flex}.hm-call video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none}.hm-call.video #cl-r{display:block}.hm-call.video #cl-l{display:block;inset:auto;right:14px;bottom:110px;width:96px;height:140px;border-radius:14px;z-index:2;border:1px solid #fff3}.hm-call .cl-top{position:relative;z-index:2;text-align:center;text-shadow:0 1px 8px #000a;margin-bottom:auto;padding-top:calc(env(safe-area-inset-top,0px) + 70px)}.hm-call .cl-top b{display:block;font-size:26px}.hm-call .cl-top small{font-size:15px;opacity:.85}.hm-call .cl-bar{position:relative;z-index:3;display:flex;gap:18px;padding:0 0 calc(env(safe-area-inset-bottom,0px) + 36px)}.hm-call .cl-bar button{all:unset;width:62px;height:62px;border-radius:50%;background:#ffffff26;display:grid;place-items:center;cursor:pointer;backdrop-filter:blur(8px)}.hm-call .cl-bar button svg{width:26px;height:26px;stroke:#fff;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.hm-call .cl-bar .ok{background:#22c55e}.hm-call .cl-bar .bad{background:#ef4444}.hm-call .cl-bar .bad svg{transform:rotate(135deg)}.hm-call .cl-bar .off{background:#fff;}.hm-call .cl-bar .off svg{stroke:#000}.hm-dot{width:10px;height:10px;border-radius:50%;flex:none;background:#9ca3af}.hm-dot.on{background:#22c55e}.hm-dot.bad{background:#ef4444}.hm-dot.mid{background:#f59e0b}.hm-opt{display:flex;align-items:center;gap:10px;margin-top:10px}.hm-opt div{flex:1}.hm-opt small{display:block;color:var(--mute);font-size:12px}
 .hm-drop{outline:3px dashed var(--acc);outline-offset:-8px}
 .hm-pq{display:block;margin-bottom:8px}.hm-m.pollb{min-width:240px}.hm-po{display:flex!important;align-items:center;gap:8px;width:100%;position:relative;overflow:hidden;padding:8px 10px;margin:4px 0;border-radius:10px;border:1px solid color-mix(in srgb,currentColor 25%,transparent)}
 .hm-po i{position:absolute;left:0;top:0;bottom:0;background:color-mix(in srgb,currentColor 14%,transparent)}.hm-po span{position:relative;flex:1}.hm-po em{position:relative;font-style:normal;font-weight:700}.hm-po.on{border-color:currentColor;font-weight:600}
@@ -730,6 +733,7 @@ window.HushMsg = function (A) {
 .hm-cv video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}.hm-cv .ring{position:absolute;inset:0;border-radius:50%;background:conic-gradient(#ef4444 calc(var(--p,0)*360deg),transparent 0);-webkit-mask:radial-gradient(circle,transparent 66%,#000 67%);mask:radial-gradient(circle,transparent 66%,#000 67%)}`;
   if (!document.getElementById('hm-css')) { const s = document.createElement('style'); s.id = 'hm-css'; s.textContent = css + css2 + css3 + css4; document.head.append(s); }
   const I = {
+    phone: '<svg viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg>', vid: '<svg viewBox="0 0 24 24"><rect x="3" y="6" width="12" height="12" rx="2"/><path d="M15 10l6-3v10l-6-3z"/></svg>',
     back: '<svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>', plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
     x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>', send: '<svg viewBox="0 0 24 24"><path d="M3 20l18-8L3 4v6l12 2-12 2z"/></svg>',
     link: '<svg viewBox="0 0 24 24"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>',
@@ -786,7 +790,7 @@ window.HushMsg = function (A) {
     if (rec) { view.dirty = true; return; }      // never tear down the screen while recording
     const ta = view.el.querySelector('textarea'), keep = ta?.value, focused = document.activeElement === ta, scr = view.screen;
     const sc = view.el.querySelector('#hm-scroll'), atBottom = !sc || sc.scrollHeight - sc.scrollTop - sc.clientHeight < 80, top = sc?.scrollTop;
-    ({ welcome: drawWelcome, list: drawList, chat: drawChat, add: drawAdd, group: drawGroup, me: drawMe, verify: drawVerify, restore: drawRestore, backup: drawBackup }[scr] || drawList)();
+    ({ welcome: drawWelcome, list: drawList, chat: drawChat, add: drawAdd, group: drawGroup, me: drawMe, conn: drawConn, verify: drawVerify, restore: drawRestore, backup: drawBackup }[scr] || drawList)();
     if (scr === 'chat') { const t = view.el.querySelector('textarea'); if (t && keep) { t.value = keep; t.oninput(); } if (t && focused) t.focus();
       const s2 = view.el.querySelector('#hm-scroll'); if (s2) s2.scrollTop = atBottom ? s2.scrollHeight : top; }
     paintStatus(); hydrate(view.el); }
@@ -834,7 +838,7 @@ window.HushMsg = function (A) {
       let t; b.addEventListener('touchstart', e => { const p = e.touches[0]; t = setTimeout(() => chatMenu(p.clientX, p.clientY, b.dataset.chat), 550); }, { passive: true });
       b.addEventListener('touchend', () => clearTimeout(t)); b.addEventListener('touchmove', () => clearTimeout(t), { passive: true }); });
   }
-  function openChat(k) { A.clearNotif && A.clearNotif(k); view.screen = 'chat'; view.chat = k; view.reply = null; const un = LS.get('unread', {}); delete un[k]; LS.set('unread', un); badge(); repaint(); sendRead(k); }
+  function openChat(k) { A.clearNotif && A.clearNotif(k); view.screen = 'chat'; view.chat = k; view.reply = null; const un = LS.get('unread', {}); delete un[k]; LS.set('unread', un); badge(); repaint(); sendRead(k); try { wrapTo([], K_SYNC, JSON.stringify({ t: 'read', k, at: Date.now() })); } catch {} }
   function bubble(m, list, key, prev) {
     if (m.sys) return `<div class=hm-day style="font-weight:500">${esc(m.text)}</div>`;
     if (m.unsent) return `<div class="hm-m ${m.from === 'me' ? 'me' : 'them'}" data-m="${m.id}" style="opacity:.6;font-style:italic">${m.from === 'me' ? 'You unsent a message' : 'Message unsent'}<span class=tm>${time(m.at)}</span></div>`;
@@ -897,7 +901,7 @@ window.HushMsg = function (A) {
     const cs = chatSet(key), th = THEMES[(LS.get('themes', {})[key]) || 'default'] || THEMES.default, pinned = cs.pin && list.find(x => x.id === cs.pin && !x.unsent);
     if (cs.wall) fileUrl(cs.wall).then(u => { const b = view.el?.querySelector('.hm-body'); if (u && b && view.chat === key) { b.style.backgroundImage = `linear-gradient(color-mix(in srgb,var(--bg) 55%,transparent),color-mix(in srgb,var(--bg) 55%,transparent)),url(${u})`; b.style.backgroundSize = 'cover'; b.style.backgroundAttachment = 'local'; } });
     view.el.innerHTML = `<div class="hm hm-mur" style="${th.css}">${head(esc(chatName(key)) + badgeV(key), key !== 'self' && !isGroup(key) && contacts()[key]?.status ? `<small style="display:block;color:var(--mute);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(contacts()[key].status)}</small><div class=hm-st></div>` : '<div class=hm-st></div>', `<button class=hm-ib data-go=list aria-label=Back>${I.back}</button>${avatar(key, 36)}`,
-      `<button class=hm-ib id=hm-cm aria-label="Chat options">⋯</button>`)}
+      `${key !== 'self' && !isGroup(key) ? `<button class=hm-ib id=hm-call aria-label="Voice call" title="Voice call">${I.phone}</button><button class=hm-ib id=hm-vcall aria-label="Video call" title="Video call">${I.vid}</button>` : ''}<button class=hm-ib id=hm-cm aria-label="Chat options">⋯</button>`)}
       ${pinned ? `<div class=hm-pinbar data-jump="${pinned.id}"><span>${esc(preview(pinned).slice(0, 90))}</span></div>` : ''}${cs.ttl ? `<div class=hm-pinbar style="cursor:default">Disappearing messages: ${ttlLabel(cs.ttl)}</div>` : ''}
       <div class=hm-body id=hm-scroll>${!isGroup(key) && impostor(key) ? `<div class=hm-req style="border-color:#ef4444"><b style="color:#ef4444">This is not your verified ${esc(nameOf(impostor(key)))}.</b> It’s a different Hush ID using the same name. Don’t share anything sensitive unless you’ve checked with them another way.</div>` : ''}${c.request ? `<div class=hm-req><b>${esc(nameOf(key))}</b> isn’t in your contacts yet. Only reply if you know them.<div style="margin-top:8px;display:flex;gap:8px"><button class="hm-btn" id=hm-acc>Accept</button><button class="hm-btn ghost" id=hm-blk>Block</button></div></div>` : ''}
       <div class=hm-msgs>${html || `<div class=hm-empty style="padding:30px"><b>Start the conversation</b>Messages, photos and files are end-to-end encrypted and sent through Tor.</div>`}</div></div>
@@ -905,7 +909,7 @@ window.HushMsg = function (A) {
       <div class=hm-c><button class=hm-ib id=hm-plus title="More: poll, view-once photo" aria-label="More">${I.plus}</button><button class=hm-ib id=hm-att title="Photo or file" aria-label="Send a photo or file">${I.clip}</button>${A.page && A.page() ? `<button class=hm-ib id=hm-share title="Share the page you’re on" aria-label="Share page">${I.link}</button>` : ''}
       <textarea rows=1 placeholder="Message" aria-label="Message"></textarea><button class=hm-ib id=hm-cam title="Hold to record a video message" aria-label="Video message">${I.cam}</button><button class="hm-send hm-mic" id=hm-mic title="Hold to record a voice message (tap to keep recording)" aria-label="Voice message">${I.mic}</button><button class="hm-send hide" id=hm-go aria-label=Send>${I.send}</button>
       <input type=file id=hm-file hidden multiple></div></div>`;
-    wireCommon();
+    wireCommon(); { const a = view.el.querySelector('#hm-call'), b = view.el.querySelector('#hm-vcall'); if (a) a.onclick = () => call.start(key, false); if (b) b.onclick = () => call.start(key, true); }
     const sc = view.el.querySelector('#hm-scroll'); sc.scrollTop = sc.scrollHeight;
     const ta = view.el.querySelector('textarea'), go = () => { const v = ta.value; if (!v.trim()) return; ta.value = ''; ta.oninput(); const r = view.reply; view.reply = null; sendText(key, v, r); };
     const swap = () => { const t = !!ta.value.trim(); view.el.querySelector('#hm-go').classList.toggle('hide', !t); view.el.querySelector('#hm-mic').classList.toggle('hide', t); view.el.querySelector('#hm-cam').classList.toggle('hide', t); ['#hm-att', '#hm-share', '#hm-plus'].forEach(q => { const b = view.el.querySelector(q); if (b && q !== '#hm-plus') b.classList.toggle('hide', t); }); };
@@ -1382,6 +1386,103 @@ window.HushMsg = function (A) {
       } catch (e) { A.toast('Couldn’t open that backup — wrong password or not a Hush backup'); } };
   }
   function addContact(pk, name, invite, verifiedNow) { setTimeout(() => shareCard(), 1500); const c = contacts(); c[pk] = { ...(c[pk] || {}), added: c[pk]?.added || Date.now(), ...(name ? { name: name.slice(0, 40), named: true } : {}), ...(invite ? { invite } : {}), ...(verifiedNow ? { verified: true } : {}) }; delete c[pk].request; delete c[pk].blocked; delete c[pk].auto; LS.set('contacts', c); }
+  // ---- Calls: voice and video, end to end. The "ringing" and the connection details travel as encrypted Murmur messages (through Tor);
+  // the call audio/video then goes straight between the two devices (WebRTC, encrypted). Because that part can't go through Tor,
+  // what it reveals depends on the choice in Connection → Calls: same network only (reveals nothing), your own relay server, or a public helper.
+  const call = (() => {
+    let c = null, tick = 0, ringT = 0, ui = null;
+    const mode = () => prefs().callMode || 'lan';
+    const iceCfg = () => { const p = prefs(), m = mode(); if (m === 'turn' && p.turn) return { iceServers: [{ urls: p.turn, username: p.turnUser || undefined, credential: p.turnPass || undefined }], iceTransportPolicy: 'relay' };
+      if (m === 'stun') return { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }; return { iceServers: [] }; };
+    const sig = (key, o) => publish(key, K_CALL, JSON.stringify(o), [], { noSelf: true, spread: 3, noOutbox: true });
+    const gather = pc => new Promise(res => { if (pc.iceGatheringState === 'complete') return res(); const t = setTimeout(res, 6000);
+      pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') { clearTimeout(t); res(); } }); });
+    const fmt = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    function build() { if (ui) return ui; const d = document.createElement('div'); d.className = 'hm-call';
+      d.innerHTML = `<video id=cl-r autoplay playsinline></video><video id=cl-l autoplay playsinline muted></video><div class=cl-top><b id=cl-n></b><small id=cl-s></small></div>
+        <div class=cl-bar><button id=cl-acc class=ok aria-label=Answer>${I.phone}</button><button id=cl-mic aria-label=Mute>${I.mic}</button><button id=cl-cam aria-label=Camera>${I.cam}</button><button id=cl-end class=bad aria-label=End>${I.phone}</button></div>`;
+      document.body.append(d); ui = d; return d; }
+    function paint(txt) { const d = build(), q = x => d.querySelector(x); d.classList.add('on'); d.classList.toggle('video', !!c.video);
+      q('#cl-n').textContent = chatName(c.key); q('#cl-s').textContent = txt || '';
+      q('#cl-acc').style.display = c.state === 'in' ? '' : 'none'; q('#cl-mic').style.display = c.state === 'live' ? '' : 'none'; q('#cl-cam').style.display = c.state === 'live' && c.video ? '' : 'none';
+      q('#cl-acc').onclick = accept; q('#cl-end').onclick = () => end(c && c.state === 'in' ? 'Declined' : '', true);
+      q('#cl-mic').onclick = () => { c.mute = !c.mute; c.local?.getAudioTracks().forEach(t => t.enabled = !c.mute); q('#cl-mic').classList.toggle('off', c.mute); };
+      q('#cl-cam').onclick = () => { c.cam = !c.cam; c.local?.getVideoTracks().forEach(t => t.enabled = !c.cam); q('#cl-cam').classList.toggle('off', c.cam); }; }
+    function note(text) { if (!c) return; const all = chats(), list = all[c.key] || (all[c.key] = []); list.push({ id: 'c' + Date.now(), sys: true, text, at: Date.now(), from: 'me' }); LS.set('chats', all); if (view.open) repaint(); }
+    function end(why, tell) { if (!c) return; const k = c.key, id = c.id, was = c.state, dur = c.t0 ? Math.round((Date.now() - c.t0) / 1000) : 0;
+      if (tell) { try { sig(k, { t: 'end', id }); } catch {} }
+      clearInterval(tick); clearTimeout(ringT); try { c.pc && c.pc.close(); } catch {} c.local && c.local.getTracks().forEach(t => t.stop());
+      const incomingMissed = was === 'in' && !tell;
+      note((c.video ? 'Video call' : 'Voice call') + (dur ? ' · ' + fmt(dur) : incomingMissed ? ' · missed' : c.out ? ' · no answer' : why ? ' · ' + why.toLowerCase() : ''));
+      const d = ui; if (d) { d.classList.remove('on'); d.querySelector('#cl-r').srcObject = null; d.querySelector('#cl-l').srcObject = null; } c = null;
+      if (why && why !== 'Declined' && !dur && !incomingMissed) A.toast(why); }
+    async function media(video) { try { return await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: video ? { facingMode: 'user' } : false }); }
+      catch { A.toast('Murmur needs microphone' + (video ? ' and camera' : '') + ' access for calls'); return null; } }
+    function newPc() { const pc = new RTCPeerConnection(iceCfg());
+      pc.ontrack = e => { const r = build().querySelector('#cl-r'); r.srcObject = e.streams[0] || new MediaStream([e.track]); };
+      pc.onconnectionstatechange = () => { if (!c || c.pc !== pc) return;
+        if (pc.connectionState === 'connected' && c.state !== 'live') { c.state = 'live'; c.t0 = Date.now(); clearTimeout(ringT); paint('0:00'); tick = setInterval(() => c && paint(fmt(Math.round((Date.now() - c.t0) / 1000))), 1000); }
+        else if (pc.connectionState === 'failed') end(mode() === 'lan' ? 'Couldn’t connect — for calls over the internet, choose a helper under Connection → Calls' : 'Couldn’t connect', true);
+        else if (pc.connectionState === 'disconnected') setTimeout(() => c && c.pc === pc && pc.connectionState === 'disconnected' && end('Connection lost', true), 8000); };
+      return pc; }
+    async function start(key, video) {
+      if (c) return A.toast('You’re already in a call'); if (!sk || key === 'self' || isGroup(key)) return;
+      if (!window.RTCPeerConnection) return A.toast('Calls aren’t supported on this device');
+      if (!okRelays()) return A.toast('Murmur isn’t connected yet — see Connection');
+      const st = await media(video); if (!st) return;
+      const id = Math.random().toString(36).slice(2, 10); c = { key, id, video, out: true, state: 'out', local: st };
+      const pc = c.pc = newPc(); st.getTracks().forEach(t => pc.addTrack(t, st)); build().querySelector('#cl-l').srcObject = st; paint('Calling…');
+      try { await pc.setLocalDescription(await pc.createOffer()); await gather(pc); if (!c || c.pc !== pc) return;
+        sig(key, { t: 'offer', id, v: !!video, sdp: pc.localDescription.sdp }); ringT = setTimeout(() => end('No answer', true), 45000);
+        if (mode() === 'lan' && !prefs().callHint) { LS.set('prefs', { ...prefs(), callHint: 1 }); A.toast('Calls work on the same network. For calls over the internet, pick a helper under Connection → Calls'); }
+      } catch (e) { end('Couldn’t start the call'); } }
+    async function accept() { if (!c || c.state !== 'in') return; const j = c.offer, st = await media(j.v); if (!st) return end('', true);
+      c.local = st; c.state = 'connecting'; const pc = c.pc = newPc(); st.getTracks().forEach(t => pc.addTrack(t, st)); build().querySelector('#cl-l').srcObject = st; paint('Connecting…');
+      try { await pc.setRemoteDescription({ type: 'offer', sdp: j.sdp }); await pc.setLocalDescription(await pc.createAnswer()); await gather(pc); if (!c || c.pc !== pc) return;
+        sig(c.key, { t: 'answer', id: c.id, sdp: pc.localDescription.sdp }); clearTimeout(ringT); ringT = setTimeout(() => c && c.state !== 'live' && end('Couldn’t connect', true), 30000);
+      } catch (e) { end('Couldn’t connect', true); } }
+    async function remote(key, j) {
+      if (!j || typeof j.id !== 'string' || j.id.length > 20) return;
+      if (j.t === 'offer') { if (typeof j.sdp !== 'string' || j.sdp.length > 30000 || !window.RTCPeerConnection) return;
+        if (!contacts()[key] || contacts()[key].blocked) return;
+        if (c) return sig(key, { t: 'busy', id: j.id });
+        c = { key, id: j.id, video: !!j.v, state: 'in', offer: j }; paint('Incoming ' + (j.v ? 'video' : 'voice') + ' call'); try { navigator.vibrate && navigator.vibrate([300, 200, 300]); } catch {}
+        A.banner && A.banner({ key, name: chatName(key), text: 'Incoming ' + (j.v ? 'video' : 'voice') + ' call', ini: initials(nameOf(key)), color: '#22c55e' });
+        ringT = setTimeout(() => c && c.state === 'in' && end('', false), 45000); return; }
+      if (!c || c.id !== j.id || c.key !== key) return;
+      if (j.t === 'answer' && c.state === 'out' && typeof j.sdp === 'string') { c.state = 'connecting'; paint('Connecting…'); try { await c.pc.setRemoteDescription({ type: 'answer', sdp: j.sdp }); } catch { end('Couldn’t connect', true); } }
+      else if (j.t === 'end') end(c.state === 'in' ? '' : 'Call ended');
+      else if (j.t === 'busy') end('They’re on another call'); }
+    return { start, remote, active: () => !!c };
+  })();
+  // ---- Connection: what Tor and each relay are doing, in plain words
+  const ago = t => { const s = Math.max(1, Math.round((Date.now() - t) / 1000)); return s < 90 ? s + ' s' : s < 5400 ? Math.round(s / 60) + ' min' : Math.round(s / 3600) + ' h'; };
+  function relayLine(u) { const c = conns[u] || {}; return c.open ? ['on', 'Connected' + (c.at ? ' for ' + ago(c.at) : '')] : c.err ? ['bad', 'Can’t connect — ' + String(c.err).replace(/^.*?: /, '').slice(0, 90) + ' · retrying'] : ['mid', 'Connecting…']; }
+  function drawConn() {
+    const rs = relays(), n = okRelays(), waiting = Object.keys(outbox()).length, tor = torSt.state === 'ready' || n > 0 ? ['on', 'Connected to Tor'] : torSt.state === 'error' ? ['bad', 'Tor can’t connect — ' + (torSt.msg || lastErr || 'check your internet, VPN or firewall')] : ['mid', 'Starting Tor… the first time can take up to a minute'];
+    const dot = k => `<i class="hm-dot ${k}"></i>`;
+    const p = prefs();
+    view.el.innerHTML = `<div class="hm hm-mur">${head('Connection', '', `<button class=hm-ib data-go=me aria-label=Back>${I.back}</button>`)}<div class=hm-body>
+      <div class=hm-card><div class=hm-opt style="margin:0">${dot(tor[0])}<div><b>Tor</b><small>${esc(tor[1])}</small></div></div>
+        <div class=hm-opt>${dot(n ? 'on' : 'bad')}<div><b>${n} of ${rs.length} relays online</b><small>${n ? 'Messages are flowing' : 'Nothing can be sent or received until one connects'}${waiting ? ` · ${waiting} message${waiting > 1 ? 's' : ''} waiting to send` : ''}</small></div></div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class=hm-btn id=cn-now>Reconnect now</button><button class="hm-btn ghost" id=cn-id>New Tor circuit</button></div></div>
+      <div class=hm-card><h3>Relays</h3>${rs.map(u => { const [k, t] = relayLine(u); return `<div class=hm-opt>${dot(k)}<div><b>${esc(u.replace(/^wss:\/\//, ''))}</b><small>${esc(t)}</small></div>${RELAYS_DEFAULT.includes(u) ? '' : `<button class="hm-btn ghost" data-rm="${esc(u)}">Remove</button>`}</div>`; }).join('')}
+        <div style="display:flex;gap:8px;margin-top:12px"><input class=hm-in id=cn-url placeholder="wss://your-relay.example" style="flex:1;margin:0"><button class=hm-btn id=cn-add>Add</button></div>
+        <p style="font-size:12px;margin:10px 0 0">Relays only pass along sealed messages they can’t read. Having several means one going down doesn’t matter.</p></div>
+      <div class=hm-card><h3>Calls</h3><p>Voice and video calls are end-to-end encrypted. The ringing travels through Tor like messages, but the call itself goes straight between your devices, so it can’t use Tor. Choose what that reveals:</p>
+        ${[['lan', 'Same network only', 'Reveals nothing. Works when you’re both on the same Wi-Fi.'], ['stun', 'Public helper server', 'Works anywhere, but shows your IP address to the person you call and to the helper (Google).'], ['turn', 'My own relay server', 'Works anywhere and hides your IP address from them. You supply a TURN server.']].map(([k, t, d]) => `<div class=hm-opt><div><b>${t}</b><small>${d}</small></div><button class="hm-sw ${(p.callMode || 'lan') === k ? 'on' : ''}" data-cm="${k}" aria-label="${t}"></button></div>`).join('')}
+        ${(p.callMode || 'lan') === 'turn' ? `<input class=hm-in id=cn-turn value="${esc(p.turn || '')}" placeholder="turns:turn.example.com:5349" style="margin-top:10px"><input class=hm-in id=cn-tu value="${esc(p.turnUser || '')}" placeholder="Username (if needed)"><input class=hm-in id=cn-tp type=password value="${esc(p.turnPass || '')}" placeholder="Password (if needed)"><button class=hm-btn id=cn-ts>Save server</button>` : ''}</div>
+      </div></div>`;
+    wireCommon(); const q = x => view.el.querySelector(x);
+    view.el.querySelectorAll('[data-cm]').forEach(b => b.onclick = () => { LS.set('prefs', { ...prefs(), callMode: b.dataset.cm }); repaint(); });
+    q('#cn-ts') && (q('#cn-ts').onclick = () => { const u = q('#cn-turn').value.trim(); if (!/^turns?:[\w.-]+(:\d+)?(\?transport=(udp|tcp))?$/i.test(u)) return A.toast('A relay server looks like turns:host:5349'); LS.set('prefs', { ...prefs(), turn: u, turnUser: q('#cn-tu').value.trim(), turnPass: q('#cn-tp').value }); A.toast('Saved'); });
+    q('#cn-now').onclick = () => { kick(); A.toast('Reconnecting…'); setTimeout(() => view.screen === 'conn' && repaint(), 1500); };
+    q('#cn-id').onclick = async () => { try { await A.inv('tor_new_identity'); } catch {} kick(); A.toast('New Tor circuit'); };
+    q('#cn-add').onclick = () => { const v = q('#cn-url').value.trim(); if (!/^wss:\/\/[a-z0-9.-]+(:\d+)?(\/\S*)?$/i.test(v)) return A.toast('A relay address starts with wss://'); if (rs.includes(v)) return A.toast('Already added');
+      LS.set('relays', [...rs, v]); openRelay(v, 0); repaint(); };
+    view.el.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { const u = b.dataset.rm; LS.set('relays', rs.filter(x => x !== u)); const c = conns[u]; if (c && c.id != null) { delete byId[c.id]; A.inv('msg_ws_close', { id: c.id }).catch(() => {}); } if (c) c.tok = (c.tok || 0) + 1; delete conns[u]; repaint(); });
+    clearTimeout(drawConn.t); drawConn.t = setTimeout(() => { if (view.open && view.screen === 'conn') repaint(); }, 4000);
+  }
   function drawMe() {
     const id = npub(me), link = 'hush://add#' + id, p = prefs();
     view.el.innerHTML = `<div class="hm hm-mur">${head('Your Hush ID', '', `<button class=hm-ib data-go=list aria-label=Back>${I.back}</button>`)}<div class=hm-body>
@@ -1405,6 +1506,7 @@ window.HushMsg = function (A) {
         <button class=hm-btn id=hm-lock>${lockCfg ? 'Turn off lock' : 'Set a PIN'}</button>${lockCfg ? ' <button class="hm-btn ghost" id=hm-lnow>Lock now</button>' : ''}</div>
       <div class=hm-card><h3>One-time invite</h3><p>A link that works for one person. Once they use it, it can't be reused — safe to send to someone new.</p><button class=hm-btn id=hm-inv>Make an invite link</button>
         <div class=hm-opt style="margin-top:12px"><div>Only people I add or invite<small>Messages from strangers are dropped silently — no requests, no spam</small></div><button class="hm-sw ${p.inviteOnly ? 'on' : ''}" data-pref=inviteOnly aria-label="Invite only"></button></div></div>
+      <div class=hm-card><h3>Connection</h3><p>${okRelays()} of ${relays().length} relays online · ${status === 'on' ? 'through Tor' : status === 'connecting' ? 'connecting…' : 'offline'}</p><button class="hm-btn ghost" data-go=conn>See details</button></div>
       <div class=hm-card><h3>Link another device</h3><p>Use the same Hush ID on your phone and computer — contacts, chats and Echo come along, and new messages arrive on both.</p><button class=hm-btn id=hm-lk>Link a device</button></div>
       <div class=hm-card><h3>Back up your Hush ID</h3><p>Without a backup, losing this device means losing your ID — there’s no account to recover. Your backup restores your ID${hooks.backup.length ? ', contacts and Echo profile' : ' and contacts'} on any device.</p>
         <button class=hm-btn data-go=backup>Back up now</button></div>
