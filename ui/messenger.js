@@ -107,26 +107,44 @@ window.HushMsg = function (A) {
     A.listen('msg-ws', ({ payload: p }) => onWs(p));
     for (const u of relays()) openRelay(u);
   }
+  // Outbox: every message we publish is kept (as the already-encrypted event) until a relay confirms it, and replayed to each relay
+  // when it connects. So a message written while Tor is still starting, offline, or before the app is closed still goes out later.
+  // Relays ignore an event they already have, so replaying is safe.
+  const outbox = () => LS.get('outbox', {});
+  function outboxAdd(evs) { const o = outbox(), t = now(); for (const e of evs) o[e.id] = { e, t };
+    const ids = Object.keys(o); if (ids.length > 300) ids.sort((a, b) => o[a].t - o[b].t).slice(0, ids.length - 300).forEach(i => delete o[i]); LS.set('outbox', o); }
+  function outboxTag(id, c, m) { const o = outbox(); if (o[id]) { o[id].c = c; o[id].m = m; LS.set('outbox', o); } }
+  function outboxDone(id) { const o = outbox(), v = o[id]; if (v) { delete o[id]; LS.set('outbox', o); if (v.c) mark(v.c, v.m, 'sent'); } }
+  function outboxFlush(u) { const o = outbox(), cut = now() - 3 * 86400; let dirty = false;
+    for (const [id, v] of Object.entries(o)) { if (v.t < cut) { delete o[id]; dirty = true; continue; } send(u, ['EVENT', v.e]); }
+    if (dirty) LS.set('outbox', o); }
   async function openRelay(u, wait = 0) {
+    const c0 = conns[u] || (conns[u] = { queue: [], tries: 0 }), tok = c0.tok = (c0.tok || 0) + 1;   // a newer attempt cancels an older waiting one
     if (wait) await new Promise(r => setTimeout(r, wait));
-    if (!sk) return;
-    try { const id = await A.inv('msg_ws_open', { url: u }); conns[u] = { id, open: false, queue: conns[u]?.queue || [], tries: conns[u]?.tries || 0 }; byId[id] = u; }
+    if (!sk || c0.tok !== tok) return;
+    try { const id = await A.inv('msg_ws_open', { url: u }); conns[u] = { id, open: false, queue: conns[u]?.queue || [], tries: conns[u]?.tries || 0, tok }; byId[id] = u; }
     catch (e) { lastErr = String(e).slice(0, 160); setStatus(okRelays() ? 'on' : 'error:' + e); retry(u); }
   }
+  // Coming back to the app, or the network coming back, shouldn't wait out a long back-off: reconnect right away.
+  function kick() { if (!sk || !started) return; for (const u of relays()) { const c = conns[u]; if (!c || !c.open) { if (c) c.tries = 0; openRelay(u, 0); } else {
+      A.inv('msg_ws_send', { id: c.id, data: JSON.stringify(['REQ', 'hb', { kinds: [1059], limit: 0 }]) }).then(() => send(u, ['CLOSE', 'hb'])).catch(() => onWs({ id: c.id, t: 'close', d: 'connection lost' })); } } }
+  window.addEventListener('online', kick);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') kick(); });
   function retry(u) { const c = conns[u] || (conns[u] = { queue: [], tries: 0 }); c.open = false; c.tries = (c.tries || 0) + 1;
     openRelay(u, Math.min(120000, 3000 * 2 ** Math.min(c.tries, 5))); }
-  const send = (u, msg) => { const c = conns[u]; if (!c) return; if (c.open) A.inv('msg_ws_send', { id: c.id, data: JSON.stringify(msg) }).catch(() => {}); else if (c.queue.length < 400) c.queue.push(msg); };
+  const send = (u, msg) => { const c = conns[u]; if (!c) return; if (c.open) A.inv('msg_ws_send', { id: c.id, data: JSON.stringify(msg) }).catch(() => { if (conns[u] === c && c.open) onWs({ id: c.id, t: 'close', d: 'connection lost' }); }); else if (c.queue.length < 400) c.queue.push(msg); };
   function onWs(p) {
     const u = byId[p.id]; if (!u) return; const c = conns[u];
+    if (!c || c.id !== p.id) { if (p.t === 'close') delete byId[p.id]; return; }   // an older socket we already replaced
     if (p.t === 'open') { c.open = true; c.tries = 0; setStatus('on');
       send(u, ['REQ', 'hush', { kinds: [1059], '#p': [me], since: LS.get('since', 0) - 2 * 86400 }]);
-      c.queue.splice(0).forEach(m => send(u, m));
+      c.queue.splice(0).forEach(m => send(u, m)); outboxFlush(u);
       Object.entries(subs).forEach(([id, s]) => send(u, ['REQ', id, ...s.filters])); }
     else if (p.t === 'close') { delete byId[p.id]; if (!okRelays()) setStatus(p.d ? 'error:' + p.d : 'connecting'); retry(u); }
     else if (p.t === 'msg') { let m; try { m = JSON.parse(p.d); } catch { return; }
       if (m[0] === 'EVENT' && m[2]) { if (m[1] === 'hush') receive(m[2]); else if (subs[m[1]]) { if (!subSeen.has(m[2].id)) { subSeen.add(m[2].id); try { if (N.verifyEvent(m[2])) subs[m[1]].onEvent(m[2]); } catch {} } } }
       else if (m[0] === 'EOSE' && subs[m[1]]) { const s = subs[m[1]]; s.eose = (s.eose || 0) + 1; if (s.eose === 1 && s.onEose) s.onEose(); }
-      else if (m[0] === 'OK' && pending[m[1]] && m[2]) { const { chat, msgId } = pending[m[1]]; delete pending[m[1]]; mark(chat, msgId, 'sent'); } }
+      else if (m[0] === 'OK' && m[2]) { outboxDone(m[1]); if (pending[m[1]]) { const { chat, msgId } = pending[m[1]]; delete pending[m[1]]; mark(chat, msgId, 'sent'); } } }
   }
 
   // ---------------------------------------------------------------- shared API for Echo (social): subscriptions + signed events
@@ -340,6 +358,7 @@ window.HushMsg = function (A) {
     const wraps = to.map(p => wrapFor(rumor, p));
     if (!opt.noSelf) { const w = wrapFor(rumor, me); seen.add(w.id); wraps.push(w); }       // copy for my other devices
     const rs = relays(), spread = opt.spread ? rs.slice(0, opt.spread) : rs;
+    if (!opt.noOutbox) outboxAdd(wraps);
     for (const w of wraps) for (const u of spread) send(u, ['EVENT', w]);
     return { rumor, wrapId: wraps[0]?.id };
   }
@@ -348,7 +367,7 @@ window.HushMsg = function (A) {
       if (obj.k === 'inv') addLocal(key, { id: rumor.id, from: 'me', game: obj.g, text: '', at: Date.now(), status: 'sending' }, wrapId); } });
   function addLocal(key, m, wrapId) {
     const all = chats(), list = all[key] || (all[key] = []); list.push(m); all[key] = list; LS.set('chats', all);
-    if (wrapId) { pending[wrapId] = { chat: key, msgId: m.id }; setTimeout(() => { if (pending[wrapId]) mark(key, m.id, 'failed'); }, 60000); }
+    if (wrapId) { pending[wrapId] = { chat: key, msgId: m.id }; outboxTag(wrapId, key, m.id); setTimeout(() => { if (pending[wrapId]) mark(key, m.id, 'queued'); }, 60000); }
     repaint();
   }
   // Per-chat settings shared by both sides: pinned message, disappearing timer. Local-only: theme.

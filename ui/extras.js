@@ -819,6 +819,8 @@ window.HushX = function (A) {
       if (Date.now() - (+j.at || 0) < 6 * 3600e3) A.toast('From your ' + (j.d === 'phone' ? 'phone' : 'computer') + ': ' + (j.n || new URL(j.u).hostname).slice(0, 60), ['Open', () => A.open(j.u)]);
       return;
     }
+    if (j.t === 'kv') return kvApply(j);
+    if (j.t === 'tabs') return tabsOnMsg(j);
     if (j.t === 'bm' && Array.isArray(j.add || [])) {
       const have = syMap(), snap = syKey() || {}; let changed = false;
       for (const b of (j.add || []).slice(0, 400)) {
@@ -829,8 +831,51 @@ window.HushX = function (A) {
       sySave(snap); if (changed) { try { await A.reload(); } catch {} }
     }
   }
+
+  // ----- Everything else that should follow you: settings, themes, notes, watches, picks, and the tabs open on your other devices -----
+  // Newest edit wins, per item. Nothing is overwritten the first time two devices meet: each side only sends what it changes afterwards.
+  const KV_LS = ['hush.wall', 'hush.watch', 'hush.notes', 'hush.tabnotes', 'hush.scores.pins', 'hush.gd.picks', 'hush.gd.rec', 'hush.pdf.dark', 'hush.ai.name'];
+  const KV_UI = ['color', 'look', 'theme', 'search', 'force_dark', 'fp', 'clean_links', 'video_bar', 'gestures', 'wheel', 'archive', 'sp_clock', 'sp_notes', 'bangs', 'workspaces', 'ws_colors', 'sessions', 'scenes'];
+  const kvMeta = () => { try { return JSON.parse(localStorage.getItem('hush.sync.kv') || '{}'); } catch { return {}; } };
+  const kvSave = m => { try { localStorage.setItem('hush.sync.kv', JSON.stringify(m)); } catch {} };
+  const hash = str => { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return String(h); };
+  const kvGet = k => k.startsWith('ui.') ? ((A.state().settings || {}).ui || {})[k.slice(3)] ?? (k === 'ui.search' ? (A.state().settings || {}).search : undefined) : localStorage.getItem(k);
+  function kvTick() {
+    const meta = kvMeta(); let dirty = false;
+    for (const k of [...KV_LS, ...KV_UI.map(x => 'ui.' + x)]) {
+      let v = null; try { v = kvGet(k); } catch {} if (v == null) continue; v = String(v); if (v.length > 40000) continue;
+      const h = hash(v);
+      if (!meta[k]) { meta[k] = [h, 0]; dirty = true; continue; }       // first time seen: remember, don't send
+      if (meta[k][0] !== h) { meta[k] = [h, Date.now()]; dirty = true; SY.M.syncSend({ t: 'kv', k, v, at: meta[k][1] }); }
+    }
+    if (dirty) kvSave(meta);
+  }
+  async function kvApply(j) {
+    const k = String(j.k || ''), v = j.v, at = +j.at || 0;
+    if (!(KV_LS.includes(k) || (k.startsWith('ui.') && KV_UI.includes(k.slice(3)))) || typeof v !== 'string' || v.length > 40000 || at > Date.now() + 300000) return;
+    const meta = kvMeta(), cur = meta[k] || [null, 0]; if (at <= cur[1] || cur[0] === hash(v)) return;
+    try { if (k.startsWith('ui.')) { await A.inv('set_setting', { key: k, value: v }); await A.reload(); } else localStorage.setItem(k, v); } catch { return; }
+    meta[k] = [hash(v), at]; kvSave(meta);
+  }
+  // Tabs open on your other devices (kept so you can pick up where you left off)
+  const TB = { src: null, last: '' };
+  const tabsAll = () => { try { return JSON.parse(localStorage.getItem('hush.sync.tabs') || '{}'); } catch { return {}; } };
+  function tabsTick() {
+    if (!TB.src) return; let l = []; try { l = TB.src().filter(x => /^https?:\/\/\S{3,1500}$/.test(x.u)).slice(0, 40).map(x => ({ u: x.u, n: String(x.n || '').slice(0, 80) })); } catch { return; }
+    const sig = hash(JSON.stringify(l)); if (sig === TB.last) return; TB.last = sig; SY.M.syncSend({ t: 'tabs', d: syWho(), l, at: Date.now() });
+  }
+  function tabsOnMsg(j) {
+    const d = j.d === 'phone' ? 'phone' : 'computer'; if (d === syWho() || !Array.isArray(j.l)) return;
+    const all = tabsAll(); if (all[d] && all[d].at >= (+j.at || 0)) return;
+    all[d] = { at: +j.at || Date.now(), l: j.l.filter(x => x && /^https?:\/\/\S{3,1500}$/.test(x.u)).slice(0, 40).map(x => ({ u: x.u, n: String(x.n || '').slice(0, 80) })) };
+    try { localStorage.setItem('hush.sync.tabs', JSON.stringify(all)); } catch {}
+  }
+  function otherDevices() { const o = tabsAll(), d = syWho() === 'phone' ? 'computer' : 'phone'; return o[d] ? { name: d, at: o[d].at, tabs: o[d].l } : null; }
+  function syncTabsSource(f) { TB.src = f; }
+
   function syncTick() {
     if (!SY.M || !SY.M.hasId()) return;
+    try { kvTick(); tabsTick(); } catch {}
     const now = syMap(), old = syKey();
     if (!old) { sySave(now); const all = Object.entries(now).slice(0, 300).map(([u, [n, f]]) => ({ u, n, f })); if (all.length) SY.M.syncSend({ t: 'bm', add: all }); return; }   // first run: offer everything once, merged by URL
     const add = [], del = [];
@@ -845,6 +890,6 @@ window.HushX = function (A) {
   }
   if (!A.alert) A.alert = (t, x) => A.toast(t + ': ' + x);
   if (window.HUSH_SCORES) setTimeout(() => { try { HUSH_SCORES.watch(A); } catch (e) {} }, 6000);
-  return { dl: { items: DL.items, event: dlEvent, list: dlList, drop: o => { DL.o = o; }, active: () => dlActive().length, get all() { return DL.items; } }, fav, favSet, favStyle, syncInit, syncSendTab, syncInbox, siteHit, privacyReport, ai, aiName, aiRename, assistant, reportForm, devId: () => DEV_ID, errLog: () => errLog.slice(), settingsSearch, tour, TOR_INFO, mediaPrompt, LEAVE, SEC, bump, report, tabNote, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
+  return { dl: { items: DL.items, event: dlEvent, list: dlList, drop: o => { DL.o = o; }, active: () => dlActive().length, get all() { return DL.items; } }, fav, favSet, favStyle, syncInit, syncSendTab, syncInbox, otherDevices, syncTabsSource, siteHit, privacyReport, ai, aiName, aiRename, assistant, reportForm, devId: () => DEV_ID, errLog: () => errLog.slice(), settingsSearch, tour, TOR_INFO, mediaPrompt, LEAVE, SEC, bump, report, tabNote, home, boost, archiveSweep, archivePanel, markup, host, esc, gesture, gesturePanel, ACTIONS, applyLook, lookPicker, LOOKS,
     destructSweep, destructLabel, DESTRUCT, watchAdd, watchSweep, watchPanel, watchCount, syncLink, LS };
 };

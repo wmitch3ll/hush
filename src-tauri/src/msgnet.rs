@@ -27,6 +27,8 @@ pub async fn msg_ws_open(app: AppHandle, url: String) -> Result<u32, String> {
     CONNS.lock().insert(id, tx);
     tauri::async_runtime::spawn(async move {
         let r: Result<(), String> = async {
+            // Connecting can hang for ever on a bad Tor circuit; give up after 75 s so the app retries with a fresh one.
+            let up = async {
             let tor = crate::tor::connect(&app, &host, port).await?;
             let mut roots = rustls::RootCertStore::empty();
             roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
@@ -36,7 +38,14 @@ pub async fn msg_ws_open(app: AppHandle, url: String) -> Result<u32, String> {
             let name = rustls::pki_types::ServerName::try_from(host.clone()).map_err(|e| e.to_string())?;
             let tls = tokio_rustls::TlsConnector::from(Arc::new(cfg)).connect(name, tor).await.map_err(|e| format!("TLS: {e}"))?;
             let (ws, _) = tokio_tungstenite::client_async(url.as_str(), tls).await.map_err(|e| format!("WebSocket: {e}"))?;
+            Ok::<_, String>(ws)
+            };
+            let ws = tokio::time::timeout(std::time::Duration::from_secs(75), up).await.map_err(|_| "Timed out reaching the relay through Tor".to_string())??;
             let (mut w, mut r) = ws.split();
+            // Keep-alive: Tor circuits and NATs drop idle connections without telling us. Ping every 40 s; if nothing at all
+            // (message, ping or pong) arrives for 120 s the link is dead, so close it and let the app reconnect.
+            let mut beat = tokio::time::interval(std::time::Duration::from_secs(40));
+            let mut last = std::time::Instant::now();
             ev(&app, id, "open", "");
             loop {
                 tokio::select! {
@@ -44,13 +53,17 @@ pub async fn msg_ws_open(app: AppHandle, url: String) -> Result<u32, String> {
                         Some(Some(text)) => { w.send(Message::Text(text.into())).await.map_err(|e| e.to_string())?; }
                         _ => { let _ = w.close().await; break; }
                     },
-                    inc = r.next() => match inc {
+                    _ = beat.tick() => {
+                        if last.elapsed() > std::time::Duration::from_secs(120) { return Err("The connection went quiet".into()); }
+                        w.send(Message::Ping(Vec::<u8>::new().into())).await.map_err(|e| e.to_string())?;
+                    },
+                    inc = r.next() => { last = std::time::Instant::now(); match inc {
                         Some(Ok(Message::Text(t))) => ev(&app, id, "msg", t.as_ref()),
                         Some(Ok(Message::Ping(p))) => { let _ = w.send(Message::Pong(p)).await; }
                         Some(Ok(Message::Close(_))) | None => break,
                         Some(Ok(_)) => {}
                         Some(Err(e)) => return Err(e.to_string()),
-                    }
+                    } }
                 }
             }
             Ok(())
